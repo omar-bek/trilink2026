@@ -1,0 +1,79 @@
+@import './hero-stars.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   THEME VARIABLES
+   ============================================ */
+@layer base {
+  /* --- Light Mode (default) --- */
+  :root {
+    --c-page:        #F8FAFC;
+    --c-surface:     #FFFFFF;
+    --c-surface2:    #F1F5F9;
+    --c-elevated:    #E2E8F0;
+    --c-border:      #E2E8F0;
+    --c-border-s:    #F1F5F9;
+    --c-text-primary:#0F172A;
+    --c-text-body:   #334155;
+    --c-text-muted:  #64748B;
+    --c-text-faint:  #94A3B8;
+    --c-accent:      #2563EB;
+    --c-accent-h:    #1D4ED8;
+    --c-icon:        #3B82F6;
+    --c-nav-bg:      rgba(255,255,255,0.85);
+    --c-nav-pill:    #F1F5F9;
+    --c-card-hover:  rgba(37,99,235,0.04);
+    --c-glow:        rgba(37,99,235,0.08);
+  }
+
+  /* --- Dark Mode --- */
+  .dark {
+    --c-page:        #0B0F1A;
+    --c-surface:     #131927;
+    --c-surface2:    #1E2740;
+    --c-elevated:    #252F48;
+    --c-border:      #1E2740;
+    --c-border-s:    #1A2035;
+    --c-text-primary:#FFFFFF;
+    --c-text-body:   #C5CEE0;
+    --c-text-muted:  #7B819A;
+    --c-text-faint:  #4A5068;
+    --c-accent:      #4B83F0;
+    --c-accent-h:    #3B6FE0;
+    --c-icon:        #7B9FE8;
+    --c-nav-bg:      rgba(11,15,26,0.8);
+    --c-nav-pill:    rgba(21,27,43,0.8);
+    --c-card-hover:  rgba(59,81,152,0.12);
+    --c-glow:        rgba(59,130,246,0.15);
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', 'Figtree', system-ui, sans-serif;
+    background: var(--c-page);
+    color: var(--c-text-primary);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  /* Scroll reveal */
+  .reveal { opacity: 0; transform: translateY(32px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .reveal-delay-1 { transition-delay: 0.1s; }
+  .reveal-delay-2 { transition-delay: 0.2s; }
+  .reveal-delay-3 { transition-delay: 0.3s; }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(180deg, var(--c-text-primary) 0%, var(--c-text-muted) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
