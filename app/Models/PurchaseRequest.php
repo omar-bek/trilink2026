@@ -17,6 +17,7 @@ class PurchaseRequest extends Model
         'title',
         'description',
         'company_id',
+        'branch_id',
         'buyer_id',
         'category_id',
         'sub_category_id',
@@ -46,6 +47,11 @@ class PurchaseRequest extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 
     public function buyer(): BelongsTo

@@ -3,11 +3,11 @@
 
 @php
 $notifColors = [
-    'blue'   => ['bg' => 'bg-[#3B82F6]/10', 'text' => 'text-[#3B82F6]'],
-    'green'  => ['bg' => 'bg-[#10B981]/10', 'text' => 'text-[#10B981]'],
-    'orange' => ['bg' => 'bg-[#F59E0B]/10', 'text' => 'text-[#F59E0B]'],
+    'blue'   => ['bg' => 'bg-[#4f7cff]/10', 'text' => 'text-[#4f7cff]'],
+    'green'  => ['bg' => 'bg-[#00d9b5]/10', 'text' => 'text-[#00d9b5]'],
+    'orange' => ['bg' => 'bg-[#ffb020]/10', 'text' => 'text-[#ffb020]'],
     'purple' => ['bg' => 'bg-[#8B5CF6]/10', 'text' => 'text-[#8B5CF6]'],
-    'red'    => ['bg' => 'bg-[#EF4444]/10', 'text' => 'text-[#EF4444]'],
+    'red'    => ['bg' => 'bg-[#ff4d7f]/10', 'text' => 'text-[#ff4d7f]'],
 ];
 @endphp
 
@@ -28,12 +28,12 @@ $notifColors = [
 </x-dashboard.page-header>
 
 @if(session('status'))
-<div class="mb-6 bg-[#10B981]/5 border border-[#10B981]/30 rounded-xl p-4 text-[13px] text-[#10B981]">{{ session('status') }}</div>
+<div class="mb-6 bg-[#00d9b5]/5 border border-[#00d9b5]/30 rounded-xl p-4 text-[13px] text-[#00d9b5]">{{ session('status') }}</div>
 @endif
 
 @if($unreadCount > 0)
 <div class="mb-6 inline-flex items-center gap-2 text-[12px] text-muted">
-    <span class="bg-[#EF4444] text-white text-[11px] font-bold px-2 py-0.5 rounded-full min-w-[22px] text-center">{{ $unreadCount }}</span>
+    <span class="bg-[#ff4d7f] text-white text-[11px] font-bold px-2 py-0.5 rounded-full min-w-[22px] text-center">{{ $unreadCount }}</span>
     {{ __('notifications.unread_count', ['count' => $unreadCount]) }}
 </div>
 @endif
@@ -69,17 +69,18 @@ $notifColors = [
                     <form method="POST" action="{{ route('notifications.destroy', ['id' => $n['id']]) }}" class="inline">
                         @csrf
                         @method('DELETE')
-                        <button type="submit" class="text-[12px] text-faint hover:text-[#EF4444]">{{ __('notifications.dismiss') }}</button>
+                        <button type="submit" class="text-[12px] text-faint hover:text-[#ff4d7f]">{{ __('notifications.dismiss') }}</button>
                     </form>
                 </div>
             </div>
         </div>
         @empty
-        <div class="p-12 text-center">
-            <div class="w-14 h-14 rounded-2xl bg-surface-2 mx-auto mb-4 flex items-center justify-center">
-                <svg class="w-7 h-7 text-muted" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+        <div class="p-10 sm:p-14 text-center">
+            <div class="w-16 h-16 rounded-2xl bg-accent/10 border border-accent/20 mx-auto mb-4 flex items-center justify-center text-accent">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
             </div>
-            <p class="text-[14px] text-muted">{{ __('notifications.empty') }}</p>
+            <p class="text-[15px] font-bold text-primary">{{ __('notifications.empty') }}</p>
+            <p class="text-[12.5px] text-muted mt-1 max-w-[400px] mx-auto">{{ __('notifications.empty_hint') ?? __('notifications.no_recent_activity') ?? __('common.try_again_later') }}</p>
         </div>
         @endforelse
     </div>

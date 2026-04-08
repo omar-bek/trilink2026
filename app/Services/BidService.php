@@ -5,7 +5,10 @@ namespace App\Services;
 use App\Enums\BidStatus;
 use App\Enums\RfqStatus;
 use App\Models\Bid;
+use App\Models\Company;
+use App\Models\CompanySupplier;
 use App\Models\Rfq;
+use App\Models\SanctionsScreening;
 use App\Models\User;
 use App\Notifications\NewBidNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -38,6 +41,25 @@ class BidService
 
         if ($rfq->company_id === $data['company_id']) {
             return 'Cannot bid on your own RFQ';
+        }
+
+        // Block exclusive suppliers from bidding on their parent company's
+        // RFQs. This is the "I am Company A's own supplier" rule — they can
+        // still bid on every other company's RFQs in the same field.
+        if (CompanySupplier::isLocked((int) $data['company_id'], (int) $rfq->company_id)) {
+            return 'You are an exclusive supplier of this company and cannot bid on their RFQs';
+        }
+
+        // Sanctions block: a company flagged on any watchlist (OFAC, UN, EU,
+        // OpenSanctions consolidated) cannot transact on the platform. This
+        // applies to both sides — a sanctioned bidder OR a sanctioned RFQ
+        // author short-circuits the bid.
+        $bidderCompany = Company::find($data['company_id']);
+        if ($bidderCompany?->sanctions_status === SanctionsScreening::RESULT_HIT) {
+            return 'Your company is currently flagged on a sanctions watchlist. Contact support to resolve.';
+        }
+        if ($rfq->company?->sanctions_status === SanctionsScreening::RESULT_HIT) {
+            return 'The buying company is currently flagged on a sanctions watchlist. Bid blocked.';
         }
 
         $existingBid = Bid::where('rfq_id', $data['rfq_id'])

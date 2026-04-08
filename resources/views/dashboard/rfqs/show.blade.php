@@ -85,7 +85,7 @@
                 <div class="flex flex-wrap gap-2">
                     @foreach($rfq['attachments'] as $file)
                     <a href="{{ $file['url'] ?? '#' }}" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-page border border-th-border hover:bg-surface-2 transition-colors">
-                        <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5"/></svg>
+                        <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                         <span class="text-[12px] font-medium text-body">{{ $file['name'] }}</span>
                     </a>
                     @endforeach
@@ -114,7 +114,7 @@
                         <div class="flex items-center gap-3 text-[11px] text-muted mt-0.5">
                             @if($bid['rating'] !== '—')
                             <span class="inline-flex items-center gap-1">
-                                <svg class="w-3 h-3 text-[#F59E0B]" fill="currentColor" viewBox="0 0 24 24"><path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.32.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></svg>
+                                <svg class="w-3 h-3 text-[#ffb020]" fill="currentColor" viewBox="0 0 24 24"><path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.32.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></svg>
                                 {{ $bid['rating'] }}
                             </span>
                             @endif
@@ -124,7 +124,7 @@
                         </div>
                     </div>
                     <div class="text-end">
-                        <p class="text-[18px] font-bold text-[#10B981]">{{ $bid['price'] }}</p>
+                        <p class="text-[18px] font-bold text-[#00d9b5]">{{ $bid['price'] }}</p>
                         <p class="text-[11px] text-muted">{{ __('rfq.delivery_in_days', ['days' => $bid['days']]) }}</p>
                     </div>
                     <a href="{{ route('dashboard.bids.show', ['id' => $bid['id']]) }}" class="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center text-accent hover:bg-accent/20 transition-colors flex-shrink-0">
@@ -140,6 +140,35 @@
 
     {{-- Sidebar --}}
     <div class="space-y-6">
+        {{-- Quick Actions (owner only) --}}
+        @if($rfq['is_owner'])
+        <div class="bg-surface border border-th-border rounded-2xl p-6">
+            <h3 class="text-[15px] font-bold text-primary mb-4">{{ __('rfq.quick_actions') }}</h3>
+            <div class="space-y-2">
+                @if($rfq['is_auction'])
+                    <a href="{{ route('dashboard.auctions.live', ['id' => $rfq['numeric_id']]) }}"
+                       class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#ffb020] hover:bg-[#e69d18]">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        {{ __('rfq.view_live_auction') }}
+                    </a>
+                @elseif($rfq['can_enable_auction'])
+                    <a href="{{ route('dashboard.auctions.create', ['id' => $rfq['numeric_id']]) }}"
+                       class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#ffb020] hover:bg-[#e69d18]">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        {{ __('rfq.enable_auction') }}
+                    </a>
+                    <p class="text-[11px] text-muted mt-1.5">{{ __('rfq.enable_auction_hint') }}</p>
+                @endif
+
+                <a href="{{ route('dashboard.rfqs.compare', ['id' => $rfq['numeric_id']]) }}"
+                   class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-primary bg-page border border-th-border hover:bg-surface-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+                    {{ __('rfq.compare_bids') }}
+                </a>
+            </div>
+        </div>
+        @endif
+
         {{-- Services Required --}}
         <div class="bg-surface border border-th-border rounded-2xl p-6">
             <h3 class="text-[15px] font-bold text-primary mb-4">{{ __('rfq.services_required') }}</h3>
@@ -159,7 +188,7 @@
         <div class="bg-surface border border-th-border rounded-2xl p-6">
             <h3 class="text-[15px] font-bold text-primary mb-4">{{ __('rfq.budget_info') }}</h3>
             <p class="text-[11px] text-muted uppercase tracking-wider mb-1">{{ __('pr.estimated_budget') }}</p>
-            <p class="text-[20px] font-bold text-[#10B981] mb-4">{{ $rfq['budget'] }}</p>
+            <p class="text-[20px] font-bold text-[#00d9b5] mb-4">{{ $rfq['budget'] }}</p>
         </div>
         @endif
 
@@ -175,7 +204,7 @@
                 @endphp
                 @foreach($rfqEvents as $event)
                 <div class="flex items-start gap-3">
-                    <div class="w-3 h-3 rounded-full {{ $event['done'] ? 'bg-[#10B981]' : 'bg-th-border' }} mt-1 flex-shrink-0"></div>
+                    <div class="w-3 h-3 rounded-full {{ $event['done'] ? 'bg-[#00d9b5]' : 'bg-th-border' }} mt-1 flex-shrink-0"></div>
                     <div>
                         <p class="text-[13px] font-bold text-primary">{{ $event['title'] }}</p>
                         <p class="text-[11px] text-muted">{{ $event['date'] }}</p>

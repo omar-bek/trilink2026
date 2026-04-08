@@ -2,20 +2,23 @@
 
 namespace App\Models;
 
+use App\Concerns\Searchable;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
 {
-    use HasFactory, Notifiable, SoftDeletes, HasRoles;
+    use HasFactory, Notifiable, SoftDeletes, HasRoles, HasApiTokens, Searchable;
 
     /**
      * Spatie permissions are seeded under BOTH the `web` and `api` guards
@@ -38,6 +41,7 @@ class User extends Authenticatable implements JWTSubject
         'permissions',
         'status',
         'company_id',
+        'branch_id',
         'custom_permissions',
         'last_login',
     ];
@@ -45,6 +49,8 @@ class User extends Authenticatable implements JWTSubject
     protected $hidden = [
         'password',
         'remember_token',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     protected $appends = ['full_name'];
@@ -60,6 +66,12 @@ class User extends Authenticatable implements JWTSubject
             'additional_roles' => 'array',
             'permissions' => 'array',
             'last_login' => 'datetime',
+            // 2FA: secret + recovery codes are encrypted at rest so a DB
+            // leak still protects the second factor. `confirmed_at` is a
+            // plain timestamp — its presence is the "enabled" flag.
+            'two_factor_secret'         => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at'   => 'datetime',
         ];
     }
 
@@ -86,6 +98,16 @@ class User extends Authenticatable implements JWTSubject
         return $this->belongsTo(Company::class);
     }
 
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function isBranchManager(): bool
+    {
+        return $this->role === UserRole::BRANCH_MANAGER;
+    }
+
     public function purchaseRequests(): HasMany
     {
         return $this->hasMany(PurchaseRequest::class, 'buyer_id');
@@ -109,6 +131,22 @@ class User extends Authenticatable implements JWTSubject
     public function auditLogs(): HasMany
     {
         return $this->hasMany(AuditLog::class);
+    }
+
+    /**
+     * Phase 4 — every user has at most one OPEN cart at a time. The
+     * CartService::current() helper is the canonical accessor; this
+     * relationship exists so eager-loading from a User context works
+     * (e.g. `User::with('cart')` for the topbar count).
+     */
+    public function carts(): HasMany
+    {
+        return $this->hasMany(Cart::class);
+    }
+
+    public function openCart(): HasOne
+    {
+        return $this->hasOne(Cart::class)->where('status', Cart::STATUS_OPEN)->latestOfMany();
     }
 
     public function isActive(): bool

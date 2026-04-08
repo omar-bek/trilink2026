@@ -34,14 +34,7 @@ class UserController extends Controller
 
         $users = User::query()
             ->with('company')
-            ->when($q !== '', function ($query) use ($q) {
-                $query->where(function ($w) use ($q) {
-                    $w->where('first_name', 'like', "%{$q}%")
-                      ->orWhere('last_name', 'like', "%{$q}%")
-                      ->orWhere('email', 'like', "%{$q}%")
-                      ->orWhere('phone', 'like', "%{$q}%");
-                });
-            })
+            ->when($q !== '', fn ($query) => $query->search($q, ['first_name', 'last_name', 'email', 'phone']))
             ->when($role, fn ($query) => $query->where('role', $role))
             ->when($status, fn ($query) => $query->where('status', $status))
             ->when($company, fn ($query) => $query->where('company_id', $company))

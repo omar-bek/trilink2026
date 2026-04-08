@@ -113,4 +113,22 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Markdown Mail Settings
+    |--------------------------------------------------------------------------
+    |
+    | The "markdown" mail uses a theme + a template root. We point at our
+    | branded theme (resources/views/vendor/mail/html/themes/trilink.css)
+    | so the default Laravel colors are replaced with the TriLink palette.
+    |
+    */
+
+    'markdown' => [
+        'theme' => 'trilink',
+        'paths' => [
+            resource_path('views/vendor/mail'),
+        ],
+    ],
+
 ];

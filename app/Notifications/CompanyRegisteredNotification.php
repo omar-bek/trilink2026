@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Company;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -12,13 +13,15 @@ use Illuminate\Notifications\Notification;
  * Stored in the `notifications` table (database channel) so it surfaces in
  * the admin's bell + a mail copy goes out for off-hours visibility.
  */
-class CompanyRegisteredNotification extends Notification
+class CompanyRegisteredNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
     public function __construct(
         private readonly Company $company,
-    ) {}
+    ) {
+        $this->onQueue('notifications');
+    }
 
     public function via(object $notifiable): array
     {

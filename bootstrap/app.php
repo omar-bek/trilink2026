@@ -29,6 +29,26 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\SetLocale::class,
         ]);
 
+        // When the `guest` middleware blocks an already-authenticated user,
+        // pick a sensible destination instead of the framework default of
+        // `/home` (which doesn't exist here). Pending company managers go to
+        // the registration-success holding page; everyone else lands on
+        // their normal post-login URL.
+        $middleware->redirectUsersTo(function (\Illuminate\Http\Request $request) {
+            $user = $request->user();
+            $company = $user?->company;
+
+            if ($company && $company->status !== \App\Enums\CompanyStatus::ACTIVE) {
+                return route('register.success');
+            }
+
+            return match ($user?->role?->value) {
+                'admin'      => route('admin.index'),
+                'government' => route('gov.index'),
+                default      => route('dashboard'),
+            };
+        });
+
         $middleware->api(prepend: [
             \Illuminate\Cookie\Middleware\EncryptCookies::class,
             \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,

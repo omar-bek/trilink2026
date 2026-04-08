@@ -10,7 +10,11 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             RolesAndPermissionsSeeder::class,
-            RichDemoSeeder::class,
+            // UNSPSC top-level segments seeded BEFORE the comprehensive
+            // seeder so the latter (which creates demo categories) can
+            // optionally point at the standard taxonomy.
+            UnspscSegmentsSeeder::class,
+            ComprehensiveSeeder::class,
         ]);
     }
 }

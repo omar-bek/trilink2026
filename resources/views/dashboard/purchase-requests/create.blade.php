@@ -3,18 +3,18 @@
 
 @section('content')
 
-<div class="mb-8 flex items-center gap-4">
-    <a href="{{ route('dashboard.purchase-requests') }}" class="w-10 h-10 rounded-xl bg-surface border border-th-border flex items-center justify-center text-muted hover:text-primary transition-colors">
-        <svg class="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5m0 0l7 7m-7-7l7-7"/></svg>
+<div class="mb-6 sm:mb-8 flex items-center gap-3 sm:gap-4">
+    <a href="{{ route('dashboard.purchase-requests') }}" class="w-10 h-10 rounded-xl bg-surface border border-th-border flex items-center justify-center text-muted hover:text-primary transition-colors flex-shrink-0" aria-label="{{ __('common.go_back') }}">
+        <svg class="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 12H5m0 0l7 7m-7-7l7-7"/></svg>
     </a>
-    <div>
-        <h1 class="text-[28px] sm:text-[32px] font-bold text-primary leading-tight">{{ __('pr.create_title') }}</h1>
-        <p class="text-[14px] text-muted mt-1">{{ __('pr.create_subtitle') }}</p>
+    <div class="min-w-0">
+        <h1 class="text-[22px] sm:text-[28px] lg:text-[32px] font-bold text-primary leading-tight">{{ __('pr.create_title') }}</h1>
+        <p class="text-[13px] sm:text-[14px] text-muted mt-1">{{ __('pr.create_subtitle') }}</p>
     </div>
 </div>
 
 {{-- Stepper --}}
-<div class="bg-surface border border-th-border rounded-2xl p-8 mb-6">
+<div class="bg-surface border border-th-border rounded-2xl p-5 sm:p-8 mb-6">
     @php
     $steps = [
         ['n' => 1, 'key' => 'general',  'label' => __('pr.general_info'),  'icon' => 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z'],
@@ -25,14 +25,14 @@
     @endphp
     <div class="flex items-start justify-between">
         @foreach($steps as $i => $step)
-        <div class="flex flex-col items-center text-center" style="flex: 0 0 auto;">
-            <div data-step-circle="{{ $step['n'] }}" class="w-12 h-12 rounded-full flex items-center justify-center transition-all {{ $i === 0 ? 'bg-accent text-white shadow-[0_0_0_4px_rgba(37,99,235,0.15)]' : 'bg-surface-2 border border-th-border text-muted' }}">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $step['icon'] }}"/></svg>
+        <div class="flex flex-col items-center text-center flex-1 min-w-0">
+            <div data-step-circle="{{ $step['n'] }}" class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all flex-shrink-0 {{ $i === 0 ? 'bg-accent text-white shadow-[0_0_0_4px_rgba(79,124,255,0.15)]' : 'bg-surface-2 border border-th-border text-muted' }}">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $step['icon'] }}"/></svg>
             </div>
-            <span data-step-label="{{ $step['n'] }}" class="mt-3 text-[12px] font-semibold {{ $i === 0 ? 'text-primary' : 'text-muted' }}">{{ $step['label'] }}</span>
+            <span data-step-label="{{ $step['n'] }}" class="mt-2 sm:mt-3 text-[11px] sm:text-[12px] font-semibold leading-tight {{ $i === 0 ? 'text-primary' : 'text-muted' }}">{{ $step['label'] }}</span>
         </div>
         @if(!$loop->last)
-        <div class="flex-1 h-0.5 bg-th-border mt-6 mx-2 relative">
+        <div class="flex-shrink-0 w-6 sm:flex-1 sm:w-auto h-0.5 bg-th-border mt-5 sm:mt-6 mx-1 sm:mx-2 relative">
             <div data-step-line="{{ $step['n'] }}" class="absolute inset-y-0 start-0 bg-accent rounded-full transition-all duration-500" style="width: 0;"></div>
         </div>
         @endif
@@ -41,7 +41,7 @@
 </div>
 
 @if ($errors->any())
-<div class="mb-6 bg-[#EF4444]/5 border border-[#EF4444]/30 rounded-xl p-4 text-[13px] text-[#EF4444]">
+<div class="mb-6 bg-[#ff4d7f]/5 border border-[#ff4d7f]/30 rounded-xl p-4 text-[13px] text-[#ff4d7f]">
     <ul class="list-disc ms-5 space-y-1">
         @foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach
     </ul>
@@ -52,16 +52,16 @@
     @csrf
 
     {{-- STEP 1: General Information --}}
-    <div data-step-panel="1" class="bg-surface border border-th-border rounded-2xl p-8">
+    <div data-step-panel="1" class="bg-surface border border-th-border rounded-2xl p-5 sm:p-8">
         <h2 class="text-[20px] font-bold text-primary mb-6">{{ __('pr.general_information') }}</h2>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.request_title') }} <span class="text-[#EF4444]">*</span></label>
-                <input type="text" name="title" placeholder="e.g., Office Equipment Q2 2026" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50" required>
+                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.request_title') }} <span class="text-[#ff4d7f]">*</span></label>
+                <input type="text" name="title" placeholder="{{ __('pr.title_placeholder') }}" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50" required>
             </div>
             <div>
-                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.category') }} <span class="text-[#EF4444]">*</span></label>
+                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.category') }} <span class="text-[#ff4d7f]">*</span></label>
                 <select name="category_id" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary focus:outline-none focus:border-accent/50 appearance-none" required>
                     <option value="">--</option>
                     @foreach($categories as $cat)
@@ -70,11 +70,11 @@
                 </select>
             </div>
             <div class="md:col-span-2">
-                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.description') }} <span class="text-[#EF4444]">*</span></label>
-                <textarea name="description" rows="4" placeholder="Provide a detailed description of the purchase request..." class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50 resize-none" required></textarea>
+                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.description') }} <span class="text-[#ff4d7f]">*</span></label>
+                <textarea name="description" rows="4" placeholder="{{ __('pr.description_placeholder') }}" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50 resize-none" required></textarea>
             </div>
             <div>
-                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.currency') }} <span class="text-[#EF4444]">*</span></label>
+                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.currency') }} <span class="text-[#ff4d7f]">*</span></label>
                 <select name="currency" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary focus:outline-none focus:border-accent/50 appearance-none" required>
                     <option value="">--</option>
                     @foreach($currencies as $cur)
@@ -90,9 +90,9 @@
                 <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.priority_level') }}</label>
                 <select name="priority" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary focus:outline-none focus:border-accent/50 appearance-none">
                     <option value="">--</option>
-                    <option>Low</option>
-                    <option>Medium</option>
-                    <option>High</option>
+                    <option value="low">{{ __('pr.priority_low') }}</option>
+                    <option value="medium">{{ __('pr.priority_medium') }}</option>
+                    <option value="high">{{ __('pr.priority_high') }}</option>
                 </select>
             </div>
             <div>
@@ -108,10 +108,10 @@
             </button>
             <div class="flex items-center gap-3">
                 <button type="button" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-primary bg-page border border-th-border hover:bg-surface-2 transition-colors inline-flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5"/></svg>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                     {{ __('common.save_draft') }}
                 </button>
-                <button type="button" onclick="nextStep(2)" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(37,99,235,0.25)] inline-flex items-center gap-2">
+                <button type="button" onclick="nextStep(2)" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(79,124,255,0.25)] inline-flex items-center gap-2">
                     {{ __('common.next') }}
                     <svg class="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg>
                 </button>
@@ -120,7 +120,7 @@
     </div>
 
     {{-- STEP 2: Line Items --}}
-    <div data-step-panel="2" class="bg-surface border border-th-border rounded-2xl p-8 hidden">
+    <div data-step-panel="2" class="bg-surface border border-th-border rounded-2xl p-5 sm:p-8 hidden">
         <div class="flex items-center justify-between mb-6">
             <h2 class="text-[20px] font-bold text-primary">{{ __('pr.line_items') }}</h2>
             <button type="button" onclick="addItem()" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h">
@@ -130,31 +130,31 @@
         </div>
 
         <div id="items-container">
-            <div class="bg-page border border-th-border rounded-xl p-6">
-                <p class="text-[13px] text-muted mb-4">Item #1</p>
+            <div class="bg-page border border-th-border rounded-xl p-5 sm:p-6">
+                <p class="text-[12.5px] sm:text-[13px] text-muted mb-4 font-mono">{{ __('pr.item_n', ['n' => 1]) }}</p>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.product_name') }} <span class="text-[#EF4444]">*</span></label>
-                        <input type="text" name="items[0][name]" placeholder="e.g., Dell Laptop XPS 15" class="w-full bg-surface border border-th-border rounded-lg px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50">
+                        <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.product_name') }} <span class="text-[#ff4d7f]">*</span></label>
+                        <input type="text" name="items[0][name]" placeholder="{{ __('pr.product_name_placeholder') }}" class="w-full bg-surface border border-th-border rounded-lg px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50">
                     </div>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.quantity') }} <span class="text-[#EF4444]">*</span></label>
+                            <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.quantity') }} <span class="text-[#ff4d7f]">*</span></label>
                             <input type="number" name="items[0][qty]" placeholder="0" class="w-full bg-surface border border-th-border rounded-lg px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50">
                         </div>
                         <div>
-                            <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.unit') }} <span class="text-[#EF4444]">*</span></label>
+                            <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.unit') }} <span class="text-[#ff4d7f]">*</span></label>
                             <select name="items[0][unit]" class="w-full bg-surface border border-th-border rounded-lg px-4 py-3 text-[14px] text-primary focus:outline-none focus:border-accent/50 appearance-none">
-                                <option>Pieces</option>
-                                <option>Units</option>
-                                <option>Boxes</option>
-                                <option>kg</option>
+                                <option value="pieces">{{ __('pr.unit_pieces') }}</option>
+                                <option value="units">{{ __('pr.unit_units') }}</option>
+                                <option value="boxes">{{ __('pr.unit_boxes') }}</option>
+                                <option value="kg">{{ __('pr.unit_kg') }}</option>
                             </select>
                         </div>
                     </div>
                     <div>
                         <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.tech_specs') }}</label>
-                        <textarea name="items[0][spec]" rows="3" placeholder="Describe technical specs, quality requirements, etc..." class="w-full bg-surface border border-th-border rounded-lg px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50 resize-none"></textarea>
+                        <textarea name="items[0][spec]" rows="3" placeholder="{{ __('pr.tech_specs_placeholder') }}" class="w-full bg-surface border border-th-border rounded-lg px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50 resize-none"></textarea>
                     </div>
                     <div>
                         <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.attachments_optional') }}</label>
@@ -178,10 +178,10 @@
             </button>
             <div class="flex items-center gap-3">
                 <button type="button" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-primary bg-page border border-th-border hover:bg-surface-2 inline-flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5"/></svg>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                     {{ __('common.save_draft') }}
                 </button>
-                <button type="button" onclick="nextStep(3)" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(37,99,235,0.25)] inline-flex items-center gap-2">
+                <button type="button" onclick="nextStep(3)" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(79,124,255,0.25)] inline-flex items-center gap-2">
                     {{ __('common.next') }}
                     <svg class="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg>
                 </button>
@@ -190,14 +190,14 @@
     </div>
 
     {{-- STEP 3: Locations & Logistics --}}
-    <div data-step-panel="3" class="bg-surface border border-th-border rounded-2xl p-8 hidden">
+    <div data-step-panel="3" class="bg-surface border border-th-border rounded-2xl p-5 sm:p-8 hidden">
         <h2 class="text-[20px] font-bold text-primary mb-6">{{ __('pr.locations_logistics') }}</h2>
 
         <div class="space-y-5">
             <div>
-                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.delivery_location') }} <span class="text-[#EF4444]">*</span></label>
+                <label class="block text-[13px] font-semibold text-primary mb-2">{{ __('pr.delivery_location') }} <span class="text-[#ff4d7f]">*</span></label>
                 <input type="text" name="delivery_address" placeholder="{{ __('pr.delivery_address') }}" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50 mb-3">
-                <input type="text" name="delivery_city" placeholder="City, Country" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50">
+                <input type="text" name="delivery_city" placeholder="{{ __('pr.delivery_city_placeholder') }}" class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/50">
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -217,12 +217,12 @@
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                 <label class="flex items-start gap-3 p-4 bg-page border border-th-border rounded-xl cursor-pointer hover:border-accent/40 transition-colors">
-                    <input type="checkbox" class="mt-0.5 w-4 h-4 accent-accent">
-                    <span class="text-[13px] text-body">Get shipping and delivery support from verified logistics providers</span>
+                    <input type="checkbox" name="needs_logistics" value="1" class="mt-0.5 w-4 h-4 accent-accent">
+                    <span class="text-[13px] text-body leading-relaxed">{{ __('pr.want_logistics') }}</span>
                 </label>
                 <label class="flex items-start gap-3 p-4 bg-page border border-th-border rounded-xl cursor-pointer hover:border-accent/40 transition-colors">
-                    <input type="checkbox" class="mt-0.5 w-4 h-4 accent-accent">
-                    <span class="text-[13px] text-body">Get customs clearance assistance for international shipments</span>
+                    <input type="checkbox" name="needs_clearance" value="1" class="mt-0.5 w-4 h-4 accent-accent">
+                    <span class="text-[13px] text-body leading-relaxed">{{ __('pr.want_customs') }}</span>
                 </label>
             </div>
         </div>
@@ -234,10 +234,10 @@
             </button>
             <div class="flex items-center gap-3">
                 <button type="button" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-primary bg-page border border-th-border hover:bg-surface-2 inline-flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5"/></svg>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                     {{ __('common.save_draft') }}
                 </button>
-                <button type="button" onclick="nextStep(4)" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(37,99,235,0.25)] inline-flex items-center gap-2">
+                <button type="button" onclick="nextStep(4)" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(79,124,255,0.25)] inline-flex items-center gap-2">
                     {{ __('common.next') }}
                     <svg class="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14m0 0l-7-7m7 7l-7 7"/></svg>
                 </button>
@@ -246,22 +246,28 @@
     </div>
 
     {{-- STEP 4: Review --}}
-    <div data-step-panel="4" class="bg-surface border border-th-border rounded-2xl p-8 hidden">
+    <div data-step-panel="4" class="bg-surface border border-th-border rounded-2xl p-5 sm:p-8 hidden">
         <h2 class="text-[20px] font-bold text-primary mb-6">{{ __('pr.review_submit') }}</h2>
 
-        <div class="bg-accent/5 border border-accent/15 rounded-xl p-6 mb-5">
-            <h3 class="text-[14px] font-bold text-accent mb-4">{{ __('pr.general_information') }}</h3>
-            <div class="grid grid-cols-2 gap-4 text-[13px]">
+        <div class="bg-accent/5 border border-accent/15 rounded-xl p-5 sm:p-6 mb-5">
+            <h3 class="text-[14px] font-bold text-accent mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                {{ __('pr.general_information') }}
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
                 <div><span class="text-muted">{{ __('pr.request_title') }}:</span><p id="review-title" class="font-semibold text-primary mt-0.5">—</p></div>
                 <div><span class="text-muted">{{ __('pr.category') }}:</span><p id="review-category" class="font-semibold text-primary mt-0.5">—</p></div>
-                <div><span class="text-muted">{{ __('pr.estimated_budget') }}:</span><p id="review-budget" class="font-semibold text-[#10B981] mt-0.5">—</p></div>
+                <div><span class="text-muted">{{ __('pr.estimated_budget') }}:</span><p id="review-budget" class="font-semibold text-[#00d9b5] mt-0.5">—</p></div>
                 <div><span class="text-muted">{{ __('pr.expected_delivery') }}:</span><p id="review-delivery" class="font-semibold text-primary mt-0.5">—</p></div>
                 <div class="col-span-2"><span class="text-muted">{{ __('pr.delivery_location') }}:</span><p id="review-location" class="font-semibold text-primary mt-0.5">—</p></div>
             </div>
         </div>
 
-        <div class="bg-[#10B981]/5 border border-[#10B981]/15 rounded-xl p-6 mb-5">
-            <h3 class="text-[14px] font-bold text-[#10B981] mb-4">{{ __('pr.line_items') }}</h3>
+        <div class="bg-[#00d9b5]/5 border border-[#00d9b5]/15 rounded-xl p-5 sm:p-6 mb-5">
+            <h3 class="text-[14px] font-bold text-[#00d9b5] mb-4 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+                {{ __('pr.line_items') }}
+            </h3>
             <div id="review-items" class="space-y-3 text-[13px]">
                 <p class="text-muted">{{ __('common.no_data') }}</p>
             </div>
@@ -274,10 +280,10 @@
             </button>
             <div class="flex items-center gap-3">
                 <button type="button" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-primary bg-page border border-th-border hover:bg-surface-2 inline-flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5"/></svg>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                     {{ __('common.save_draft') }}
                 </button>
-                <button type="submit" class="px-6 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#10B981] hover:bg-[#0EA371] shadow-[0_4px_14px_rgba(16,185,129,0.3)] inline-flex items-center gap-2">
+                <button type="submit" class="px-6 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#00d9b5] hover:bg-[#00c9a5] shadow-[0_4px_14px_rgba(0,217,181,0.3)] inline-flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
                     {{ __('pr.submit_request') }}
                 </button>
@@ -300,11 +306,11 @@ function setStep(step) {
         if (!c) continue;
         c.className = 'w-12 h-12 rounded-full flex items-center justify-center transition-all';
         if (i < step) {
-            c.className += ' bg-[#10B981] text-white';
+            c.className += ' bg-[#00d9b5] text-white';
             c.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>';
             l.className = 'mt-3 text-[12px] font-semibold text-primary';
         } else if (i === step) {
-            c.className += ' bg-accent text-white shadow-[0_0_0_4px_rgba(37,99,235,0.15)]';
+            c.className += ' bg-accent text-white shadow-[0_0_0_4px_rgba(79,124,255,0.15)]';
             l.className = 'mt-3 text-[12px] font-semibold text-primary';
         } else {
             c.className += ' bg-surface-2 border border-th-border text-muted';
@@ -315,7 +321,7 @@ function setStep(step) {
         const line = document.querySelector(`[data-step-line="${i}"]`);
         if (!line) continue;
         line.style.width = (i < step) ? '100%' : '0';
-        line.style.background = (i < step) ? '#10B981' : '#3B82F6';
+        line.style.background = (i < step) ? '#00d9b5' : '#4f7cff';
     }
     currentStep = step;
     document.getElementById('pr-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -381,8 +387,9 @@ function escapeHtml(s) {
 function addItem() {
     const container = document.getElementById('items-container');
     const idx = container.children.length;
+    const baseLabel = container.querySelector('p[class*="font-mono"]')?.textContent || '#1';
     let html = container.children[0].outerHTML
-        .replace(/Item #1/g, `Item #${idx + 1}`)
+        .replace(baseLabel, baseLabel.replace(/\d+/, idx + 1))
         .replace(/items\[0\]/g, `items[${idx}]`);
     container.insertAdjacentHTML('beforeend', '<div class="mt-4">' + html + '</div>');
 }

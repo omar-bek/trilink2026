@@ -9,6 +9,7 @@ use App\Http\Requests\Shipment\TrackShipmentRequest;
 use App\Models\Shipment;
 use App\Services\ShipmentService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class ShipmentController extends Controller
@@ -19,13 +20,46 @@ class ShipmentController extends Controller
     {
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
         abort_unless(auth()->user()?->hasPermission('shipment.view'), 403);
 
         $companyId = $this->currentCompanyId();
 
         $base = Shipment::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId));
+
+        // Filters from query string. The status filter maps to the same UI
+        // tab keys used by the index blade so the dropdown values stay
+        // intuitive (preparing/in_transit/at_customs/delivered/delayed).
+        $statusFilter = $request->query('status', 'all');
+        if (! in_array($statusFilter, ['all', 'preparing', 'in_transit', 'at_customs', 'delivered', 'delayed'], true)) {
+            $statusFilter = 'all';
+        }
+        $search = trim((string) $request->query('q', ''));
+
+        $listing = (clone $base);
+
+        match ($statusFilter) {
+            'preparing'  => $listing->whereIn('status', [
+                ShipmentStatus::IN_PRODUCTION->value,
+                ShipmentStatus::READY_FOR_PICKUP->value,
+            ]),
+            'in_transit' => $listing->where('status', ShipmentStatus::IN_TRANSIT->value),
+            'at_customs' => $listing->where('status', ShipmentStatus::IN_CLEARANCE->value),
+            'delivered'  => $listing->where('status', ShipmentStatus::DELIVERED->value),
+            'delayed'    => $listing->where('estimated_delivery', '<', now())
+                ->whereNotIn('status', [ShipmentStatus::DELIVERED->value, ShipmentStatus::CANCELLED->value]),
+            default      => null,
+        };
+
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $listing->where(function ($q) use ($like) {
+                $q->where('tracking_number', 'like', $like)
+                    ->orWhereHas('contract', fn ($c) => $c->where('contract_number', 'like', $like)
+                        ->orWhere('title', 'like', $like));
+            });
+        }
 
         $stats = [
             'total'      => (clone $base)->count(),
@@ -38,7 +72,7 @@ class ShipmentController extends Controller
             'delivered'  => (clone $base)->where('status', ShipmentStatus::DELIVERED->value)->count(),
         ];
 
-        $shipments = (clone $base)
+        $shipments = (clone $listing)
             ->with(['contract', 'logisticsCompany'])
             ->latest()
             ->get()
@@ -46,21 +80,24 @@ class ShipmentController extends Controller
                 $statusKey = $this->mapShipmentStatus($this->statusValue($sh->status));
 
                 return [
-                    'id'       => $sh->tracking_number,
-                    'status'   => $statusKey,
-                    'title'    => $sh->contract?->title ?? ('Shipment ' . $sh->tracking_number),
-                    'contract' => $sh->contract?->contract_number ?? '—',
-                    'from'     => $this->locationLabel($sh->origin),
-                    'to'       => $this->locationLabel($sh->destination),
-                    'progress' => $this->progressFor($statusKey),
-                    'eta'      => $this->longDate($sh->estimated_delivery),
-                    'carrier'  => $sh->logisticsCompany?->name ?? '—',
-                    'time'     => $sh->updated_at?->diffForHumans(null, true) ?? '',
+                    'id'         => $sh->tracking_number,
+                    'numeric_id' => $sh->id,
+                    'status'     => $statusKey,
+                    'title'      => $sh->contract?->title ?? (__('shipments.shipment') . ' ' . $sh->tracking_number),
+                    'contract'   => $sh->contract?->contract_number ?? '—',
+                    'from'       => $this->locationLabel($sh->origin),
+                    'to'         => $this->locationLabel($sh->destination),
+                    'progress'   => $sh->realProgress(),
+                    'eta'        => $this->longDate($sh->estimated_delivery),
+                    'carrier'    => $sh->logisticsCompany?->name ?? '—',
+                    'time'       => $sh->updated_at?->diffForHumans(null, true) ?? '',
                 ];
             })
             ->toArray();
 
-        return view('dashboard.shipments.index', compact('stats', 'shipments'));
+        $resultCount = count($shipments);
+
+        return view('dashboard.shipments.index', compact('stats', 'shipments', 'statusFilter', 'search', 'resultCount'));
     }
 
     public function show(string $id): View
@@ -68,6 +105,14 @@ class ShipmentController extends Controller
         abort_unless(auth()->user()?->hasPermission('shipment.view'), 403);
 
         $sh = $this->findOrFail($id)->load(['contract', 'logisticsCompany', 'trackingEvents']);
+
+        // Authorization (IDOR fix): a shipment is visible to (a) the
+        // logistics company assigned to it, (b) any party of the parent
+        // contract (buyer + supplier), and (c) admins/government. Without
+        // this check any authenticated user could enumerate shipment
+        // tracking numbers and read delivery routes.
+        $this->authorizeShipmentParty($sh);
+
         $statusKey = $this->mapShipmentStatus($this->statusValue($sh->status));
 
         $events = $sh->trackingEvents;
@@ -98,7 +143,7 @@ class ShipmentController extends Controller
             'contract_id'     => $sh->contract?->id,
             'from'            => $this->locationLabel($sh->origin),
             'to'              => $this->locationLabel($sh->destination),
-            'progress'        => $this->progressFor($statusKey),
+            'progress'        => $sh->realProgress(),
             'eta'             => $this->longDate($sh->estimated_delivery),
             'days_remaining'  => $daysRemaining,
             'carrier'         => $logistics?->name,
@@ -200,6 +245,47 @@ class ShipmentController extends Controller
         return Shipment::findOrFail((int) $id);
     }
 
+    /**
+     * Verify the current user belongs to a company that is allowed to see
+     * this shipment. Allowed parties:
+     *   - logistics company assigned to the shipment (logistics_company_id)
+     *   - the shipment owner company (company_id, typically the buyer)
+     *   - any party (buyer + suppliers) of the parent contract
+     *   - admins and government users
+     *
+     * Aborts with 404 (not 403) so attackers can't distinguish "doesn't
+     * exist" from "exists but you can't see it" via id enumeration.
+     */
+    private function authorizeShipmentParty(Shipment $shipment): void
+    {
+        $user = auth()->user();
+        if (!$user) {
+            abort(404);
+        }
+        if ($user->isAdmin() || $user->isGovernment()) {
+            return;
+        }
+
+        $allowedCompanyIds = collect([
+            $shipment->company_id,
+            $shipment->logistics_company_id,
+        ])->filter()->all();
+
+        if ($shipment->contract) {
+            $allowedCompanyIds = array_merge(
+                $allowedCompanyIds,
+                collect($shipment->contract->parties ?? [])->pluck('company_id')->filter()->all(),
+                [$shipment->contract->buyer_company_id],
+            );
+        }
+
+        $allowedCompanyIds = array_filter(array_unique($allowedCompanyIds));
+
+        if (!in_array($user->company_id, $allowedCompanyIds, true)) {
+            abort(404);
+        }
+    }
+
     private function locationLabel($location): string
     {
         if (is_string($location)) {
@@ -225,15 +311,4 @@ class ShipmentController extends Controller
         };
     }
 
-    private function progressFor(string $statusKey): int
-    {
-        return match ($statusKey) {
-            'preparing'        => 20,
-            'in_transit'       => 65,
-            'at_customs'       => 45,
-            'out_for_delivery' => 90,
-            'delivered'        => 100,
-            default            => 0,
-        };
-    }
 }

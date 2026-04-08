@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\CompanyStatus;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Jobs\ScreenCompany;
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
@@ -15,9 +16,10 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthService
 {
+
     public function registerCompany(array $data): array
     {
-        return DB::transaction(function () use ($data) {
+        $result = DB::transaction(function () use ($data) {
             $company = Company::create([
                 'name' => $data['company_name'],
                 'name_ar' => $data['company_name_ar'] ?? null,
@@ -58,8 +60,23 @@ class AuthService
                 'user' => $user->load('company'),
                 'access_token' => $token,
                 'refresh_token' => $refreshToken,
+                'company' => $company,
             ];
         });
+
+        // Phase 2 / Sprint 7 / task 2.2 — sanctions screening dispatched
+        // to the queue rather than called inline. Keeps registration <500ms
+        // even when the screening provider is slow or down. The job lands
+        // a `review` verdict on three failed attempts so the company ends
+        // up in the verification queue instead of going unscreened.
+        ScreenCompany::dispatch(
+            companyId: $result['company']->id,
+            triggeredBy: $result['user']->id,
+            useCache: false,
+        );
+
+        unset($result['company']);
+        return $result;
     }
 
     public function register(array $data): array

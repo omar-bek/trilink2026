@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Concerns\Searchable;
 use App\Enums\ContractStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Contract extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, Searchable;
 
     protected $fillable = [
         'contract_number',
@@ -19,6 +20,7 @@ class Contract extends Model
         'description',
         'purchase_request_id',
         'buyer_company_id',
+        'branch_id',
         'status',
         'parties',
         'amounts',
@@ -30,6 +32,13 @@ class Contract extends Model
         'start_date',
         'end_date',
         'version',
+        'progress_percentage',
+        'progress_updates',
+        'supplier_documents',
+        // Phase 3 / Sprint 11 — set by EscrowService::activate() once the
+        // bank account is opened. Lets the contract show page render the
+        // escrow status panel without re-querying escrow_accounts.
+        'escrow_account_id',
     ];
 
     protected function casts(): array
@@ -43,12 +52,19 @@ class Contract extends Model
             'signatures' => 'array',
             'start_date' => 'date',
             'end_date' => 'date',
+            'progress_updates' => 'array',
+            'supplier_documents' => 'array',
         ];
     }
 
     public function buyerCompany(): BelongsTo
     {
         return $this->belongsTo(Company::class, 'buyer_company_id');
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 
     public function purchaseRequest(): BelongsTo
@@ -81,6 +97,16 @@ class Contract extends Model
         return $this->hasMany(Dispute::class);
     }
 
+    /**
+     * Phase 3 / Sprint 11 — at most one escrow account per contract. Loaded
+     * via belongsTo (not hasOne) because the FK lives on the contracts row,
+     * which keeps the join cheap on the contract show page.
+     */
+    public function escrowAccount(): BelongsTo
+    {
+        return $this->belongsTo(EscrowAccount::class, 'escrow_account_id');
+    }
+
     protected static function booted(): void
     {
         static::creating(function (Contract $contract) {
@@ -108,5 +134,60 @@ class Contract extends Model
         }
 
         return true;
+    }
+
+    /**
+     * Real progress percentage 0-100. Three sources, in priority order:
+     *
+     *   1. Explicit `progress_percentage` set by the supplier on the
+     *      contract (via the supplier-side update form). Trumps everything
+     *      else because the supplier is the source of truth on production.
+     *
+     *   2. The fraction of payment_schedule milestones that have either
+     *      been paid (status = COMPLETED) or signed off (paid_at set).
+     *      Tracks "money milestones" which is what the buyer cares about.
+     *
+     *   3. A status-derived fallback (DRAFT 0, PENDING_SIGNATURES 5,
+     *      ACTIVE 50, COMPLETED 100, CANCELLED/TERMINATED 0).
+     *
+     * Returns an integer 0-100 — never null, so the UI never has to
+     * defend against missing data.
+     */
+    public function realProgress(): int
+    {
+        if ($this->progress_percentage !== null) {
+            return (int) max(0, min(100, $this->progress_percentage));
+        }
+
+        $schedule = $this->payment_schedule ?? [];
+        if (!empty($schedule)) {
+            // Use the eager-loaded payments collection when callers (e.g.
+            // ContractController::index) have already hydrated it; otherwise
+            // fall back to a count() query. This eliminates the N+1 the
+            // contract list pages used to suffer when rendering the
+            // progress bar for every row.
+            if ($this->relationLoaded('payments')) {
+                $paidPayments = $this->payments
+                    ->whereIn('status', ['completed', 'processing'])
+                    ->count();
+            } else {
+                $paidPayments = $this->payments()
+                    ->whereIn('status', ['completed', 'processing'])
+                    ->count();
+            }
+            if ($paidPayments > 0) {
+                return (int) round(($paidPayments / count($schedule)) * 100);
+            }
+        }
+
+        $statusValue = $this->status instanceof \BackedEnum ? $this->status->value : (string) $this->status;
+        return match ($statusValue) {
+            'draft'              => 0,
+            'pending_signatures' => 5,
+            'active', 'signed'   => 50,
+            'completed'          => 100,
+            'cancelled', 'terminated' => 0,
+            default              => 0,
+        };
     }
 }

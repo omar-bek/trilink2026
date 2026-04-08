@@ -28,7 +28,23 @@ class PaymentController extends Controller
     public function show(int $id): JsonResponse
     {
         $payment = $this->service->find($id);
-        return $payment ? $this->success($payment) : $this->notFound();
+        if (!$payment) {
+            return $this->notFound();
+        }
+
+        // Authorization: only the paying company, the receiving company,
+        // or an admin can read a payment. Without this check any
+        // authenticated user could enumerate the payment ledger by
+        // guessing ids.
+        $user = auth()->user();
+        if (!$user->isAdmin()
+            && $user->company_id !== $payment->company_id
+            && $user->company_id !== $payment->recipient_company_id
+        ) {
+            return $this->notFound(); // 404 not 403 — don't leak existence.
+        }
+
+        return $this->success($payment);
     }
 
     public function store(Request $request): JsonResponse
@@ -55,12 +71,24 @@ class PaymentController extends Controller
             'milestone' => 'nullable|string',
         ]);
 
+        $payment = $this->service->find($id);
+        if (!$payment) {
+            return $this->notFound();
+        }
+        $this->authorizePaymentMutation($payment);
+
         $payment = $this->service->update($id, $data);
         return $payment ? $this->success($payment) : $this->notFound();
     }
 
     public function approve(int $id): JsonResponse
     {
+        $payment = $this->service->find($id);
+        if (!$payment) {
+            return $this->notFound();
+        }
+        $this->authorizePaymentMutation($payment);
+
         $payment = $this->service->approve($id, auth()->id());
         return $payment ? $this->success($payment, 'Payment approved') : $this->error('Cannot approve this payment', 422);
     }
@@ -69,19 +97,49 @@ class PaymentController extends Controller
     {
         $data = $request->validate(['reason' => 'required|string']);
 
+        $payment = $this->service->find($id);
+        if (!$payment) {
+            return $this->notFound();
+        }
+        $this->authorizePaymentMutation($payment);
+
         $payment = $this->service->reject($id, $data['reason']);
         return $payment ? $this->success($payment, 'Payment rejected') : $this->error('Cannot reject this payment', 422);
     }
 
     public function process(Request $request, int $id): JsonResponse
     {
+        $payment = $this->service->find($id);
+        if (!$payment) {
+            return $this->notFound();
+        }
+        $this->authorizePaymentMutation($payment);
+
         $gateway = $request->input('gateway', 'stripe');
         $result = $this->service->process($id, $gateway);
 
-        if (is_string($result)) {
+        if (\is_string($result)) {
             return $this->error($result, 422);
         }
 
         return $this->success($result, 'Payment processing initiated');
+    }
+
+    /**
+     * Mutation guard for payment write operations. Only the paying company
+     * (payments.company_id) or an admin may approve/reject/process — the
+     * recipient sees the row but cannot mutate it. We abort with 404 to
+     * avoid leaking which payment ids exist on the platform.
+     */
+    private function authorizePaymentMutation(\App\Models\Payment $payment): void
+    {
+        $user = auth()->user();
+        if ($user->isAdmin()) {
+            return;
+        }
+        if ($user->company_id === $payment->company_id) {
+            return;
+        }
+        abort(404);
     }
 }

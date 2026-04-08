@@ -44,6 +44,10 @@ Route::get('settings/public', [SettingController::class, 'publicSettings']);
 // Webhooks (no auth)
 Route::post('webhooks/stripe', [WebhookController::class, 'stripeWebhook']);
 Route::post('webhooks/paypal', [WebhookController::class, 'paypalWebhook']);
+// Phase 3 / Sprint 11 / task 3.4 — bank partner escrow webhook. The
+// {provider} segment is the BankPartnerInterface::key() of whichever
+// bank is firing the callback (mashreq_neobiz, enbd_trade, mock).
+Route::post('webhooks/escrow/{provider}', [WebhookController::class, 'escrowWebhook'])->name('api.webhooks.escrow');
 
 /*
 |--------------------------------------------------------------------------
@@ -185,3 +189,102 @@ Route::middleware(['jwt.auth', 'audit'])->group(function () {
     Route::patch('settings', [SettingController::class, 'update'])->middleware('permission:settings.update');
     Route::put('settings', [SettingController::class, 'update'])->middleware('permission:settings.update');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Public API v1 — Sanctum bearer token authentication
+|--------------------------------------------------------------------------
+|
+| Stable, versioned, externally-facing REST API. Customers issue tokens
+| from /dashboard/api-tokens and use them as `Authorization: Bearer <token>`.
+| Each endpoint declares the ability it requires; tokens without the right
+| ability return 403.
+|
+| Tenancy: every read is scoped to the token owner's company. Cross-tenant
+| reads are impossible by design.
+|
+| OpenAPI spec served at /api/v1/public/openapi.json.
+|
+*/
+Route::prefix('v1/public')->middleware('auth:sanctum')->group(function () {
+    $c = \App\Http\Controllers\Api\Public\V1Controller::class;
+
+    // Read endpoints
+    Route::get('/me',             [$c, 'me']);
+    Route::get('/rfqs',           [$c, 'listRfqs']);
+    Route::get('/rfqs/{id}',      [$c, 'showRfq']);
+    Route::get('/bids',           [$c, 'listBids']);
+    Route::get('/contracts',      [$c, 'listContracts']);
+    Route::get('/contracts/{id}', [$c, 'showContract']);
+    Route::get('/payments',       [$c, 'listPayments']);
+    Route::get('/products',       [$c, 'listProducts']);
+
+    // Write endpoints — require explicit write:* abilities
+    Route::post('/rfqs',          [$c, 'createRfq']);
+    Route::post('/rfqs/{id}/bids',[$c, 'createBid']);
+    Route::post('/products',      [$c, 'createProduct']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Phase 7 — SCIM 2.0 user provisioning
+|--------------------------------------------------------------------------
+|
+| Standard SCIM endpoints for enterprise IdPs (Okta, Azure AD, OneLogin,
+| JumpCloud) to push and pull user records into TriLink. Authentication
+| uses the same Sanctum bearer token system as the public API; the token
+| must hold the `scim` ability and the IdP must use the company manager's
+| credentials so the user records land in the right tenant.
+|
+*/
+Route::prefix('scim/v2')->middleware(['auth:sanctum', 'ability:scim'])->group(function () {
+    $c = \App\Http\Controllers\Api\ScimController::class;
+    Route::get('/Users',                  [$c, 'index']);
+    Route::post('/Users',                 [$c, 'store']);
+    Route::get('/Users/{externalId}',     [$c, 'show']);
+    Route::put('/Users/{externalId}',     [$c, 'update']);
+    Route::patch('/Users/{externalId}',   [$c, 'update']);
+    Route::delete('/Users/{externalId}',  [$c, 'destroy']);
+});
+
+// OpenAPI spec is unauthenticated so doc viewers can fetch it freely.
+Route::get('/v1/public/openapi.json', function () {
+    return response()->json([
+        'openapi' => '3.0.3',
+        'info' => [
+            'title'       => 'TriLink Public API',
+            'version'     => '1.0.0',
+            'description' => 'Read-only B2B procurement API. Authenticate with a Sanctum bearer token issued from /dashboard/api-tokens.',
+        ],
+        'servers' => [['url' => url('/api/v1/public'), 'description' => 'Production']],
+        'security' => [['bearerAuth' => []]],
+        'components' => [
+            'securitySchemes' => [
+                'bearerAuth' => [
+                    'type'         => 'http',
+                    'scheme'       => 'bearer',
+                    'bearerFormat' => 'Sanctum',
+                ],
+            ],
+        ],
+        'paths' => [
+            '/me'              => ['get' => ['summary' => 'Authenticated user + company', 'security' => [['bearerAuth' => []]], 'responses' => ['200' => ['description' => 'OK']]]],
+            '/rfqs' => [
+                'get'  => ['summary' => 'List RFQs (paginated)', 'security' => [['bearerAuth' => []]], 'parameters' => [['name' => 'status', 'in' => 'query', 'schema' => ['type' => 'string']], ['name' => 'per_page', 'in' => 'query', 'schema' => ['type' => 'integer']]], 'responses' => ['200' => ['description' => 'OK']]],
+                'post' => ['summary' => 'Create an RFQ (requires write:rfqs)', 'security' => [['bearerAuth' => []]], 'requestBody' => ['required' => true, 'content' => ['application/json' => ['schema' => ['type' => 'object', 'required' => ['title','items'], 'properties' => ['title' => ['type' => 'string'], 'description' => ['type' => 'string'], 'category_id' => ['type' => 'integer'], 'budget' => ['type' => 'number'], 'currency' => ['type' => 'string'], 'deadline' => ['type' => 'string', 'format' => 'date-time'], 'items' => ['type' => 'array', 'items' => ['type' => 'object']]]]]]], 'responses' => ['201' => ['description' => 'Created']]],
+            ],
+            '/rfqs/{id}'       => ['get' => ['summary' => 'Get RFQ by id', 'security' => [['bearerAuth' => []]], 'parameters' => [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']]], 'responses' => ['200' => ['description' => 'OK']]]],
+            '/bids'            => ['get' => ['summary' => 'List bids (paginated)', 'security' => [['bearerAuth' => []]], 'responses' => ['200' => ['description' => 'OK']]]],
+            '/contracts'       => ['get' => ['summary' => 'List contracts (paginated)', 'security' => [['bearerAuth' => []]], 'responses' => ['200' => ['description' => 'OK']]]],
+            '/contracts/{id}'  => ['get' => ['summary' => 'Get contract by id', 'security' => [['bearerAuth' => []]], 'parameters' => [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']]], 'responses' => ['200' => ['description' => 'OK']]]],
+            '/payments'        => ['get' => ['summary' => 'List payments (paginated)', 'security' => [['bearerAuth' => []]], 'responses' => ['200' => ['description' => 'OK']]]],
+            '/products' => [
+                'get'  => ['summary' => 'List catalog products (paginated)', 'security' => [['bearerAuth' => []]], 'parameters' => [['name' => 'company_id', 'in' => 'query', 'schema' => ['type' => 'integer']], ['name' => 'category_id', 'in' => 'query', 'schema' => ['type' => 'integer']]], 'responses' => ['200' => ['description' => 'OK']]],
+                'post' => ['summary' => 'Create a catalog product (requires write:products)', 'security' => [['bearerAuth' => []]], 'requestBody' => ['required' => true, 'content' => ['application/json' => ['schema' => ['type' => 'object', 'required' => ['name','base_price','currency','unit','min_order_qty','lead_time_days'], 'properties' => ['name' => ['type' => 'string'], 'sku' => ['type' => 'string'], 'hs_code' => ['type' => 'string'], 'base_price' => ['type' => 'number'], 'currency' => ['type' => 'string'], 'unit' => ['type' => 'string'], 'min_order_qty' => ['type' => 'integer'], 'lead_time_days' => ['type' => 'integer']]]]]], 'responses' => ['201' => ['description' => 'Created']]],
+            ],
+            '/rfqs/{id}/bids' => [
+                'post' => ['summary' => 'Submit a bid on an RFQ (requires write:bids)', 'security' => [['bearerAuth' => []]], 'parameters' => [['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']]], 'requestBody' => ['required' => true, 'content' => ['application/json' => ['schema' => ['type' => 'object', 'required' => ['price'], 'properties' => ['price' => ['type' => 'number'], 'currency' => ['type' => 'string'], 'delivery_time_days' => ['type' => 'integer'], 'payment_terms' => ['type' => 'string'], 'notes' => ['type' => 'string']]]]]], 'responses' => ['201' => ['description' => 'Created'], '422' => ['description' => 'Business rule violation (own RFQ, sanctions, exclusive supplier, etc.)']]],
+            ],
+        ],
+    ]);
+})->name('api.public.openapi');

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\PaymentStatus;
+use App\Models\Contract;
 use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\PaymentStatusNotification;
@@ -36,6 +37,80 @@ class PaymentService
     public function create(array $data): Payment
     {
         return Payment::create($data)->load(['contract', 'company', 'recipientCompany']);
+    }
+
+    /**
+     * Auto-create one Payment record per milestone in a contract's
+     * payment_schedule. Called from ContractService::sign() the moment a
+     * contract reaches ACTIVE status (i.e. all parties have signed).
+     *
+     * Idempotent: re-running this on a contract that already has payments is
+     * a no-op so a re-signature event cannot duplicate the schedule.
+     *
+     * Each Payment is created in PENDING_APPROVAL state — the company's
+     * finance employee then approves and processes them on the milestone due
+     * date through the existing Payment dashboard.
+     */
+    public function generateFromSchedule(Contract $contract): int
+    {
+        if ($contract->payments()->exists()) {
+            return 0;
+        }
+
+        $schedule = $contract->payment_schedule ?? [];
+        if (empty($schedule)) {
+            return 0;
+        }
+
+        // The buyer is always the payer; the supplier party is always the
+        // recipient. The contract carries this on parties[].
+        $buyerCompanyId = $contract->buyer_company_id;
+        $supplierParty = collect($contract->parties ?? [])
+            ->firstWhere('role', 'supplier');
+        $supplierCompanyId = $supplierParty['company_id'] ?? null;
+
+        if (!$buyerCompanyId || !$supplierCompanyId) {
+            return 0;
+        }
+
+        // Use the contract's PR buyer when available; otherwise fall back to
+        // any active user in the buyer company so the buyer_id NOT NULL FK
+        // is satisfied. The finance employee will approve regardless.
+        $buyerId = $contract->purchaseRequest?->buyer_id
+            ?? User::where('company_id', $buyerCompanyId)->value('id');
+
+        if (!$buyerId) {
+            return 0;
+        }
+
+        $created = 0;
+        foreach ($schedule as $milestone) {
+            $amount = (float) ($milestone['amount'] ?? 0);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            // Use the tax rate frozen onto the milestone at contract-creation
+            // time so subsequent admin tax-rate edits don't retroactively
+            // change a signed contract's payments.
+            $vatRate = $milestone['tax_rate'] ?? null;
+
+            Payment::create([
+                'contract_id'          => $contract->id,
+                'company_id'           => $buyerCompanyId,
+                'recipient_company_id' => $supplierCompanyId,
+                'buyer_id'             => $buyerId,
+                'status'               => PaymentStatus::PENDING_APPROVAL,
+                'amount'               => $amount,
+                'vat_rate'             => $vatRate,
+                'currency'             => $milestone['currency'] ?? $contract->currency ?? 'AED',
+                'milestone'            => $milestone['milestone'] ?? null,
+            ]);
+
+            $created++;
+        }
+
+        return $created;
     }
 
     public function update(int $id, array $data): ?Payment

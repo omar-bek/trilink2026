@@ -54,11 +54,26 @@ class PkiService
 
     public function createDigitalSignature(int $userId, int $companyId, string $contractHash, ?string $privateKey = null): array
     {
-        if ($privateKey) {
-            $signature = $this->sign($contractHash, $privateKey);
-        } else {
-            $signature = hash_hmac('sha256', $contractHash, config('app.key'));
+        // Phase 0 hardening — the previous implementation silently fell back
+        // to hash_hmac(APP_KEY) when no private key was provided. That is
+        // *not* a digital signature: any party who knows APP_KEY (i.e. every
+        // server engineer) can forge it, and no third party (e.g. a UAE
+        // court) can verify it independently. Federal Decree-Law 46/2021
+        // requires the signing key to be under the sole control of the
+        // signatory. Anything weaker isn't a signature, it's a MAC.
+        //
+        // We now hard-fail rather than emit a fake "signature". Callers
+        // that hit this path must either supply a real RSA private key or
+        // wire up a Trust Service Provider in Phase 6 (UAE Pass / Comtrust).
+        if (empty($privateKey)) {
+            throw new RuntimeException(
+                'Cannot create a digital signature without a private key. '
+                . 'The HMAC fallback was removed in Phase 0 (UAE Compliance Roadmap). '
+                . 'Provide an RSA private key or integrate a Trust Service Provider.'
+            );
         }
+
+        $signature = $this->sign($contractHash, $privateKey);
 
         return [
             'user_id' => $userId,

@@ -6,11 +6,11 @@
 <x-dashboard.page-header :title="__('profile.title')" :subtitle="trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? ''))" />
 
 @if(session('status'))
-<div class="mb-6 bg-[#10B981]/5 border border-[#10B981]/30 rounded-xl p-4 text-[13px] text-[#10B981]">{{ session('status') }}</div>
+<div class="mb-6 bg-[#00d9b5]/5 border border-[#00d9b5]/30 rounded-xl p-4 text-[13px] text-[#00d9b5]">{{ session('status') }}</div>
 @endif
 
 @if($errors->any())
-<div class="mb-6 bg-[#EF4444]/5 border border-[#EF4444]/30 rounded-xl p-4 text-[13px] text-[#EF4444]">
+<div class="mb-6 bg-[#ff4d7f]/5 border border-[#ff4d7f]/30 rounded-xl p-4 text-[13px] text-[#ff4d7f]">
     <ul class="list-disc ms-5 space-y-1">
         @foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach
     </ul>
@@ -19,8 +19,8 @@
 
 @if($user->company)
 {{-- Company Logo --}}
-<div class="bg-surface border border-th-border rounded-2xl p-6 mb-6">
-    <div class="flex items-start justify-between gap-6 flex-wrap">
+<div class="bg-surface border border-th-border rounded-2xl p-5 sm:p-6 mb-6">
+    <div class="flex items-start justify-between gap-4 sm:gap-6 flex-wrap">
         <div>
             <h3 class="text-[16px] font-bold text-primary mb-1">{{ __('profile.company_logo') }}</h3>
             <p class="text-[12px] text-muted">{{ __('profile.company_logo_hint') }}</p>
@@ -54,7 +54,7 @@
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
     {{-- Profile info --}}
-    <div class="bg-surface border border-th-border rounded-2xl p-6">
+    <div class="bg-surface border border-th-border rounded-2xl p-5 sm:p-6">
         <h3 class="text-[16px] font-bold text-primary mb-5">{{ __('profile.update') }}</h3>
         <form method="POST" action="{{ route('profile.update') }}" class="space-y-4">
             @csrf
@@ -79,14 +79,15 @@
                 <input type="tel" name="phone" value="{{ old('phone', $user->phone) }}"
                        class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary focus:outline-none focus:border-accent/50">
             </div>
-            <button type="submit" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h">
+            <button type="submit" class="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h transition-all shadow-[0_10px_30px_-10px_rgba(79,124,255,0.5)]">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
                 {{ __('profile.update') }}
             </button>
         </form>
     </div>
 
     {{-- Password change --}}
-    <div class="bg-surface border border-th-border rounded-2xl p-6">
+    <div class="bg-surface border border-th-border rounded-2xl p-5 sm:p-6">
         <h3 class="text-[16px] font-bold text-primary mb-5">{{ __('profile.change_password') }}</h3>
         <form method="POST" action="{{ route('profile.password') }}" class="space-y-4">
             @csrf
@@ -106,7 +107,8 @@
                 <input type="password" name="password_confirmation" required
                        class="w-full bg-page border border-th-border rounded-xl px-4 py-3 text-[14px] text-primary focus:outline-none focus:border-accent/50">
             </div>
-            <button type="submit" class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#10B981] hover:bg-[#0EA371]">
+            <button type="submit" class="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl text-[13px] font-semibold text-white bg-[#00d9b5] hover:bg-[#00c9a5] transition-all shadow-[0_10px_30px_-10px_rgba(0,217,181,0.4)]">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
                 {{ __('profile.change_password') }}
             </button>
         </form>

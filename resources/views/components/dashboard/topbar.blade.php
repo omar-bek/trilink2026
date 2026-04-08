@@ -28,29 +28,41 @@
 
     {{-- Mobile menu + Search --}}
     <div class="flex items-center gap-4 flex-1">
-        <button type="button" onclick="toggleSidebar()" class="lg:hidden w-10 h-10 rounded-lg flex items-center justify-center text-muted hover:text-primary hover:bg-surface-2 transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <button type="button"
+                onclick="toggleSidebar()"
+                aria-label="{{ __('common.toggle_menu') ?? 'Toggle menu' }}"
+                aria-controls="sidebar"
+                class="lg:hidden w-10 h-10 rounded-lg flex items-center justify-center text-muted hover:text-primary hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
     </div>
 
     {{-- Right actions --}}
     <div class="flex items-center gap-3">
         {{-- Search --}}
-        <button type="button" class="w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-surface-2 transition-colors" title="{{ __('common.search') }}">
-            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <button type="button"
+                aria-label="{{ __('common.search') }}"
+                class="w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                title="{{ __('common.search') }}">
+            <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         </button>
 
         {{-- Theme toggle --}}
-        <button id="theme-toggle" type="button" class="w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-surface-2 transition-colors">
-            <svg class="w-[18px] h-[18px] hidden dark:block" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"/></svg>
-            <svg class="w-[18px] h-[18px] block dark:hidden" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
+        <button id="theme-toggle"
+                type="button"
+                aria-label="{{ __('common.toggle_theme') ?? 'Toggle theme' }}"
+                class="w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
+            <svg class="w-[18px] h-[18px] hidden dark:block" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"/></svg>
+            <svg class="w-[18px] h-[18px] block dark:hidden" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
         </button>
 
         {{-- Language toggle --}}
         <form method="POST" action="{{ route('locale.switch') }}" class="inline">
             @csrf
             <input type="hidden" name="locale" value="{{ app()->getLocale() === 'ar' ? 'en' : 'ar' }}">
-            <button type="submit" class="px-3 h-10 rounded-full text-[12px] font-bold text-muted hover:text-primary hover:bg-surface-2 transition-colors uppercase">
+            <button type="submit"
+                    aria-label="{{ __('common.switch_language') ?? 'Switch language' }}"
+                    class="px-3 h-10 rounded-full text-[12px] font-bold text-muted hover:text-primary hover:bg-surface-2 transition-colors uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
                 {{ app()->getLocale() === 'ar' ? 'EN' : 'AR' }}
             </button>
         </form>
@@ -61,9 +73,10 @@
                     id="notif-menu-button"
                     aria-haspopup="menu"
                     aria-expanded="false"
+                    aria-label="{{ __('notifications.aria_open_panel', ['count' => $notifUnreadCount]) ?? ($notifUnreadCount > 0 ? "Notifications, {$notifUnreadCount} unread" : 'Notifications') }}"
                     onclick="toggleNotifMenu(event)"
-                    class="relative w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-surface-2 transition-colors">
-                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
+                    class="relative w-10 h-10 rounded-full flex items-center justify-center text-muted hover:text-primary hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
+                <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/></svg>
                 @if($notifUnreadCount > 0)
                     @if($notifUnreadCount > 9)
                     <span class="absolute -top-0.5 -end-0.5 min-w-[18px] h-[18px] px-1 bg-[#EF4444] text-white text-[10px] font-bold rounded-full flex items-center justify-center">{{ $notifUnreadCount > 99 ? '99+' : $notifUnreadCount }}</span>
@@ -126,12 +139,16 @@
                     id="user-menu-button"
                     aria-haspopup="menu"
                     aria-expanded="false"
+                    aria-label="{{ __('common.user_menu_for', ['name' => $authFullName]) ?? "User menu for {$authFullName}" }}"
                     onclick="toggleUserMenu(event)"
-                    class="w-10 h-10 rounded-xl bg-accent text-white font-bold text-[13px] flex items-center justify-center hover:opacity-90 transition-opacity overflow-hidden">
+                    class="w-10 h-10 rounded-xl bg-accent text-white font-bold text-[13px] flex items-center justify-center hover:opacity-90 transition-opacity overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
                 @if($authUser?->company?->logo)
-                    <img src="{{ asset('storage/' . $authUser->company->logo) }}" alt="{{ $authUser->company->name }}" class="w-full h-full object-cover">
+                    <img src="{{ asset('storage/' . $authUser->company->logo) }}"
+                         alt="{{ $authUser->company->name }}"
+                         loading="lazy"
+                         class="w-full h-full object-cover">
                 @else
-                    {{ $authInitials }}
+                    <span aria-hidden="true">{{ $authInitials }}</span>
                 @endif
             </button>
 

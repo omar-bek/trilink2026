@@ -32,10 +32,7 @@ class AuditLogController extends Controller
         ]);
 
         $logs = AuditLog::query()
-            ->when($data['query'] ?? null, fn ($q, $v) => $q->where(function ($q) use ($v) {
-                $q->where('resource_type', 'like', "%{$v}%")
-                    ->orWhere('action', 'like', "%{$v}%");
-            }))
+            ->when($data['query'] ?? null, fn ($q, $v) => $q->search($v, ['resource_type', 'action']))
             ->when($data['filters']['user_id'] ?? null, fn ($q, $v) => $q->where('user_id', $v))
             ->when($data['filters']['action'] ?? null, fn ($q, $v) => $q->where('action', $v))
             ->with('user')

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
+use App\Models\CompanyBankDetail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -76,11 +77,14 @@ class SettingsController extends Controller
         // under a `notifications` key — keeps the schema additive.
         $existing = $user->custom_permissions ?? [];
         $existing['notifications'] = [
-            'rfq_matches'      => $request->boolean('rfq_matches'),
-            'bid_updates'      => $request->boolean('bid_updates'),
+            'rfq_matches'         => $request->boolean('rfq_matches'),
+            'bid_updates'         => $request->boolean('bid_updates'),
             'contract_milestones' => $request->boolean('contract_milestones'),
-            'messages'         => $request->boolean('messages'),
-            'marketing'        => $request->boolean('marketing'),
+            'messages'            => $request->boolean('messages'),
+            'marketing'           => $request->boolean('marketing'),
+            // Phase 1 / task 1.7 — minimum match score that the daily
+            // saved-search digest will surface. Clamped to 0..100.
+            'rfq_match_threshold' => max(0, min(100, (int) $request->input('rfq_match_threshold', 50))),
         ];
 
         $user->update(['custom_permissions' => $existing]);
@@ -106,6 +110,48 @@ class SettingsController extends Controller
 
         return redirect()->route('settings.index', ['tab' => 'security'])
             ->with('status', __('auth.password_updated'));
+    }
+
+    /**
+     * Save payment method details.
+     *
+     * For suppliers this is their RECEIVING bank account (where TriLink sends
+     * their earnings). Persisted in the typed `company_bank_details` table
+     * (one row per company) that replaced the old `info_request` JSON blob
+     * in Phase 0 / task 0.6.
+     *
+     * For buyers we currently just redirect back (the buyer-side "payment
+     * methods" list is a display-only mock until a real card/bank tokenizer
+     * is wired).
+     */
+    public function updatePayment(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user?->company_id, 403);
+
+        $data = $request->validate([
+            'bank_holder'         => ['nullable', 'string', 'max:200'],
+            'bank_name'           => ['nullable', 'string', 'max:200'],
+            'bank_iban'           => ['nullable', 'string', 'max:50'],
+            'bank_swift'          => ['nullable', 'string', 'max:20'],
+            'bank_account_number' => ['nullable', 'string', 'max:50'],
+            'bank_currency'       => ['nullable', 'string', 'size:3'],
+        ]);
+
+        CompanyBankDetail::updateOrCreate(
+            ['company_id' => $user->company_id],
+            [
+                'holder_name' => $data['bank_holder']         ?? null,
+                'bank_name'   => $data['bank_name']           ?? null,
+                'iban'        => $data['bank_iban']           ?? null,
+                'swift'       => $data['bank_swift']          ?? null,
+                'notes'       => $data['bank_account_number'] ?? null,
+                'currency'    => $data['bank_currency']       ?? null,
+            ]
+        );
+
+        return redirect()->route('settings.index', ['tab' => 'payment'])
+            ->with('status', __('settings.saved'));
     }
 
     private function resolveTab(?string $tab): string

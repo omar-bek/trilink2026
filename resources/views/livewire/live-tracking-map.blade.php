@@ -48,7 +48,7 @@
 
         if (trail.length > 0) {
             const latlngs = trail.map(p => [p.lat, p.lng]);
-            L.polyline(latlngs, { color: '#3B82F6', weight: 4 }).addTo(map);
+            L.polyline(latlngs, { color: '#4f7cff', weight: 4 }).addTo(map);
             L.marker(latlngs[latlngs.length - 1]).addTo(map)
                 .bindPopup('Current location').openPopup();
         }

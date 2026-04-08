@@ -31,6 +31,9 @@ class Payment extends Model
         'approved_at',
         'approved_by',
         'rejection_reason',
+        // Phase 3 / Sprint 11 — set by EscrowService::releaseFor() when this
+        // payment was satisfied via escrow rather than a card/bank gateway.
+        'escrow_release_id',
     ];
 
     protected function casts(): array
@@ -70,6 +73,16 @@ class Payment extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
+    /**
+     * Phase 3 / Sprint 11 — back-reference to the EscrowRelease ledger entry
+     * that satisfied this payment, when the milestone was paid via escrow.
+     * Null for payments processed through Stripe/PayPal directly.
+     */
+    public function escrowRelease(): BelongsTo
+    {
+        return $this->belongsTo(EscrowRelease::class);
+    }
+
     public function calculateVat(): void
     {
         $this->vat_amount = round($this->amount * ($this->vat_rate / 100), 2);
@@ -79,6 +92,13 @@ class Payment extends Model
     protected static function booted(): void
     {
         static::creating(function (Payment $payment) {
+            // If the caller did not specify a VAT rate at all, fall back to the
+            // active platform-managed rate (admin/government UI). Explicit 0
+            // (e.g. tax-exempt items) is respected and not overridden.
+            if (!$payment->isDirty('vat_rate') && $payment->vat_rate === null) {
+                $payment->vat_rate = TaxRate::resolveFor();
+            }
+
             if (!$payment->vat_amount) {
                 $payment->calculateVat();
             }

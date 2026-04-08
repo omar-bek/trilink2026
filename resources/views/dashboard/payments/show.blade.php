@@ -20,20 +20,19 @@
     </div>
     @if(!$payment['paid'])
     <div class="flex items-center gap-3">
-        @php $paymentNumericId = preg_replace('/PAY-2024-(\d+)/', '$1', $payment['id']); @endphp
         @can('payment.approve')
-        <form method="POST" action="{{ route('dashboard.payments.approve', ['id' => $paymentNumericId]) }}" class="inline">
+        <form method="POST" action="{{ route('dashboard.payments.approve', ['id' => $payment['db_id']]) }}" class="inline">
             @csrf
-            <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#10B981] hover:bg-[#0EA371] shadow-[0_4px_14px_rgba(16,185,129,0.3)]">
+            <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#00d9b5] hover:bg-[#00c9a5] shadow-[0_4px_14px_rgba(0,217,181,0.3)]">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75"/></svg>
                 {{ __('payments.approve') }}
             </button>
         </form>
         @endcan
         @can('payment.process')
-        <form method="POST" action="{{ route('dashboard.payments.process', ['id' => $paymentNumericId]) }}" class="inline">
+        <form method="POST" action="{{ route('dashboard.payments.process', ['id' => $payment['db_id']]) }}" class="inline">
             @csrf
-            <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(37,99,235,0.25)]">
+            <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(79,124,255,0.25)]">
                 {{ __('payments.process') }}
             </button>
         </form>
@@ -41,6 +40,17 @@
     </div>
     @endif
 </div>
+
+@if(session('status'))
+<div class="mb-6 px-4 py-3 rounded-xl bg-[#00d9b5]/10 border border-[#00d9b5]/30 text-[13px] text-[#00d9b5] font-semibold">
+    {{ session('status') }}
+</div>
+@endif
+@if($errors->any())
+<div class="mb-6 px-4 py-3 rounded-xl bg-[#ff4d7f]/10 border border-[#ff4d7f]/30 text-[13px] text-[#ff4d7f] font-semibold">
+    {{ $errors->first() }}
+</div>
+@endif
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -58,9 +68,9 @@
                     <span class="text-[13px] text-muted">{{ __('payments.vat') }} (5%)</span>
                     <span class="text-[16px] font-bold text-primary">{{ $payment['vat'] }}</span>
                 </div>
-                <div class="bg-[#10B981]/5 border border-[#10B981]/20 rounded-xl p-4 flex items-center justify-between">
+                <div class="bg-[#00d9b5]/5 border border-[#00d9b5]/20 rounded-xl p-4 flex items-center justify-between">
                     <span class="text-[14px] font-bold text-primary">{{ __('payments.total') }}</span>
-                    <span class="text-[22px] font-bold text-[#10B981]">{{ $payment['total'] }}</span>
+                    <span class="text-[22px] font-bold text-[#00d9b5]">{{ $payment['total'] }}</span>
                 </div>
             </div>
         </div>
@@ -76,6 +86,24 @@
                 <div class="h-full bg-accent rounded-full" style="width: {{ $payment['pct'] }}%"></div>
             </div>
         </div>
+
+        {{-- Activity timeline --}}
+        @if(!empty($timeline))
+        <div class="bg-surface border border-th-border rounded-2xl p-6">
+            <h3 class="text-[16px] font-bold text-primary mb-5">{{ __('payments.activity') }}</h3>
+            <ol class="space-y-4">
+                @foreach($timeline as $event)
+                <li class="flex items-start gap-3">
+                    <span class="mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0" style="background: {{ $event['color'] }};"></span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[13px] font-semibold text-primary">{{ $event['label'] }}</p>
+                        <p class="text-[11px] text-muted">{{ $event['time'] }}</p>
+                    </div>
+                </li>
+                @endforeach
+            </ol>
+        </div>
+        @endif
     </div>
 
     {{-- Sidebar --}}
@@ -93,7 +121,13 @@
                 </div>
                 <div class="pt-3 border-t border-th-border">
                     <dt class="text-[11px] text-muted uppercase tracking-wider">{{ __('payments.contract') }}</dt>
-                    <dd class="font-mono font-semibold text-accent">{{ $payment['contract'] }}</dd>
+                    <dd class="font-mono font-semibold">
+                        @if($payment['contract_url'])
+                            <a href="{{ $payment['contract_url'] }}" class="text-accent hover:underline">{{ $payment['contract'] }}</a>
+                        @else
+                            <span class="text-accent">{{ $payment['contract'] }}</span>
+                        @endif
+                    </dd>
                 </div>
                 <div>
                     <dt class="text-[11px] text-muted uppercase tracking-wider">{{ __('common.due_date') }}</dt>

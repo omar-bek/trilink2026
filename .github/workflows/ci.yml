@@ -1,0 +1,109 @@
+name: CI
+
+# Phase 0 / task 0.12 — quality gate for every push and pull request.
+# What runs:
+#   1. Install PHP + composer deps
+#   2. Set up an .env that points at sqlite, run `key:generate` + `migrate`
+#   3. Build the front-end with vite (catches obvious blade/asset errors)
+#   4. Run pint --test for code style
+#   5. Run phpunit
+#
+# Anything that fails here should fail the build. Don't add `continue-on-error`
+# tactically — fix the underlying issue instead.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: PHP ${{ matrix.php }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        php: ['8.2', '8.3']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, dom, fileinfo, sqlite, pdo_sqlite, gd, intl, zip, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: composer-${{ runner.os }}-${{ matrix.php }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-${{ matrix.php }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress --no-ansi
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env || true
+          # Some repos don't ship a .env.example — write a minimal one
+          if [ ! -f .env ]; then
+            cat > .env <<'EOF'
+          APP_NAME=TriLink
+          APP_ENV=testing
+          APP_KEY=
+          APP_DEBUG=true
+          APP_URL=http://localhost
+          DB_CONNECTION=sqlite
+          QUEUE_CONNECTION=sync
+          CACHE_STORE=array
+          SESSION_DRIVER=array
+          MAIL_MAILER=array
+          BROADCAST_CONNECTION=null
+          FILESYSTEM_DISK=local
+          EOF
+          fi
+          mkdir -p database
+          touch database/database.sqlite
+          php artisan key:generate --ansi
+          php artisan config:clear
+
+      - name: Run migrations
+        run: php artisan migrate --force --ansi
+
+      - name: Lint with Pint (style check, no autofix)
+        run: ./vendor/bin/pint --test
+        continue-on-error: false
+
+      - name: Run PHPUnit
+        run: ./vendor/bin/phpunit --colors=always
+
+  frontend:
+    name: Build front-end assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build assets
+        run: npm run build

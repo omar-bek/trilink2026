@@ -61,14 +61,14 @@
                 @foreach($shipment['timeline'] as $event)
                 <div class="flex items-start gap-3 relative">
                     @if(!$loop->last)<div class="absolute start-3 top-7 w-0.5 h-full bg-th-border"></div>@endif
-                    <div class="w-6 h-6 rounded-full {{ $event['done'] ? ($event['current'] ? 'bg-[#F59E0B]' : 'bg-[#10B981]') : 'bg-surface-2 border border-th-border' }} flex items-center justify-center flex-shrink-0 z-10">
+                    <div class="w-6 h-6 rounded-full {{ $event['done'] ? ($event['current'] ? 'bg-[#ffb020]' : 'bg-[#00d9b5]') : 'bg-surface-2 border border-th-border' }} flex items-center justify-center flex-shrink-0 z-10">
                         @if($event['done'])<svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
                         @else<svg class="w-3 h-3 text-muted" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>@endif
                     </div>
                     <div class="flex-1 min-w-0 pb-4">
                         <div class="flex items-center gap-2 mb-1">
-                            <p class="text-[14px] font-bold {{ $event['current'] ? 'text-[#F59E0B]' : 'text-primary' }}">{{ $event['title'] }}</p>
-                            @if($event['current'])<span class="text-[10px] font-bold text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-full px-2 py-0.5">{{ __('common.current') }}</span>@endif
+                            <p class="text-[14px] font-bold {{ $event['current'] ? 'text-[#ffb020]' : 'text-primary' }}">{{ $event['title'] }}</p>
+                            @if($event['current'])<span class="text-[10px] font-bold text-[#ffb020] bg-[#ffb020]/10 border border-[#ffb020]/20 rounded-full px-2 py-0.5">{{ __('common.current') }}</span>@endif
                         </div>
                         @if($event['desc'])<p class="text-[12px] text-muted">{{ $event['desc'] }}</p>@endif
                         @if($event['time'] || $event['location'])
@@ -110,7 +110,7 @@
         <div class="bg-surface border border-th-border rounded-2xl p-6">
             <h3 class="text-[15px] font-bold text-primary mb-4">{{ __('shipments.logistics_provider') }}</h3>
             <div class="flex items-center gap-3 mb-4">
-                <div class="w-11 h-11 rounded-lg bg-[#F59E0B] flex items-center justify-center font-bold text-white">{{ $shipment['carrier_code'] }}</div>
+                <div class="w-11 h-11 rounded-lg bg-[#ffb020] flex items-center justify-center font-bold text-white">{{ $shipment['carrier_code'] }}</div>
                 <div>
                     <p class="text-[14px] font-bold text-primary">{{ $shipment['carrier'] }}</p>
                     @if($shipment['carrier_phone'])<p class="text-[11px] text-muted">{{ $shipment['carrier_phone'] }}</p>@endif

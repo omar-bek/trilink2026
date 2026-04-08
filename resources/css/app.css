@@ -8,55 +8,67 @@
    THEME VARIABLES
    ============================================ */
 @layer base {
-  /* --- Light Mode (default) --- */
+  /* --- Light Mode ---
+     Mirrors the dark Figma palette using inverted lightness so the visual
+     hierarchy stays identical. The accent stays #3b7eff so any branded
+     element keeps its color across themes. */
   :root {
-    --c-page:        #F8FAFC;
-    --c-surface:     #FFFFFF;
-    --c-surface2:    #F1F5F9;
-    --c-elevated:    #E2E8F0;
-    --c-border:      #E2E8F0;
-    --c-border-s:    #F1F5F9;
-    --c-text-primary:#0F172A;
-    --c-text-body:   #334155;
-    --c-text-muted:  #64748B;
-    --c-text-faint:  #94A3B8;
-    --c-accent:      #2563EB;
-    --c-accent-h:    #1D4ED8;
-    --c-icon:        #3B82F6;
+    --c-page:        #fbfcfe;   /* near-white with a hint of cool */
+    --c-surface:     #ffffff;   /* card */
+    --c-surface2:    #f4f6fb;   /* card-hover */
+    --c-elevated:    #eef1f7;   /* subtle */
+    --c-border:      rgba(15,20,40,0.08);
+    --c-border-s:    rgba(15,20,40,0.04);
+    --c-text-primary:#0a0d14;   /* near-black for clean hierarchy */
+    --c-text-body:   #2d3548;
+    --c-text-muted:  #5b6478;
+    --c-text-faint:  #9ba3b6;
+    --c-accent:      #3b7eff;   /* same brand/primary as dark */
+    --c-accent-h:    #2a6df0;
+    --c-icon:        #3b7eff;
     --c-nav-bg:      rgba(255,255,255,0.85);
-    --c-nav-pill:    #F1F5F9;
-    --c-card-hover:  rgba(37,99,235,0.04);
-    --c-glow:        rgba(37,99,235,0.08);
+    --c-nav-pill:    rgba(244,246,251,0.9);
+    --c-card-hover:  rgba(59,126,255,0.05);
+    --c-glow:        rgba(59,126,255,0.10);
   }
 
-  /* --- Dark Mode --- */
+  /* --- Dark Mode ---
+     Tokens are pulled directly from the Figma design system. Don't tweak
+     these without re-checking the Figma — every section relies on them.
+     See https://www.figma.com/design/vuH4DNm1RoWPc1cIyGqj0e variables. */
   .dark {
-    --c-page:        #0B0F1A;
-    --c-surface:     #131927;
-    --c-surface2:    #1E2740;
-    --c-elevated:    #252F48;
-    --c-border:      #1E2740;
-    --c-border-s:    #1A2035;
-    --c-text-primary:#FFFFFF;
-    --c-text-body:   #C5CEE0;
-    --c-text-muted:  #7B819A;
-    --c-text-faint:  #4A5068;
-    --c-accent:      #4B83F0;
-    --c-accent-h:    #3B6FE0;
-    --c-icon:        #7B9FE8;
-    --c-nav-bg:      rgba(11,15,26,0.8);
-    --c-nav-pill:    rgba(21,27,43,0.8);
-    --c-card-hover:  rgba(59,81,152,0.12);
-    --c-glow:        rgba(59,130,246,0.15);
+    --c-page:        #0f1117;   /* bg/default */
+    --c-surface:     #1a1d29;   /* bg/card */
+    --c-surface2:    #0f1117;   /* inner card (matches outer page bg) */
+    --c-elevated:    #252932;   /* progress track / subtle */
+    --c-border:      rgba(255,255,255,0.1);
+    --c-border-s:    rgba(255,255,255,0.06);
+    --c-text-primary:#ffffff;   /* PURE white for max legibility */
+    --c-text-body:   #c2cbe0;
+    --c-text-muted:  #b4b6c0;   /* text/secondary */
+    --c-text-faint:  #6b6e7a;   /* text/muted */
+    --c-accent:      #4f7cff;   /* brand/primary */
+    --c-accent-h:    #6b91ff;   /* brand/primary-hover */
+    --c-icon:        #ffffff;   /* white icons match Figma "Icon Color/icon-white" */
+    --c-nav-bg:      rgba(15,17,23,0.85);
+    --c-nav-pill:    rgba(26,29,41,0.8);
+    --c-card-hover:  rgba(79,124,255,0.08);
+    --c-glow:        rgba(79,124,255,0.18);
   }
 
   html { scroll-behavior: smooth; }
+  /* Alpine.js: hide x-cloak elements until Alpine has initialized so tabbed
+     panels don't flash all-visible on first paint. */
+  [x-cloak] { display: none !important; }
   body {
     font-family: 'Inter', 'Figtree', system-ui, sans-serif;
     background: var(--c-page);
     color: var(--c-text-primary);
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 }
 
@@ -67,13 +79,269 @@
   .reveal-delay-1 { transition-delay: 0.1s; }
   .reveal-delay-2 { transition-delay: 0.2s; }
   .reveal-delay-3 { transition-delay: 0.3s; }
+
+  /* ============================================
+     TYPOGRAPHY — exact Figma tokens
+     Sizes/weights/line-heights/letter-spacings come straight from the
+     Figma variables panel (text styles "Display", "Heading", "Body").
+     ============================================ */
+
+  /* Display headings (hero, ecosystem, features, CTA) */
+  .h-display {
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.5rem, 4.4vw, 4rem);   /* 40 → 64 */
+    line-height: 1.05;
+    letter-spacing: -0.035em;                /* ≈ -1.92 on 56px */
+    color: var(--c-text-primary);
+  }
+
+  /* Section heading (medium "How it works", "Trust") */
+  .h-section {
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(2rem, 3.2vw, 2.875rem); /* 32 → 46 */
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    color: var(--c-text-primary);
+  }
+
+  /* Card heading inside features / how-it-works */
+  .h-card {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1rem;                         /* 16 */
+    line-height: 1.5;
+    letter-spacing: -0.011em;
+    color: var(--c-text-primary);
+  }
+
+  /* Lead paragraph under a display heading */
+  .t-lead {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 400;
+    font-size: 1.0625rem;                    /* 17 */
+    line-height: 1.7;
+    letter-spacing: 0.01em;                  /* matches +0.36 token */
+    color: var(--c-text-muted);
+  }
+
+  /* Body inside cards */
+  .t-body {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 400;
+    font-size: 0.8125rem;                    /* 13 */
+    line-height: 1.7;
+    letter-spacing: 0.01em;
+    color: var(--c-text-muted);
+  }
+
+  /* Eyebrow / category pill */
+  .t-eyebrow {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 0.75rem;                      /* 12 */
+    line-height: 1;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--c-accent);
+  }
 }
 
 @layer utilities {
+  .font-display { font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif; }
+
+  /* Display heading gradient — uses the brand color so the eye snaps to
+     it instantly. Primary → 80% white → accent makes it feel premium. */
   .text-gradient {
-    background: linear-gradient(180deg, var(--c-text-primary) 0%, var(--c-text-muted) 100%);
+    background: linear-gradient(180deg, var(--c-text-primary) 0%, var(--c-text-primary) 55%, color-mix(in srgb, var(--c-accent) 65%, var(--c-text-primary)) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  /* Pure-accent gradient (used for the brand color word inside a heading) */
+  .text-accent-gradient {
+    background: linear-gradient(135deg, #5a94ff 0%, #3b7eff 50%, #2a6df0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Subtle radial spotlight behind heroes/CTAs */
+  .bg-spotlight {
+    background-image:
+      radial-gradient(ellipse 60% 40% at 50% 0%, rgba(59,126,255,0.15) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 50% at 50% 100%, rgba(59,126,255,0.08) 0%, transparent 70%);
+  }
+
+  /* Conic mesh background — gives the page a subtle "alive" feel */
+  .bg-mesh {
+    background-image:
+      radial-gradient(at 20% 20%, rgba(59,126,255,0.08) 0px, transparent 50%),
+      radial-gradient(at 80% 0%,  rgba(90,148,255,0.06) 0px, transparent 50%),
+      radial-gradient(at 0% 80%,  rgba(59,126,255,0.06) 0px, transparent 50%),
+      radial-gradient(at 80% 80%, rgba(120,170,255,0.05) 0px, transparent 50%);
+  }
+
+  /* Soft rim glow on cards */
+  .ring-glow {
+    box-shadow:
+      0 0 0 1px rgba(59,126,255,0.1),
+      0 18px 60px -20px rgba(59,126,255,0.25),
+      inset 0 1px 0 0 rgba(255,255,255,0.04);
+  }
+
+  /* Animated gradient border on hover */
+  .gradient-border {
+    position: relative;
+    isolation: isolate;
+  }
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, transparent, transparent, rgba(59,126,255,0.5));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+  .gradient-border:hover::before {
+    opacity: 1;
+  }
+
+  /* Shimmer animation — used on the start-now button arrow */
+  @keyframes shimmer {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+  }
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.18) 50%, transparent 65%);
+    transform: translateX(-100%);
+    animation: shimmer 3s infinite;
+    pointer-events: none;
+  }
+
+  /* Soft float animation for the hero icons */
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-6px); }
+  }
+  .animate-float        { animation: float 4s ease-in-out infinite; }
+  .animate-float-delay-1 { animation: float 4s ease-in-out -1s infinite; }
+  .animate-float-delay-2 { animation: float 4s ease-in-out -2s infinite; }
+  .animate-float-delay-3 { animation: float 4s ease-in-out -3s infinite; }
+
+  /* Hover lift for cards */
+  .lift { transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s ease, border-color 0.3s ease; }
+  .lift:hover { transform: translateY(-4px); }
+}
+
+/* ============================================
+   LANDING PAGE — dark = Figma tokens; light = :root
+   ============================================ */
+html.dark .landing-page {
+  --c-page: #0b0e14;
+  --c-surface: #151921;
+  --c-surface2: #121620;
+  --c-elevated: #334155;
+  --c-border: rgba(255, 255, 255, 0.06);
+  --c-border-s: rgba(255, 255, 255, 0.04);
+  --c-text-primary: #ffffff;
+  --c-text-body: #94a3b8;
+  --c-text-muted: #94a3b8;
+  --c-text-faint: #64748b;
+  --c-accent: #3b82f6;
+  --c-accent-h: #2563eb;
+  --c-icon: #ffffff;
+  --c-nav-bg: rgba(11, 14, 20, 0.88);
+  --c-nav-pill: rgba(21, 25, 33, 0.92);
+  --c-card-hover: rgba(59, 130, 246, 0.06);
+  --c-glow: rgba(59, 130, 246, 0.12);
+}
+
+/* Light landing: crisp surfaces (inherits global :root if not overridden) */
+html:not(.dark) .landing-page {
+  --c-page: #f4f6fb;
+  --c-surface: #ffffff;
+  --c-surface2: #f1f5f9;
+  --c-elevated: #e2e8f0;
+  --c-border: rgba(15, 23, 42, 0.08);
+  --c-border-s: rgba(15, 23, 42, 0.04);
+  --c-text-primary: #0f172a;
+  --c-text-body: #475569;
+  --c-text-muted: #64748b;
+  --c-text-faint: #94a3b8;
+  --c-accent: #2563eb;
+  --c-accent-h: #1d4ed8;
+  --c-icon: #2563eb;
+  --c-nav-bg: rgba(255, 255, 255, 0.92);
+  --c-nav-pill: rgba(241, 245, 249, 0.95);
+  --c-card-hover: rgba(37, 99, 235, 0.06);
+  --c-glow: rgba(37, 99, 235, 0.08);
+}
+
+html:not(.dark) .trust-logo-card {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+html.dark .trust-logo-card {
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 45%,
+    rgba(56, 189, 248, 0.08) 0%,
+    rgba(29, 78, 216, 0.06) 45%,
+    #151921 72%
+  );
+}
+
+/* Feature cards: faint arc decoration (Figma radio waves) */
+.landing-feature-card::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  right: -15%;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 1px solid rgba(59, 130, 246, 0.06);
+  pointer-events: none;
+  opacity: 0.9;
+}
+.landing-feature-card::before {
+  content: '';
+  position: absolute;
+  top: -8%;
+  right: -6%;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 1px solid rgba(59, 130, 246, 0.05);
+  pointer-events: none;
+}
+
+html:not(.dark) .landing-feature-card::after {
+  border-color: rgba(37, 99, 235, 0.1);
+}
+html:not(.dark) .landing-feature-card::before {
+  border-color: rgba(37, 99, 235, 0.08);
+}
+
+/* CTA strip — light: airy; dark: deep navy (matches Figma) */
+.cta-banner {
+  background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 40%, #f1f5f9 100%);
+}
+html.dark .cta-banner {
+  background: linear-gradient(135deg, #0e1733 0%, #15275a 30%, #1b3578 50%, #122455 100%);
 }

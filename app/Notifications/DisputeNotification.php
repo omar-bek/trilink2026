@@ -4,21 +4,30 @@ namespace App\Notifications;
 
 use App\Models\Dispute;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DisputeNotification extends Notification
+class DisputeNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
     public function __construct(
         private readonly Dispute $dispute,
         private readonly string $action,
-    ) {}
+    ) {
+        $this->onQueue('notifications');
+    }
 
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
+        // Disputes are critical workflow events — they fall under
+        // contract_milestones since they directly affect contract execution.
+        return \App\Support\NotificationPreferences::channels(
+            $notifiable instanceof \App\Models\User ? $notifiable : null,
+            'contract_milestones',
+            ['database', 'mail']
+        );
     }
 
     public function toMail(object $notifiable): MailMessage

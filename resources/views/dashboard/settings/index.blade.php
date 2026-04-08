@@ -6,11 +6,11 @@
 <x-dashboard.page-header :title="__('settings.title')" :subtitle="__('settings.subtitle')" />
 
 @if(session('status'))
-<div class="mb-6 bg-[#10B981]/5 border border-[#10B981]/30 rounded-xl p-4 text-[13px] text-[#10B981]">{{ session('status') }}</div>
+<div class="mb-6 bg-[#00d9b5]/5 border border-[#00d9b5]/30 rounded-xl p-4 text-[13px] text-[#00d9b5]">{{ session('status') }}</div>
 @endif
 
 @if($errors->any())
-<div class="mb-6 bg-[#EF4444]/5 border border-[#EF4444]/30 rounded-xl p-4 text-[13px] text-[#EF4444]">
+<div class="mb-6 bg-[#ff4d7f]/5 border border-[#ff4d7f]/30 rounded-xl p-4 text-[13px] text-[#ff4d7f]">
     <ul class="list-disc ms-5 space-y-1">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
 </div>
 @endif
@@ -35,7 +35,7 @@
     <nav class="bg-surface border border-th-border rounded-2xl p-3 h-fit space-y-1">
         @foreach($tabs as $t)
         <a href="{{ route('settings.index', ['tab' => $t['key']]) }}"
-           class="flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-semibold transition-colors {{ $tab === $t['key'] ? 'bg-accent text-white shadow-[0_4px_14px_rgba(37,99,235,0.25)]' : 'text-body hover:bg-surface-2 hover:text-primary' }}">
+           class="flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-semibold transition-colors {{ $tab === $t['key'] ? 'bg-accent text-white shadow-[0_4px_14px_rgba(79,124,255,0.25)]' : 'text-body hover:bg-surface-2 hover:text-primary' }}">
             <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $t['icon'] }}"/></svg>
             <span>{{ $t['label'] }}</span>
         </a>

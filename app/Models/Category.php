@@ -21,13 +21,24 @@ class Category extends Model
         'path',
         'level',
         'is_active',
+        // UNSPSC mapping (Phase 1 / task 1.9). All fields are nullable —
+        // legacy categories without a UNSPSC mapping still work fine.
+        'unspsc_code',
+        'unspsc_segment',
+        'unspsc_family',
+        'unspsc_class',
+        'unspsc_commodity',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_active' => 'boolean',
-            'level' => 'integer',
+            'is_active'        => 'boolean',
+            'level'            => 'integer',
+            'unspsc_segment'   => 'integer',
+            'unspsc_family'    => 'integer',
+            'unspsc_class'     => 'integer',
+            'unspsc_commodity' => 'integer',
         ];
     }
 

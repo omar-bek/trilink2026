@@ -59,7 +59,9 @@ class SupplierFlowsTest extends TestCase
         $response->assertSee('Mohammed');
         $response->assertSee('Al-Noor Industries');
         // Supplier-specific section titles must appear (built by supplierPayload).
-        $response->assertSee(__('supplier.new_rfqs_available'));
+        // Phase 1 / task 1.8 renamed the "New RFQs Available" panel to the
+        // ranked "Recommended for you" list — assert against the live key.
+        $response->assertSee(__('supplier.recommended_for_you'));
         $response->assertSee(__('supplier.my_active_bids'));
     }
 
@@ -81,9 +83,10 @@ class SupplierFlowsTest extends TestCase
         $response = $this->actingAs($buyer)->get(route('dashboard'));
         $response->assertOk();
         $response->assertSee(strtoupper(__('role.buyer')));
-        // Buyer should NOT see the supplier-only "New RFQs Available" panel.
-        $response->assertDontSee(__('supplier.new_rfqs_available'));
-        $response->assertDontSee(__('supplier.matching_categories'));
+        // Buyer should NOT see the supplier-only "Recommended for you"
+        // RFQ matcher panel or its category-fit subtitle.
+        $response->assertDontSee(__('supplier.recommended_for_you'));
+        $response->assertDontSee(__('supplier.recommended_subtitle'));
     }
 
     // ---------------------------------------------------------------------
@@ -93,6 +96,10 @@ class SupplierFlowsTest extends TestCase
     public function test_performance_page_renders_for_authenticated_user(): void
     {
         $supplier = $this->makeSupplier();
+        // PerformanceController gates on `reports.view` permission. Grant it
+        // explicitly so the test mirrors a supplier whose company manager
+        // ticked the "view reports" permission box.
+        $supplier->update(['permissions' => ['reports.view']]);
 
         $this->actingAs($supplier)
             ->get(route('performance.index'))
@@ -159,10 +166,13 @@ class SupplierFlowsTest extends TestCase
     {
         $supplier = $this->makeSupplier();
 
+        // The payment tab template branches by role: suppliers see the
+        // "Receiving Bank Account" form (where buyers will deposit funds),
+        // while buyers see the "Bank Transfer" outgoing-method card.
         $this->actingAs($supplier)
             ->get(route('settings.index', ['tab' => 'payment']))
             ->assertOk()
-            ->assertSee('Bank Transfer');
+            ->assertSee('Receiving Bank Account');
     }
 
     public function test_settings_company_update_persists(): void

@@ -40,14 +40,7 @@ class CompanyUserController extends Controller
         $q = trim((string) $request->query('q', ''));
 
         $users = User::where('company_id', $companyId)
-            ->when($q !== '', function ($query) use ($q) {
-                $query->where(function ($w) use ($q) {
-                    $w->where('first_name', 'like', "%{$q}%")
-                      ->orWhere('last_name', 'like', "%{$q}%")
-                      ->orWhere('email', 'like', "%{$q}%")
-                      ->orWhere('position_title', 'like', "%{$q}%");
-                });
-            })
+            ->when($q !== '', fn ($query) => $query->search($q, ['first_name', 'last_name', 'email', 'position_title']))
             ->orderBy('first_name')
             ->paginate(20)
             ->withQueryString();

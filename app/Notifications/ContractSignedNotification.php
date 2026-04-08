@@ -4,21 +4,28 @@ namespace App\Notifications;
 
 use App\Models\Contract;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class ContractSignedNotification extends Notification
+class ContractSignedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
     public function __construct(
         private readonly Contract $contract,
         private readonly string $signerName,
-    ) {}
+    ) {
+        $this->onQueue('notifications');
+    }
 
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
+        return \App\Support\NotificationPreferences::channels(
+            $notifiable instanceof \App\Models\User ? $notifiable : null,
+            'contract_milestones',
+            ['database', 'mail']
+        );
     }
 
     public function toMail(object $notifiable): MailMessage

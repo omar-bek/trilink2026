@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Company;
 use App\Models\Contract;
 use App\Models\ContractVersion;
 use App\Services\ContractService;
@@ -34,7 +35,18 @@ class ContractController extends Controller
     public function show(int $id): JsonResponse
     {
         $contract = $this->service->find($id);
-        return $contract ? $this->success($contract) : $this->notFound();
+        if (!$contract) {
+            return $this->notFound();
+        }
+
+        // Authorization: a contract is visible to its parties only.
+        // Parties = the buyer company AND every entry in the parties JSON
+        // column. Government and admin roles can read all contracts.
+        if (!$this->userIsContractParty($contract)) {
+            return $this->notFound();
+        }
+
+        return $this->success($contract);
     }
 
     public function store(Request $request): JsonResponse
@@ -70,12 +82,28 @@ class ContractController extends Controller
             'end_date' => 'nullable|date',
         ]);
 
+        $contract = Contract::find($id);
+        if (!$contract) {
+            return $this->notFound();
+        }
+        if (!$this->userIsContractParty($contract)) {
+            return $this->notFound();
+        }
+
         $contract = $this->service->update($id, $data);
         return $contract ? $this->success($contract) : $this->notFound();
     }
 
     public function destroy(int $id): JsonResponse
     {
+        $contract = Contract::find($id);
+        if (!$contract) {
+            return $this->notFound();
+        }
+        if (!$this->userIsContractParty($contract)) {
+            return $this->notFound();
+        }
+
         return $this->service->delete($id)
             ? $this->success(null, 'Contract deleted')
             : $this->notFound();
@@ -90,6 +118,9 @@ class ContractController extends Controller
 
         $contract = Contract::find($id);
         if (!$contract) return $this->notFound();
+        if (!$this->userIsContractParty($contract)) {
+            return $this->notFound();
+        }
 
         $contractHash = $this->pkiService->generateContractHash($contract->toArray());
         $digitalSignature = $this->pkiService->createDigitalSignature(
@@ -117,6 +148,9 @@ class ContractController extends Controller
     {
         $contract = Contract::find($id);
         if (!$contract) return $this->notFound();
+        if (!$this->userIsContractParty($contract)) {
+            return $this->notFound();
+        }
 
         $signatures = $contract->signatures ?? [];
         $verified = [];
@@ -142,6 +176,9 @@ class ContractController extends Controller
     {
         $contract = Contract::find($id);
         if (!$contract) return $this->notFound();
+        if (!$this->userIsContractParty($contract)) {
+            return $this->notFound();
+        }
 
         if (!$contract->allPartiesHaveSigned()) {
             return $this->error('All parties must sign before activation', 422);
@@ -157,9 +194,49 @@ class ContractController extends Controller
         if (!$contract) {
             return response()->json(['message' => 'Contract not found'], 404);
         }
+        if (!$this->userIsContractParty($contract)) {
+            return response()->json(['message' => 'Contract not found'], 404);
+        }
 
-        $pdf = Pdf::loadView('contracts.pdf', ['contract' => $contract]);
+        // Resolve the supplier party so the bilingual UAE PDF template can
+        // render its full registration / TRN / address block. Mirrors the
+        // Web\ContractController::pdf() lookup — keep them in sync.
+        $supplierCompanyId = collect($contract->parties ?? [])
+            ->firstWhere('role', 'supplier')['company_id'] ?? null;
+        $supplierCompany = $supplierCompanyId ? Company::find($supplierCompanyId) : null;
+
+        $pdf = Pdf::loadView('contracts.pdf', [
+            'contract'        => $contract,
+            'buyerCompany'    => $contract->buyerCompany,
+            'supplierCompany' => $supplierCompany,
+        ]);
         return $pdf->download("contract-{$contract->contract_number}.pdf");
+    }
+
+    /**
+     * True iff the authenticated user belongs to a company that is a
+     * party of the contract — i.e. the buyer company or any of the
+     * company_ids in the parties JSON column. Admins and government
+     * users always pass.
+     */
+    private function userIsContractParty(Contract $contract): bool
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return false;
+        }
+        if ($user->isAdmin() || $user->isGovernment()) {
+            return true;
+        }
+
+        $partyCompanyIds = collect($contract->parties ?? [])
+            ->pluck('company_id')
+            ->push($contract->buyer_company_id)
+            ->filter()
+            ->unique()
+            ->all();
+
+        return in_array($user->company_id, $partyCompanyIds, true);
     }
 
     public function amendments(int $id): JsonResponse

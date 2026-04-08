@@ -50,7 +50,7 @@
                         <p class="text-[11px] text-muted">BID-{{ $bid->id }}</p>
                     </td>
                     <td class="p-4">
-                        <p class="text-[15px] font-bold text-[#10B981]">{{ $bid->currency }} {{ number_format((float) $bid->price) }}</p>
+                        <p class="text-[15px] font-bold text-[#00d9b5]">{{ $bid->currency }} {{ number_format((float) $bid->price) }}</p>
                     </td>
                     <td class="p-4">
                         <p class="text-[13px] font-semibold text-primary">{{ $bid->delivery_time_days }} days</p>
@@ -65,7 +65,7 @@
                         @if(in_array($bid->status?->value, ['submitted', 'under_review'], true))
                         <button wire:click="accept({{ $bid->id }})"
                                 wire:confirm="{{ __('bids.confirm_accept') }}"
-                                class="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-[#10B981] hover:bg-[#0EA371]">
+                                class="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-[#00d9b5] hover:bg-[#00c9a5]">
                             {{ __('bids.accept') }}
                         </button>
                         @endif
@@ -88,7 +88,7 @@
             @foreach($this->bids->whereIn('id', $selected) as $bid)
             <div class="bg-page border border-th-border rounded-xl p-5">
                 <p class="text-[11px] text-muted mb-1">{{ $bid->company?->name }}</p>
-                <p class="text-[24px] font-bold text-[#10B981] mb-3">{{ $bid->currency }} {{ number_format((float) $bid->price) }}</p>
+                <p class="text-[24px] font-bold text-[#00d9b5] mb-3">{{ $bid->currency }} {{ number_format((float) $bid->price) }}</p>
                 <dl class="space-y-2 text-[12px]">
                     <div class="flex items-center justify-between">
                         <dt class="text-muted">{{ __('bids.delivery') }}:</dt>

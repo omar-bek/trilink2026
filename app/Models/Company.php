@@ -2,18 +2,21 @@
 
 namespace App\Models;
 
+use App\Concerns\Searchable;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
+use App\Enums\VerificationLevel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 
 class Company extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, Searchable;
 
     protected $fillable = [
         'name',
@@ -22,6 +25,13 @@ class Company extends Model
         'tax_number',
         'type',
         'status',
+        'verification_level',
+        'verified_by',
+        'verified_at',
+        'sanctions_status',
+        'sanctions_screened_at',
+        'latest_credit_score',
+        'latest_credit_band',
         'email',
         'phone',
         'website',
@@ -30,6 +40,7 @@ class Company extends Model
         'country',
         'logo',
         'documents',
+        'certifications',
         'description',
     ];
 
@@ -38,8 +49,28 @@ class Company extends Model
         return [
             'type' => CompanyType::class,
             'status' => CompanyStatus::class,
+            'verification_level' => VerificationLevel::class,
+            'verified_at' => 'datetime',
+            'sanctions_screened_at' => 'datetime',
             'documents' => 'array',
+            'certifications' => 'array',
         ];
+    }
+
+    /**
+     * The company's active "admin needs more info" request. HasOne because
+     * we enforce a unique index on company_id in the table — there's only
+     * ever one active request per company at a time.
+     */
+    public function infoRequest(): HasOne
+    {
+        return $this->hasOne(CompanyInfoRequest::class);
+    }
+
+    /** Typed bank details — IBAN / SWIFT / holder name — for payouts. */
+    public function bankDetails(): HasOne
+    {
+        return $this->hasOne(CompanyBankDetail::class);
     }
 
     public function users(): HasMany
@@ -95,6 +126,86 @@ class Company extends Model
     public function uploads(): HasMany
     {
         return $this->hasMany(Upload::class);
+    }
+
+    public function companyDocuments(): HasMany
+    {
+        return $this->hasMany(CompanyDocument::class);
+    }
+
+    public function sanctionsScreenings(): HasMany
+    {
+        return $this->hasMany(SanctionsScreening::class)->latest();
+    }
+
+    public function beneficialOwners(): HasMany
+    {
+        return $this->hasMany(BeneficialOwner::class);
+    }
+
+    public function insurances(): HasMany
+    {
+        return $this->hasMany(CompanyInsurance::class);
+    }
+
+    public function creditScores(): HasMany
+    {
+        return $this->hasMany(CreditScore::class)->latest('reported_at');
+    }
+
+    /**
+     * Phase 8 — at most one ESG questionnaire per company. Resubmissions
+     * overwrite the row in place via EsgScoringService::score, so this
+     * relation always reflects the latest assessment.
+     */
+    public function esgQuestionnaire(): HasOne
+    {
+        return $this->hasOne(EsgQuestionnaire::class);
+    }
+
+    /**
+     * Phase 8 — annual modern slavery statements (one row per reporting
+     * year). Ordered newest-first so the supplier profile and ESG
+     * dashboard surface the latest filing without sorting in code.
+     */
+    public function modernSlaveryStatements(): HasMany
+    {
+        return $this->hasMany(ModernSlaveryStatement::class)->orderByDesc('reporting_year');
+    }
+
+    /**
+     * Phase 8 — annual conflict minerals (3TG) declarations. Same
+     * newest-first ordering as the modern slavery statements.
+     */
+    public function conflictMineralsDeclarations(): HasMany
+    {
+        return $this->hasMany(ConflictMineralsDeclaration::class)->orderByDesc('reporting_year');
+    }
+
+    /**
+     * Phase 8 — Scope 1/2/3 carbon footprint entries logged against
+     * this company. Used by the ESG dashboard's 12-month roll-up. The
+     * `entity_id` filter is the polymorphic discriminator since the
+     * `carbon_footprints` table holds rows for companies, contracts,
+     * AND shipments under the same schema.
+     */
+    public function carbonFootprints(): HasMany
+    {
+        return $this->hasMany(CarbonFootprint::class, 'entity_id')
+            ->where('entity_type', CarbonFootprint::ENTITY_COMPANY);
+    }
+
+    /**
+     * True iff the company has at least one verified, non-expired
+     * insurance policy on file. Drives the "Insured" badge in the
+     * supplier profile + bid card (Phase 2 / Sprint 10 / task 2.15).
+     */
+    public function isInsured(): bool
+    {
+        return $this->insurances()
+            ->where('status', CompanyInsurance::STATUS_VERIFIED)
+            ->where('expires_at', '>', now())
+            ->exists();
     }
 
     public function isActive(): bool

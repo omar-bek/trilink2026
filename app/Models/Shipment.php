@@ -71,4 +71,30 @@ class Shipment extends Model
             }
         });
     }
+
+    /**
+     * Real progress percentage 0-100, derived from the canonical phase
+     * order. The phases are linear (preparing → in_transit → at_customs →
+     * out_for_delivery → delivered), so progress is just the index of the
+     * current phase divided by the total. "delivered" is always 100, any
+     * unknown status is 0.
+     *
+     * Used by both the index card and the show page progress bar so they
+     * stay consistent.
+     */
+    public function realProgress(): int
+    {
+        $phases = [
+            ShipmentStatus::IN_PRODUCTION->value    => 20,
+            ShipmentStatus::READY_FOR_PICKUP->value => 35,
+            ShipmentStatus::IN_TRANSIT->value       => 60,
+            ShipmentStatus::IN_CLEARANCE->value     => 75,
+            ShipmentStatus::DELIVERED->value        => 100,
+            ShipmentStatus::CANCELLED->value        => 0,
+        ];
+
+        $value = $this->status instanceof \BackedEnum ? $this->status->value : (string) $this->status;
+
+        return $phases[$value] ?? 0;
+    }
 }

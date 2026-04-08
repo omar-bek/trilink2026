@@ -5,13 +5,17 @@ namespace App\Http\Controllers\Web\Auth;
 use App\Enums\CompanyType;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\Company;
 use App\Models\User;
+use App\Notifications\CompanyInfoCompletedNotification;
 use App\Notifications\CompanyRegisteredNotification;
 use App\Services\AuthService;
+use App\Support\CompanyInfoFields;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class RegisterController extends Controller
@@ -49,7 +53,117 @@ class RegisterController extends Controller
 
     public function showSuccess(): View
     {
-        return view('auth.registration-success');
+        // Build a structured `infoRequest` view-model when an admin has
+        // asked the manager for more info. Sourced from the typed
+        // `company_info_requests` table (Phase 0 / task 0.6).
+        $infoRequest = null;
+        $user        = auth()->user();
+
+        $pending = $user?->company?->infoRequest;
+        if ($pending && $pending->isPending() && is_array($pending->items) && $pending->items !== []) {
+            $catalog = CompanyInfoFields::catalog();
+            $items   = [];
+            foreach ($pending->items as $key) {
+                if (isset($catalog[$key])) {
+                    $items[] = $catalog[$key] + ['key' => $key];
+                }
+            }
+            if (!empty($items)) {
+                $infoRequest = [
+                    'items'        => $items,
+                    'note'         => $pending->note ?? '',
+                    'requested_at' => $pending->requested_at?->toDateTimeString(),
+                ];
+            }
+        }
+
+        return view('auth.registration-success', compact('infoRequest'));
+    }
+
+    /**
+     * The company manager submits the additional information that an
+     * admin requested. We validate against the catalog rules, write the
+     * fields/documents back to the company, clear the info_request flag,
+     * then notify the admins so they can re-review.
+     */
+    public function submitInfo(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless($user && $user->company, 403);
+
+        $company = $user->company;
+        $pending = $company->infoRequest;
+        abort_unless($pending && $pending->isPending() && is_array($pending->items) && $pending->items !== [], 404);
+
+        $requestedKeys = array_values(array_intersect(
+            $pending->items,
+            CompanyInfoFields::allKeys()
+        ));
+
+        // Build the validation rules for ONLY the items the admin asked for.
+        $rules = CompanyInfoFields::rulesFor($requestedKeys);
+
+        // Be friendly about website URLs without a protocol — same trick as
+        // the original registration form.
+        if (in_array('website', $requestedKeys, true)
+            && $request->filled('website')
+            && !preg_match('~^https?://~i', (string) $request->input('website'))) {
+            $request->merge(['website' => 'https://' . trim((string) $request->input('website'))]);
+        }
+
+        $data = $request->validate($rules);
+
+        $catalog       = CompanyInfoFields::catalog();
+        $columnUpdates = [];
+        $documents     = is_array($company->documents) ? $company->documents : [];
+
+        foreach ($requestedKeys as $key) {
+            $entry = $catalog[$key];
+
+            if ($entry['kind'] === 'field' && isset($entry['column'])) {
+                $columnUpdates[$entry['column']] = $data[$key] ?? null;
+                continue;
+            }
+
+            if ($entry['kind'] === 'document' && isset($entry['doc_key']) && $request->hasFile($key)) {
+                $path = $request->file($key)->store('companies/documents', 'public');
+                $documents[$entry['doc_key']] = $path;
+            }
+        }
+
+        $columnUpdates['documents'] = $documents;
+
+        $company->update($columnUpdates);
+
+        // Mark the info request as responded — keeps the row for the audit
+        // trail but lifecycle code that checks `isPending()` now treats it
+        // as resolved (Phase 0 / task 0.6).
+        $pending->update([
+            'responded_at' => now(),
+            'responded_by' => $user->id,
+        ]);
+
+        // Notify every admin that the company has resubmitted, deferred to
+        // after-response so the user's redirect is instant.
+        $companyId = $company->id;
+        app()->terminating(function () use ($companyId) {
+            try {
+                $company = Company::find($companyId);
+                if (!$company) {
+                    return;
+                }
+                $admins = User::where('role', UserRole::ADMIN->value)->get();
+                if ($admins->isNotEmpty()) {
+                    Notification::send($admins, new CompanyInfoCompletedNotification($company));
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+
+        return redirect()
+            ->route('register.success')
+            ->with('status', __('register.info_submitted'));
     }
 
     public function register(Request $request): RedirectResponse

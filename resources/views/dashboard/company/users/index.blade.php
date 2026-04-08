@@ -6,8 +6,8 @@
 <x-dashboard.page-header :title="__('company.users.title')" :subtitle="__('company.users.subtitle')">
     @can('team.invite')
     <x-slot:actions>
-        <a href="{{ route('company.users.create') }}" class="inline-flex items-center gap-2 bg-accent text-white px-4 py-2.5 rounded-lg text-[13px] font-semibold hover:opacity-90 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        <a href="{{ route('company.users.create') }}" class="inline-flex items-center gap-2 bg-accent text-white h-11 px-5 rounded-xl text-[13px] font-semibold hover:bg-accent-h transition-all shadow-[0_10px_30px_-10px_rgba(79,124,255,0.55)]">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.25" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z"/></svg>
             {{ __('company.users.invite') }}
         </a>
     </x-slot:actions>
@@ -25,9 +25,15 @@
 @endif
 
 <form method="GET" class="bg-surface border border-th-border rounded-2xl p-4 mb-6 grid grid-cols-1 md:grid-cols-4 gap-3">
-    <input type="text" name="q" value="{{ $q }}" placeholder="{{ __('common.search_placeholder') }}"
-           class="md:col-span-3 bg-surface-2 border border-th-border rounded-lg px-3 py-2 text-[13px] text-primary placeholder-faint focus:outline-none focus:border-accent" />
-    <button type="submit" class="bg-accent text-white rounded-lg px-4 py-2 text-[13px] font-semibold">{{ __('common.filter') }}</button>
+    <div class="md:col-span-3 relative">
+        <svg class="w-4 h-4 text-faint absolute start-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
+        <input type="text" name="q" value="{{ $q }}" placeholder="{{ __('common.search_placeholder') }}"
+               class="w-full bg-surface-2 border border-th-border rounded-lg ps-10 pe-3 py-2.5 text-[13px] text-primary placeholder-faint focus:outline-none focus:border-accent" />
+    </div>
+    <button type="submit" class="inline-flex items-center justify-center gap-2 bg-accent text-white rounded-lg px-4 py-2.5 text-[13px] font-semibold hover:bg-accent-h transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z"/></svg>
+        {{ __('common.filter') }}
+    </button>
 </form>
 
 <div class="bg-surface border border-th-border rounded-2xl overflow-hidden">
@@ -102,7 +108,14 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="6" class="text-center text-muted py-8">{{ __('company.users.no_users') }}</td></tr>
+                <tr>
+                    <td colspan="6" class="px-4 py-12 text-center">
+                        <div class="w-14 h-14 mx-auto rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mb-3 text-accent">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+                        </div>
+                        <p class="text-[14px] font-bold text-primary">{{ __('company.users.no_users') }}</p>
+                    </td>
+                </tr>
                 @endforelse
             </tbody>
         </table>

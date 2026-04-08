@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "mcp__claude_ai_Figma__get_design_context",
-      "Bash(php artisan:*)"
+      "Bash(php artisan:*)",
+      "mcp__claude_ai_Figma__get_metadata"
     ]
   }
 }

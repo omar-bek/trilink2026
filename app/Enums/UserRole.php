@@ -6,6 +6,7 @@ enum UserRole: string
 {
     case BUYER = 'buyer';
     case COMPANY_MANAGER = 'company_manager';
+    case BRANCH_MANAGER = 'branch_manager';
     case SUPPLIER = 'supplier';
     case LOGISTICS = 'logistics';
     case CLEARANCE = 'clearance';
@@ -28,6 +29,7 @@ enum UserRole: string
     {
         return [
             self::BUYER,
+            self::BRANCH_MANAGER,
             self::SUPPLIER,
             self::SALES,
             self::SALES_MANAGER,
