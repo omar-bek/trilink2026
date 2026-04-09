@@ -124,6 +124,17 @@
         $channelDb   = (bool) ($prefs['channels']['database'] ?? true);
         $channelMail = (bool) ($prefs['channels']['mail']     ?? true);
         $digestMode  = $prefs['digest']['mode'] ?? 'realtime';
+
+        // Per-category toggles. Defaults from the helper so the form
+        // matches what notifications respect at runtime.
+        $catDefaults = \App\Support\NotificationPreferences::DEFAULTS;
+        $catSaved    = $user->custom_permissions['notifications'] ?? [];
+        $categories  = [];
+        foreach ($catDefaults as $key => $default) {
+            $categories[$key] = is_array($catSaved) && array_key_exists($key, $catSaved)
+                ? (bool) $catSaved[$key]
+                : (bool) $default;
+        }
     @endphp
     <div class="bg-surface border border-th-border rounded-2xl p-5 sm:p-6">
         <h3 class="text-[16px] font-bold text-primary mb-1">{{ __('profile.notifications_title') }}</h3>
@@ -162,6 +173,27 @@
                             <input type="radio" name="digest_mode" value="{{ $value }}" @checked($digestMode === $value)
                                    class="w-4 h-4 text-accent focus:ring-accent/40">
                             <span class="text-[13px] font-semibold">{{ __($labelKey) }}</span>
+                        </label>
+                    @endforeach
+                </div>
+            </div>
+
+            {{-- Per-category opt-in matrix. The Profile form previously
+                 only exposed channel-level toggles, which meant a user
+                 couldn't say "I want bid updates by email but compliance
+                 alerts only in-app". This grid maps each category to a
+                 single checkbox; the legacy NotificationPreferences
+                 helper reads the same JSON shape so the toggles take
+                 effect immediately for every notification. --}}
+            <div class="space-y-3">
+                <p class="text-[12px] font-semibold text-primary uppercase tracking-wider">{{ __('profile.notifications_categories') }}</p>
+                <p class="text-[12px] text-muted">{{ __('profile.notifications_categories_hint') }}</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    @foreach ($categories as $key => $enabled)
+                        <label class="flex items-center gap-3 p-3 rounded-xl bg-page border border-th-border cursor-pointer hover:border-accent/40">
+                            <input type="checkbox" name="categories[{{ $key }}]" value="1" @checked($enabled)
+                                   class="w-4 h-4 rounded border-th-border text-accent focus:ring-accent/40">
+                            <span class="text-[13px] font-semibold text-primary">{{ __('profile.notification_category_' . $key) }}</span>
                         </label>
                     @endforeach
                 </div>

@@ -88,6 +88,8 @@ class ProfileController extends Controller
             'channel_database' => ['nullable', 'boolean'],
             'channel_mail'     => ['nullable', 'boolean'],
             'digest_mode'      => ['required', 'in:realtime,daily,off'],
+            'categories'       => ['nullable', 'array'],
+            'categories.*'     => ['nullable', 'boolean'],
         ]);
 
         $user = $request->user();
@@ -110,6 +112,24 @@ class ProfileController extends Controller
         }
 
         $user->update(['notification_preferences' => $current]);
+
+        // Per-category toggles live in the legacy custom_permissions
+        // bag so the existing NotificationPreferences::wantsCategory()
+        // helper keeps working without a schema change. We merge the
+        // submitted set into whatever was there so other features
+        // sharing the bag (e.g. saved-search opt-ins) aren't trampled.
+        $cats = $request->input('categories', []);
+        $catBag = is_array($cats) ? $cats : [];
+
+        $allCategories = array_keys(\App\Support\NotificationPreferences::DEFAULTS);
+        $normalised = [];
+        foreach ($allCategories as $key) {
+            $normalised[$key] = (bool) ($catBag[$key] ?? false);
+        }
+
+        $custom = is_array($user->custom_permissions) ? $user->custom_permissions : [];
+        $custom['notifications'] = array_merge($custom['notifications'] ?? [], $normalised);
+        $user->update(['custom_permissions' => $custom]);
 
         return redirect()->route('profile.edit')->with('status', __('profile.notifications_updated'));
     }

@@ -360,9 +360,17 @@ class QualifiedSignaturePhase6Test extends TestCase
             'ip_address' => '10.0.0.1',
         ]);
 
-        // Tamper: change the title AFTER signing
+        // Tamper: mutate one of the fields the canonical hash recipe
+        // covers (terms / amounts / parties / version / contract_number).
+        // The title is NOT in the recipe — that's a deliberate choice
+        // because the title is just a label — so we change `parties`
+        // to add a phantom party which is exactly the kind of attack
+        // the verify page must catch.
         $contract->refresh();
-        $contract->update(['title' => 'EVIL MODIFIED title']);
+        $tamperedParties = array_merge($contract->parties ?? [], [
+            ['company_id' => 99999, 'role' => 'phantom'],
+        ]);
+        $contract->update(['parties' => $tamperedParties]);
 
         $response = $this->get(route('public.contracts.verify', ['id' => $contract->id]));
         $response->assertOk();

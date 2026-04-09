@@ -109,25 +109,19 @@ class BidController extends Controller
         $query     = trim((string) $request->query('q', ''));
         $statusFilter = $request->query('status');
 
-        // Company-centric routing. The same company can have bids it RECEIVED
-        // (other companies bidding on its RFQs) and bids it SUBMITTED (its
-        // own employees bidding on other companies' RFQs). Managers, admins,
-        // and any company-attached user can pivot between the two views:
-        //   - tab=received  → bids on OUR company's RFQs (buyer-side index)
-        //   - tab=submitted → bids OUR company's employees submitted (supplier-side)
+        // Company-centric tabs. The same company can have bids it RECEIVED
+        // (other companies bidding on its RFQs) AND bids it SUBMITTED (its
+        // own employees bidding on other companies' RFQs). The user can
+        // pivot between the two views:
+        //   - tab=received  → bids on OUR company's RFQs
+        //   - tab=submitted → bids OUR company submitted on other RFQs
         //
-        // Default tab is driven by isSupplierSideUser() which combines role
-        // AND company type — pure supplier-side roles land on "submitted"
-        // (their own bids), AND so does any cross-cutting role
-        // (company_manager, finance, sales, …) attached to a supplier
-        // company. Buyer-side users land on "received".
-        $tab = $request->query('tab');
-        if (! in_array($tab, ['received', 'submitted'], true)) {
-            $tab = $this->isSupplierSideUser() ? 'submitted' : 'received';
-        }
-
-        // Headline counts for the view-switcher tabs. Computed once here so
-        // both branches pass identical numbers to their views.
+        // Default tab is whichever side the company has more activity on,
+        // so a dual-role tenant lands on the side that's "busier" but can
+        // always switch with one click. The previous role-based dispatch
+        // (isSupplierSideUser) hid the other side from cross-cutting roles
+        // attached to dual-role companies — now both sides are always
+        // reachable from a single, unified index page.
         $tabCounts = [
             'received'  => $companyId
                 ? Bid::query()->whereHas('rfq', fn ($q) => $q->where('company_id', $companyId))->count()
@@ -136,6 +130,10 @@ class BidController extends Controller
                 ? Bid::query()->where('company_id', $companyId)->count()
                 : 0,
         ];
+        $tab = $request->query('tab');
+        if (! in_array($tab, ['received', 'submitted'], true)) {
+            $tab = $tabCounts['submitted'] > $tabCounts['received'] ? 'submitted' : 'received';
+        }
 
         if ($tab === 'submitted') {
             return $this->supplierIndex($companyId, $query, $statusFilter, $request, $tabCounts);
@@ -343,7 +341,11 @@ class BidController extends Controller
             ->map($map)
             ->all();
 
-        return view('dashboard.bids.index-supplier', [
+        return view('dashboard.bids.index', [
+            // Supplier-side stats — distinct from buyer-side because the
+            // numbers represent different things (Active/Won/Lost/Draft vs.
+            // Total/UnderReview/Shortlisted/Accepted/Rejected). The view
+            // picks the right stat block based on $activeTab.
             'stats' => [
                 'active'      => $activeCount,
                 'won'         => $wonCount,
@@ -357,8 +359,10 @@ class BidController extends Controller
             'won_bids'    => $wonBids,
             'lost_bids'   => $lostBids,
             'draft_bids'  => $draftBids,
-            'tab_counts'  => $tabCounts,
-            'active_tab'  => 'submitted',
+            // Use the same variable names as the buyer-side index() so the
+            // unified blade can read them without conditionally aliasing.
+            'tabCounts'   => $tabCounts,
+            'activeTab'   => 'submitted',
         ]);
     }
 
@@ -481,13 +485,17 @@ class BidController extends Controller
         // enumerate competitor bid prices, payment terms and attachments.
         $this->authorizeBidParticipant($bid);
 
-        // Supplier viewing their own bid gets the "my submitted bid" layout
-        // (Bid Status timeline, Buyer Information on the right, no supplier
-        // card). Routed via the role + company-type helper so a company
-        // manager / finance user of a supplier company also gets it.
-        if ($this->isSupplierSideUser()) {
-            return $this->supplierShow($bid);
-        }
+        // Per-bid role resolution (replaces the old isSupplierSideUser
+        // dispatch). The same company can play both buyer + supplier roles
+        // across different bids: we are the supplier when WE submitted the
+        // bid, the buyer when WE own the parent RFQ. Buyer wins when both
+        // are true (a company bidding on its own RFQ — defensive only).
+        $myCompanyId      = auth()->user()?->company_id;
+        $isMyReceivedBid  = $myCompanyId && $bid->rfq && (int) $bid->rfq->company_id === (int) $myCompanyId;
+        $isMySubmittedBid = $myCompanyId && (int) $bid->company_id === (int) $myCompanyId;
+        $myRole           = $isMyReceivedBid ? 'buyer' : ($isMySubmittedBid ? 'supplier' : 'buyer');
+        $direction        = $myRole === 'buyer' ? 'incoming' : 'outgoing';
+
         $rfqBudget = (float) ($bid->rfq?->budget ?? $bid->price);
         $diff      = $rfqBudget > 0 ? round((($rfqBudget - (float) $bid->price) / $rfqBudget) * 100, 1) : 0;
         $price     = (float) $bid->price;
@@ -652,10 +660,71 @@ class BidController extends Controller
                 ->all();
         }
 
+        // ----- Supplier-side merge fields ---------------------------------
+        // The unified show page also needs the data the legacy supplierShow()
+        // built (timeline, competition, buyer info, can_withdraw) so that
+        // when the current company is the bid SUBMITTER the view can render
+        // the same supplier-side sections without dispatching elsewhere.
+        $supplierStatusKey = $this->mapBidStatus($statusKey);
+        $statusValueRaw    = $this->statusValue($bid->status);
+
+        $timeline = [
+            [
+                'title' => __('bids.history.submitted'),
+                'when'  => $bid->created_at?->format('M j, Y · g:i A') ?? '—',
+                'done'  => true,
+            ],
+            [
+                'title' => __('bids.history.reviewed'),
+                'when'  => $bid->updated_at?->format('M j, Y · g:i A') ?? '—',
+                'done'  => in_array($statusValueRaw, ['under_review', 'accepted', 'rejected'], true),
+            ],
+            [
+                'title' => match ($statusValueRaw) {
+                    'accepted' => __('bids.history.accepted'),
+                    'rejected' => __('bids.history.rejected'),
+                    default    => __('bids.awaiting_decision') ?? 'Pending Decision',
+                },
+                'when'  => match ($statusValueRaw) {
+                    'accepted', 'rejected' => $bid->updated_at?->format('M j, Y · g:i A') ?? '—',
+                    default                => __('bids.awaiting_buyer_response') ?? 'Awaiting buyer response',
+                },
+                'done'  => in_array($statusValueRaw, ['accepted', 'rejected'], true),
+            ],
+        ];
+
+        // Competition: peer bids on the same RFQ. Same data both sides see.
+        $sibling    = $bid->rfq ? $bid->rfq->bids()->get() : collect();
+        $prices     = $sibling->map(fn ($b) => (float) $b->price)->filter();
+        $sortedSib  = $sibling->sortBy('price')->values();
+        $myPosition = $sortedSib->search(fn ($b) => $b->id === $bid->id);
+        $myPosition = $myPosition !== false ? $myPosition + 1 : null;
+        $competition = [
+            'count'       => $sibling->count(),
+            'lowest'      => $prices->isNotEmpty() ? $this->money($prices->min(), $bid->currency) : '—',
+            'average'     => $prices->isNotEmpty() ? $this->money($prices->avg(), $bid->currency) : '—',
+            'my_position' => $myPosition,
+            'my_bid'      => $this->money($price, $bid->currency),
+        ];
+
+        // Buyer info (used when current viewer is the supplier).
+        $buyerInfo = [
+            'name'     => $bid->rfq?->is_anonymous
+                ? 'Buyer #' . str_pad((string) (($bid->rfq->company_id ?? 0) * 137 % 9999), 4, '0', STR_PAD_LEFT)
+                : ($bid->rfq?->company?->name ?? '—'),
+            'category' => $bid->rfq?->category?->name ?? '—',
+            'rfq_ref'  => '#' . ($bid->rfq?->rfq_number ?? '—'),
+        ];
+
         $bidData = [
             'id'             => $this->bidDisplayNumber($bid),
             'numeric_id'     => $bid->id,
             'status'         => $this->mapBidStatus($statusKey),
+            // Per-bid role-aware fields used by the unified view to flip
+            // between buyer-side and supplier-side sections without a
+            // separate template.
+            'my_role'        => $myRole,
+            'direction'      => $direction,
             // The "shortlisted" star pill on the bid show header is only true
             // when the bid is in an active, decision-pending state. Anything
             // already accepted/rejected/withdrawn isn't on the shortlist.
@@ -663,6 +732,7 @@ class BidController extends Controller
             'rfq'            => $bid->rfq?->rfq_number ?? '—',
             'rfq_numeric_id' => $bid->rfq?->id,
             'rfq_title'      => $bid->rfq?->title ?? '—',
+            'rfq_category'   => $bid->rfq?->category?->name ?? '—',
             'supplier'       => $supplier?->name ?? '—',
             'supplier_info'  => $supplierInfo,
             // Phase 2 — supplier's TRN, surfaced on the bid header so the
@@ -725,15 +795,25 @@ class BidController extends Controller
             'history'         => $history,
             'ai_score'        => $bid->ai_score['overall'] ?? $bid->ai_score['score'] ?? null,
             'negotiation'     => $this->negotiationViewModel($bid),
+            // ----- Supplier-side fields (rendered by the unified view
+            // when $bid['my_role'] === 'supplier') ----------------------
+            'delivery_days'  => (int) ($bid->delivery_time_days ?? 0),
+            'valid_until'    => $bid->validity_date ? $bid->validity_date->format('M j, Y') : '—',
+            'timeline'       => $timeline,
+            'competition'    => $competition,
+            'buyer'          => $buyerInfo,
+            'can_withdraw'   => $myRole === 'supplier' && in_array($statusKey, ['submitted', 'under_review'], true),
         ];
 
         return view('dashboard.bids.show', ['bid' => $bidData]);
     }
 
     /**
-     * Supplier-side bid detail page — renders the bid from the submitter's
-     * point of view. Shows a status timeline, the competition summary, and
-     * a Buyer Information card in the sidebar.
+     * Legacy supplier-side data builder kept as a private helper. Since the
+     * unified show() now renders both sides from the same template, this
+     * method is no longer routed to from show() and exists only as a
+     * reference for the data shape that the supplier branch used to need.
+     * Safe to delete in a follow-up cleanup pass.
      */
     private function supplierShow(Bid $bid): View
     {

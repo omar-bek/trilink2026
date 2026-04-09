@@ -118,6 +118,32 @@ class DataErasureService
         ));
 
         if (!empty($hardBlockers)) {
+            // PDPL requires the data subject to be told WHY their
+            // erasure was refused — silent failure is itself a
+            // violation. Create a denied PrivacyRequest row so the
+            // refusal is auditable, then notify the user before
+            // throwing.
+            $deniedRequest = PrivacyRequest::create([
+                'user_id'      => $user->id,
+                'request_type' => PrivacyRequest::TYPE_ERASURE,
+                'status'       => PrivacyRequest::STATUS_REJECTED ?? 'rejected',
+                'requested_at' => CarbonImmutable::now(),
+                'completed_at' => CarbonImmutable::now(),
+                'fulfillment_metadata' => [
+                    'reason'   => implode(' | ', $hardBlockers),
+                    'blockers' => $hardBlockers,
+                ],
+            ]);
+
+            try {
+                $user->notify(new DataErasureDeniedNotification($deniedRequest, implode(' | ', $hardBlockers)));
+            } catch (\Throwable $e) {
+                \Log::warning('DataErasureService denied notification failed', [
+                    'user_id' => $user->id,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+
             throw new RuntimeException(implode(' | ', $hardBlockers));
         }
 
@@ -166,6 +192,14 @@ class DataErasureService
                 ]);
                 return;
             }
+
+            // Capture the original email BEFORE the update so the
+            // completed notification can be routed back to the real
+            // mailbox — once we anonymise, the user row carries a
+            // placeholder address and any deferred notification would
+            // bounce into the void.
+            $originalEmail = $user->email;
+            $originalLocale = $user->preferredLocale();
 
             $placeholder = sprintf('anon-%d@deleted.local', $user->id);
 
@@ -242,6 +276,23 @@ class DataErasureService
                     ]
                 ),
             ]);
+
+            // Tell the data subject the erasure is done — routed to the
+            // ORIGINAL email so the notification actually reaches them
+            // (the user row now carries the placeholder). Wrapped in
+            // try/catch because the actual erasure must succeed even
+            // if the notification driver is offline.
+            if ($originalEmail) {
+                try {
+                    \Illuminate\Support\Facades\Notification::route('mail', $originalEmail)
+                        ->notify(new DataErasureCompletedNotification($request->fresh()));
+                } catch (\Throwable $e) {
+                    \Log::warning('DataErasureService completed notification failed', [
+                        'request_id' => $request->id,
+                        'error'      => $e->getMessage(),
+                    ]);
+                }
+            }
         });
     }
 

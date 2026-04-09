@@ -57,3 +57,29 @@ Schedule::command('audit:archive --dry-run')->dailyAt('01:30');
 // before the typical procurement team morning so they see the alert
 // when they sit down for the day.
 Schedule::command('contracts:renewal-alerts')->dailyAt('06:00');
+
+// RFQ deadline reminders — hourly because the 2h tier needs to fire
+// inside the same hour the RFQ crosses the 2h-out mark. The 48h /
+// 24h tiers tolerate the hourly granularity comfortably.
+Schedule::command('rfqs:deadline-reminders')
+    ->hourly()
+    ->withoutOverlapping();
+
+// Daily payment overdue chase — 7/14/30 day tiers. 06:30 UTC right
+// after the renewal alerts so the morning email is consolidated.
+Schedule::command('payments:overdue-reminders')->dailyAt('06:30');
+
+// Daily contract end-date reminder — 30/7/1 day tiers. Distinct from
+// renewal-alerts because this targets ALL active contracts not just
+// the ones flagged for auto-renewal.
+Schedule::command('contracts:expiry-reminders')->dailyAt('06:15');
+
+// Daily — sweep contracts that have been sitting in PENDING_SIGNATURES
+// past their signing window and tell both parties the window has
+// elapsed. Default window length is 14 days.
+Schedule::command('contracts:expire-signature-windows')->dailyAt('05:00');
+
+// Weekly — purge old read notifications from the database to keep
+// the notifications table from growing unbounded. Anything read more
+// than 60 days ago is safe to drop.
+Schedule::command('notifications:cleanup')->weeklyOn(0, '02:30');

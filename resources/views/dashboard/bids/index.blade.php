@@ -10,7 +10,9 @@ $statusPills = [
     'under_review' => ['bg' => 'bg-[#ffb020]/10', 'border' => 'border-[#ffb020]/20', 'text' => 'text-[#ffb020]', 'dot' => 'bg-[#ffb020]'],
     'accepted'     => ['bg' => 'bg-[#00d9b5]/10', 'border' => 'border-[#00d9b5]/20', 'text' => 'text-[#00d9b5]', 'dot' => 'bg-[#00d9b5]'],
     'rejected'     => ['bg' => 'bg-[#ff4d7f]/10', 'border' => 'border-[#ff4d7f]/20', 'text' => 'text-[#ff4d7f]', 'dot' => 'bg-[#ff4d7f]'],
-    'draft'        => ['bg' => 'bg-muted/10',       'border' => 'border-muted/20',       'text' => 'text-muted',       'dot' => 'bg-muted'],
+    'draft'        => ['bg' => 'bg-muted/10',     'border' => 'border-muted/20',     'text' => 'text-muted',     'dot' => 'bg-muted'],
+    'withdrawn'    => ['bg' => 'bg-muted/10',     'border' => 'border-muted/20',     'text' => 'text-muted',     'dot' => 'bg-muted'],
+    'negotiation'  => ['bg' => 'bg-[#ffb020]/10', 'border' => 'border-[#ffb020]/20', 'text' => 'text-[#ffb020]', 'dot' => 'bg-[#ffb020]'],
 ];
 
 $statColors = [
@@ -20,20 +22,37 @@ $statColors = [
     'green'  => 'text-[#00d9b5]',
     'red'    => 'text-[#ff4d7f]',
 ];
+
+// Active tab — drives whether we render the buyer-side (received) or
+// supplier-side (submitted) layout. The same template handles BOTH so a
+// company that plays both buyer + supplier roles can switch between them
+// with a single click instead of being routed to a separate template by
+// role. Default is 'received' for legacy callers.
+$activeTab = $activeTab ?? 'received';
+$isSubmittedTab = $activeTab === 'submitted';
 @endphp
 
 @section('content')
 
+{{-- ============================================================
+     UNIFIED BIDS INDEX — handles both buyer-received and
+     supplier-submitted bids in one template. The active tab drives
+     which stat block + list section renders below the header.
+     ============================================================ --}}
+
 {{-- Header --}}
 <div class="flex items-start justify-between gap-4 mb-6 flex-wrap">
     <div>
-        <h1 class="text-[28px] sm:text-[32px] font-bold text-primary leading-tight tracking-[-0.02em]">{{ __('bids.title') }}</h1>
-        <p class="text-[16px] text-muted mt-1">{{ __('bids.subtitle') }}</p>
+        <h1 class="text-[28px] sm:text-[32px] font-bold text-primary leading-tight tracking-[-0.02em]">
+            {{ $isSubmittedTab ? __('supplier.my_bids') : __('bids.title') }}
+        </h1>
+        <p class="text-[16px] text-muted mt-1">
+            {{ $isSubmittedTab ? __('supplier.my_bids_subtitle') : __('bids.subtitle') }}
+        </p>
 
-        {{-- Company-centric view switcher: received vs submitted bids.
-             Hidden when the controller didn't compute tab counts (legacy
-             callers / users with no company_id), in which case the page
-             behaves exactly as it did before. --}}
+        {{-- Company-centric tab switcher: received vs submitted bids.
+             Always rendered so a dual-role company can pivot between the
+             two sides with one click. --}}
         @if(!empty($tabCounts))
         <div class="mt-4 bg-surface border border-th-border rounded-2xl p-1.5 inline-flex gap-1">
             @php
@@ -43,7 +62,7 @@ $statColors = [
                 ];
             @endphp
             @foreach($bidTabs as $tab)
-            @php $isActive = ($activeTab ?? 'received') === $tab['key']; @endphp
+            @php $isActive = $activeTab === $tab['key']; @endphp
             <a href="{{ route('dashboard.bids', ['tab' => $tab['key']]) }}"
                class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors {{ $isActive ? 'bg-accent text-white shadow-[0_4px_14px_rgba(79,124,255,0.25)]' : 'text-muted hover:text-primary hover:bg-surface-2' }}">
                 {{ $tab['label'] }}
@@ -54,6 +73,7 @@ $statColors = [
         @endif
     </div>
     <div class="flex items-center gap-2">
+        @if(!$isSubmittedTab)
         <x-dashboard.export-csv-button :url="route('dashboard.bids') . '?' . http_build_query(array_merge(request()->query(), ['export' => 'csv']))" />
         <a href="{{ route('dashboard.rfqs') }}"
            class="inline-flex items-center gap-2 px-5 h-12 rounded-[12px] text-[14px] font-medium text-primary bg-page border border-th-border hover:border-accent/40 transition-colors">
@@ -62,12 +82,141 @@ $statColors = [
             </svg>
             {{ __('bids.view_rfqs') }}
         </a>
+        @else
+        <a href="{{ route('dashboard.rfqs') }}"
+           class="inline-flex items-center gap-2 h-11 px-5 rounded-[12px] text-[14px] font-medium text-white bg-accent hover:bg-accent-h transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25"/></svg>
+            {{ __('bids.browse_rfqs') }}
+        </a>
+        @endif
     </div>
 </div>
 
+@if($isSubmittedTab)
+{{-- ============================================================
+     SUBMITTED TAB — bids OUR company submitted on other RFQs
+     ============================================================ --}}
+
 {{-- Stats --}}
 @php
-$statCards = [
+$submittedStatCards = [
+    ['value' => $stats['active'],         'label' => __('supplier.active_bids'),  'color' => 'text-accent'],
+    ['value' => $stats['won'],            'label' => __('supplier.won'),          'color' => 'text-[#00d9b5]'],
+    ['value' => $stats['lost'],           'label' => __('supplier.lost'),         'color' => 'text-[#ff4d7f]'],
+    ['value' => $stats['total_value'],    'label' => __('contracts.total_value'), 'color' => 'text-[#ffb020]'],
+    ['value' => $stats['win_rate'] . '%', 'label' => __('supplier.win_rate'),     'color' => 'text-[#8b5cf6]'],
+];
+@endphp
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
+    @foreach($submittedStatCards as $card)
+    <div class="bg-surface border border-th-border rounded-[16px] p-[17px]">
+        <p class="text-[24px] font-semibold {{ $card['color'] }} leading-[32px] tracking-[0.003em] truncate">{{ $card['value'] }}</p>
+        <p class="text-[14px] text-muted leading-[20px] mt-1">{{ $card['label'] }}</p>
+    </div>
+    @endforeach
+</div>
+
+{{-- Search --}}
+<form method="GET" action="{{ route('dashboard.bids') }}"
+      class="bg-surface border border-th-border rounded-[16px] p-4 mb-6 flex flex-col lg:flex-row gap-3 items-stretch">
+    <input type="hidden" name="tab" value="submitted">
+    <div class="flex-1 relative">
+        <svg class="w-4 h-4 text-muted absolute start-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
+        <input type="text" name="q" value="{{ request('q') }}"
+               placeholder="{{ __('supplier.bids_search_placeholder') }}"
+               class="w-full bg-page border border-th-border rounded-[12px] ps-11 pe-4 h-12 text-[14px] text-primary placeholder:text-faint focus:outline-none focus:border-accent/60 transition-colors">
+    </div>
+    <button type="submit"
+            class="inline-flex items-center justify-center gap-2 h-12 px-5 rounded-[12px] text-[14px] font-medium text-white bg-accent hover:bg-accent-h transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
+        {{ __('common.search') }}
+    </button>
+</form>
+
+{{-- Tabs (active / won / lost / draft) --}}
+<div x-data="{ tab: 'active' }" class="bg-surface border border-th-border rounded-[16px] p-[25px]">
+    <div class="grid grid-cols-4 border-b border-th-border mb-6 -mx-[25px] px-[25px]">
+        @php
+            $submittedSubTabs = [
+                'active' => ['label' => __('supplier.active_bids'), 'count' => count($active_bids ?? [])],
+                'won'    => ['label' => __('supplier.won'),         'count' => count($won_bids ?? [])],
+                'lost'   => ['label' => __('supplier.lost'),        'count' => count($lost_bids ?? [])],
+                'draft'  => ['label' => __('status.draft'),         'count' => count($draft_bids ?? [])],
+            ];
+        @endphp
+        @foreach($submittedSubTabs as $key => $t)
+        <button type="button" @click="tab = '{{ $key }}'"
+                :class="tab === '{{ $key }}' ? 'text-accent border-accent' : 'text-muted border-transparent hover:text-primary'"
+                class="pb-3 text-[14px] font-medium border-b-2 transition-colors text-center">
+            {{ $t['label'] }} ({{ $t['count'] }})
+        </button>
+        @endforeach
+    </div>
+
+    @foreach(['active' => ($active_bids ?? []), 'won' => ($won_bids ?? []), 'lost' => ($lost_bids ?? []), 'draft' => ($draft_bids ?? [])] as $tabKey => $list)
+    <div x-show="tab === '{{ $tabKey }}'" x-cloak class="space-y-3">
+        @forelse($list as $bid)
+        @php $pill = $statusPills[$bid['status']] ?? $statusPills['draft']; @endphp
+        <div class="bg-page border border-th-border rounded-[12px] p-5 hover:border-accent/40 transition-colors">
+            <div class="flex items-start justify-between gap-4 flex-wrap">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap mb-2">
+                        <span class="text-[13px] text-muted">{{ $bid['id'] }} · #{{ $bid['rfq'] }}</span>
+                        <span class="inline-flex items-center gap-1.5 h-5 px-2 rounded-full border {{ $pill['bg'] }} {{ $pill['border'] }} {{ $pill['text'] }} text-[11px] font-medium">
+                            <span class="w-1 h-1 rounded-full {{ $pill['dot'] }}"></span>
+                            {{ __('status.' . $bid['status']) }}
+                        </span>
+                    </div>
+                    <a href="{{ route('dashboard.bids.show', ['id' => $bid['numeric_id']]) }}"
+                       class="text-[16px] font-semibold text-primary leading-[22px] hover:text-accent transition-colors">{{ $bid['rfq_title'] }}</a>
+                    <p class="text-[13px] text-muted mt-1">{{ __('bids.buyer') }}: <span class="text-primary">{{ $bid['buyer'] }}</span></p>
+                </div>
+                <div class="text-end flex-shrink-0">
+                    <p class="text-[20px] font-semibold text-[#00d9b5] leading-[28px]">{{ $bid['amount'] }}</p>
+                    <p class="text-[12px] text-muted">{{ __('bids.bid_amount') }}</p>
+                </div>
+            </div>
+            <div class="flex items-center justify-between gap-3 mt-4 pt-4 border-t border-th-border flex-wrap">
+                <div class="inline-flex items-center gap-2 text-[13px] text-muted">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    {{ __('bids.submitted_label') }}: <span class="text-primary font-medium">{{ $bid['submitted'] }}</span>
+                    <span class="text-faint">({{ $bid['ago'] }} {{ __('common.ago') }})</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a href="{{ route('dashboard.bids.show', ['id' => $bid['numeric_id']]) }}"
+                       class="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] text-[13px] font-medium text-accent bg-accent/10 border border-accent/20 hover:bg-accent/15 transition-colors">
+                        {{ __('common.view') }}
+                    </a>
+                    @if($bid['can_withdraw'])
+                    <form method="POST" action="{{ route('dashboard.bids.withdraw', ['id' => $bid['numeric_id']]) }}"
+                          onsubmit="return confirm('{{ __('bids.withdraw_confirm') }}')">
+                        @csrf
+                        <button type="submit" class="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] text-[13px] font-medium text-[#ff4d7f] bg-[#ff4d7f]/10 border border-[#ff4d7f]/20 hover:bg-[#ff4d7f]/15 transition-colors">
+                            {{ __('bids.withdraw_bid') }}
+                        </button>
+                    </form>
+                    @endif
+                </div>
+            </div>
+        </div>
+        @empty
+        <div class="bg-page border border-th-border rounded-[12px] p-12 text-center">
+            <svg class="w-12 h-12 text-faint mx-auto mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25"/></svg>
+            <p class="text-[14px] text-muted">{{ __('supplier.no_bids_in_category') }}</p>
+        </div>
+        @endforelse
+    </div>
+    @endforeach
+</div>
+
+@else
+{{-- ============================================================
+     RECEIVED TAB — bids on OUR company's RFQs
+     ============================================================ --}}
+
+{{-- Stats --}}
+@php
+$receivedStatCards = [
     ['value' => $stats['total'],        'label' => __('bids.total'),        'color' => 'purple'],
     ['value' => $stats['under_review'], 'label' => __('bids.under_review'), 'color' => 'orange'],
     ['value' => $stats['shortlisted'],  'label' => __('bids.shortlisted'),  'color' => 'blue'],
@@ -76,7 +225,7 @@ $statCards = [
 ];
 @endphp
 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-    @foreach($statCards as $card)
+    @foreach($receivedStatCards as $card)
     <div class="bg-surface border border-th-border rounded-[16px] p-[17px]">
         <p class="text-[24px] font-semibold {{ $statColors[$card['color']] }} leading-[32px] tracking-[0.003em]">{{ $card['value'] }}</p>
         <p class="text-[14px] text-muted leading-[20px] mt-1">{{ $card['label'] }}</p>
@@ -87,6 +236,7 @@ $statCards = [
 {{-- Search bar --}}
 <form method="GET" action="{{ route('dashboard.bids') }}"
       class="bg-surface border border-th-border rounded-[16px] p-4 mb-6 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+    <input type="hidden" name="tab" value="received">
     <div class="flex-1 relative">
         <svg class="w-4 h-4 text-muted absolute start-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/>
@@ -112,10 +262,7 @@ $statCards = [
     </button>
 </form>
 
-{{-- Bulk action toolbar (Phase 0 / task 0.8) — the form lives outside the
-     bid list so we don't end up with nested <form> tags (the per-row accept
-     and withdraw buttons each have their own form). Per-row checkboxes
-     attach to this form via the `form=` attribute. --}}
+{{-- Bulk action toolbar (Phase 0 / task 0.8) --}}
 @php $canBulkReject = auth()->user()?->hasPermission('bid.accept'); @endphp
 @if($canBulkReject)
 <form method="POST" action="{{ route('dashboard.bids.bulk-reject') }}" id="bids-bulk-form"
@@ -278,5 +425,6 @@ $statCards = [
         :ctaUrl="route('dashboard.rfqs')" />
     @endforelse
 </div>
+@endif
 
 @endsection
