@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -31,6 +32,7 @@ use Illuminate\Notifications\Notification;
 class DataBreachNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public const SEVERITY_LOW      = 'low';
     public const SEVERITY_MEDIUM   = 'medium';
@@ -56,27 +58,23 @@ class DataBreachNotification extends Notification implements ShouldQueue
     {
         $deadline = now()->addHours(72);
 
-        return (new MailMessage)
-            ->subject('[' . strtoupper($this->severity) . '] Data breach reported — TriLink')
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'Admin') . ',')
-            ->line('A potential data breach has been reported on the platform. Please action immediately.')
-            ->line("**Severity:** " . strtoupper($this->severity))
-            ->line("**Affected data subjects:** {$this->affectedCount}")
-            ->line("**Detection method:** " . ($this->detectionMethod ?? 'unspecified'))
-            ->line("**Reported by:** " . ($this->reportedBy ?? 'system'))
-            ->line("**Description:** {$this->description}")
-            ->line('Under PDPL Article 9, the UAE Data Office must be notified within 72 hours of awareness.')
-            ->line("**72-hour deadline:** {$deadline->toDayDateTimeString()} GST")
-            ->action('Open the incident response runbook', url('/dashboard/admin/audit'))
-            ->line('Convene the incident response process now if you have not already.');
+        return $this->baseMail($notifiable, 'notifications.privacy.breach.subject')
+            ->line($this->t($notifiable, 'notifications.privacy.breach.message'))
+            ->line(strtoupper($this->severity) . ' — ' . $this->affectedCount . ' subjects')
+            ->line($this->description)
+            ->line('72h deadline: ' . $deadline->toDayDateTimeString() . ' GST')
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_view'),
+                url('/dashboard/admin/audit')
+            );
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type'             => 'data_breach',
-            'title'            => 'Data breach reported (' . strtoupper($this->severity) . ')',
-            'message'          => "{$this->affectedCount} data subjects affected — " . $this->truncate($this->description, 140),
+            'title'            => $this->t($notifiable, 'notifications.privacy.breach.title') . ' (' . strtoupper($this->severity) . ')',
+            'message'          => "{$this->affectedCount} — " . $this->truncate($this->description, 140),
             'severity'         => $this->severity,
             'affected_count'   => $this->affectedCount,
             'detection_method' => $this->detectionMethod,

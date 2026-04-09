@@ -1,0 +1,48 @@
+{
+    "name": "TriLink — B2B Procurement",
+    "short_name": "TriLink",
+    "description": "Regional B2B procurement platform: PR, RFQs, bidding, contracts, payments and shipments — all in one trust-graded marketplace.",
+    "start_url": "/dashboard",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#0f1117",
+    "theme_color": "#0f1117",
+    "lang": "en",
+    "dir": "auto",
+    "categories": ["business", "productivity", "finance"],
+    "icons": [
+        {
+            "src": "/logo/logo.png",
+            "type": "image/png",
+            "sizes": "192x192",
+            "purpose": "any"
+        },
+        {
+            "src": "/logo/logo.png",
+            "type": "image/png",
+            "sizes": "512x512",
+            "purpose": "any maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Purchase Requests",
+            "short_name": "PRs",
+            "url": "/dashboard/purchase-requests",
+            "description": "Open the purchase request inbox"
+        },
+        {
+            "name": "Contracts",
+            "short_name": "Contracts",
+            "url": "/dashboard/contracts",
+            "description": "Open the contracts dashboard"
+        },
+        {
+            "name": "RFQs",
+            "short_name": "RFQs",
+            "url": "/dashboard/rfqs",
+            "description": "Open the RFQ marketplace"
+        }
+    ]
+}

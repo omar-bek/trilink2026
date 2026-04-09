@@ -51,3 +51,9 @@ Schedule::command('audit:verify-chain --quiet-success')->dailyAt('01:00');
 // until Phase 8 wires up S3 Object Lock. Scheduling it now means the
 // retention math is exercised every day so config drift is caught early.
 Schedule::command('audit:archive --dry-run')->dailyAt('01:30');
+
+// Contract renewal alerts — daily fan-out for contracts approaching
+// their end date (90 / 60 / 30 day buckets). 06:00 UTC = 10:00 GST,
+// before the typical procurement team morning so they see the alert
+// when they sit down for the day.
+Schedule::command('contracts:renewal-alerts')->dailyAt('06:00');

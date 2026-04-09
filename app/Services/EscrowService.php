@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\PaymentStatus;
+use App\Models\Company;
 use App\Models\Contract;
 use App\Models\EscrowAccount;
 use App\Models\EscrowRelease;
@@ -138,6 +139,13 @@ class EscrowService
         if (!$account->isActive()) {
             throw new BankPartnerException('Escrow account is not active.');
         }
+
+        // Phase Hardening — UAE Federal Decree-Law 50/2022 Article 5
+        // requires both parties to hold a valid trade license at the
+        // moment value moves. Re-check on every release because a
+        // license can expire after the contract was signed but before
+        // the escrow drains.
+        $this->assertContractPartiesLicensed($account->contract);
 
         $partner = $this->resolvePartner($account);
 
@@ -370,6 +378,49 @@ class EscrowService
     {
         if ($amount <= 0) {
             throw new BankPartnerException('Amount must be greater than zero.');
+        }
+    }
+
+    /**
+     * Assert that every party of a contract still holds a valid trade
+     * license. Same compliance hook as ContractService — reused on
+     * every release so an expired license stops a drain instead of
+     * letting funds flow to an unlicensed entity. Throws
+     * BankPartnerException so the controller's existing exception
+     * handler surfaces it as a flash error on the contract page.
+     */
+    private function assertContractPartiesLicensed(?Contract $contract): void
+    {
+        if (!$contract) {
+            return;
+        }
+
+        $partyIds = collect($contract->parties ?? [])
+            ->pluck('company_id')
+            ->push($contract->buyer_company_id)
+            ->filter()
+            ->unique()
+            ->all();
+
+        if ($partyIds === []) {
+            return;
+        }
+
+        $companies = Company::whereIn('id', $partyIds)->get()->keyBy('id');
+        $missing = [];
+        foreach ($partyIds as $cid) {
+            $company = $companies->get($cid);
+            if ($company && !$company->hasValidTradeLicense()) {
+                $missing[] = $company->name;
+            }
+        }
+
+        if ($missing !== []) {
+            throw new BankPartnerException(
+                'Cannot release escrow funds — trade license missing, expired or unverified for: '
+                . implode(', ', $missing)
+                . '. Renew the trade license document before retrying.'
+            );
         }
     }
 

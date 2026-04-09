@@ -33,9 +33,33 @@
             messages: [],
             lastFetchedAt: null,
             pollHandle: null,
+            hasMoreEarlier: false,
+            loadingEarlier: false,
             init() {
                 this.messages = config.initialMessages || [];
+                this.hasMoreEarlier = !!config.hasMoreEarlier;
                 this.lastFetchedAt = new Date().toISOString();
+                // Pause polling whenever the tab is hidden (background
+                // tab, locked screen, switched apps) to avoid burning
+                // mobile battery and bandwidth on a thread the user
+                // isn't even looking at. Resume on visibilitychange.
+                this._visibilityHandler = () => {
+                    if (!this.openThread) return;
+                    if (document.hidden) {
+                        this.stopPolling();
+                    } else {
+                        this.startPolling();
+                        // Catch up on anything we missed while hidden.
+                        this.fetchNew();
+                    }
+                };
+                document.addEventListener('visibilitychange', this._visibilityHandler);
+            },
+            destroy() {
+                this.stopPolling();
+                if (this._visibilityHandler) {
+                    document.removeEventListener('visibilitychange', this._visibilityHandler);
+                }
             },
             toggle() {
                 this.openThread = !this.openThread;
@@ -51,6 +75,9 @@
                 }
             },
             startPolling() {
+                // Don't poll when the tab is hidden — wait until the
+                // user actually returns to the page.
+                if (document.hidden) return;
                 this.polling = true;
                 if (this.pollHandle) clearInterval(this.pollHandle);
                 this.pollHandle = setInterval(() => this.fetchNew(), 10000);
@@ -83,6 +110,51 @@
                     /* Network blip — try again on the next interval. */
                 }
             },
+            // Load older messages on demand. Capture the current
+            // scroll position so the new messages are PREPENDED
+            // without jumping the user away from where they were
+            // reading. Stops calling itself when a fetch returns
+            // fewer than the page size (the user has scrolled to
+            // the very first message of the thread).
+            async loadEarlier() {
+                if (this.loadingEarlier || !this.hasMoreEarlier) return;
+                this.loadingEarlier = true;
+                try {
+                    const oldestId = this.messages.length > 0 ? this.messages[0].id : null;
+                    if (!oldestId) { this.loadingEarlier = false; return; }
+                    const url = config.pollUrl + '?before=' + encodeURIComponent(oldestId);
+                    const res = await fetch(url, {
+                        headers: { 'Accept': 'application/json' },
+                        credentials: 'same-origin',
+                    });
+                    if (!res.ok) { this.loadingEarlier = false; return; }
+                    const data = await res.json();
+                    const earlier = (data.messages || []).filter(m => !this.messages.find(existing => existing.id === m.id));
+                    if (earlier.length === 0) {
+                        this.hasMoreEarlier = false;
+                    } else {
+                        // Preserve scroll position: snapshot the
+                        // scrollHeight before the prepend, and
+                        // restore the relative offset after the
+                        // DOM has updated.
+                        const bubbles = this.$refs.bubbles;
+                        const prevHeight = bubbles ? bubbles.scrollHeight : 0;
+                        this.messages = earlier.concat(this.messages);
+                        if (earlier.length < 20) {
+                            this.hasMoreEarlier = false;
+                        }
+                        this.$nextTick(() => {
+                            if (bubbles) {
+                                bubbles.scrollTop = bubbles.scrollHeight - prevHeight;
+                            }
+                        });
+                    }
+                } catch (e) {
+                    /* Ignore — the button stays available for retry. */
+                } finally {
+                    this.loadingEarlier = false;
+                }
+            },
         }));
     });
 </script>
@@ -93,6 +165,7 @@
         amendmentId: {{ $amendment['id'] }},
         pollUrl: '{{ route('dashboard.contracts.amendments.messages.poll', ['id' => $contract_id, 'amendmentId' => $amendment['id']]) }}',
         initialMessages: @js($amendment['messages']),
+        hasMoreEarlier: @js((bool) ($amendment['has_more_messages'] ?? false)),
     })"
     class="mt-3"
     id="amendment-{{ $amendment['id'] }}"
@@ -149,6 +222,23 @@
         {{-- Message bubbles — populated from Alpine state so polling
              can append new ones without re-rendering server-side. --}}
         <div x-ref="bubbles" class="space-y-3 mb-4 max-h-[320px] overflow-y-auto pe-1">
+            {{-- Load earlier — visible only when the seed list
+                 was capped at 20 and the server has more older
+                 messages waiting. --}}
+            <template x-if="hasMoreEarlier">
+                <div class="text-center pb-2">
+                    <button type="button"
+                            @click="loadEarlier()"
+                            :disabled="loadingEarlier"
+                            :class="loadingEarlier ? 'opacity-50 cursor-not-allowed' : ''"
+                            class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent hover:text-accent-h">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5"/></svg>
+                        <span x-show="!loadingEarlier">{{ __('contracts.negotiation_load_earlier') }}</span>
+                        <span x-show="loadingEarlier" x-cloak>{{ __('common.loading') }}…</span>
+                    </button>
+                </div>
+            </template>
+
             <template x-for="message in messages" :key="message.id">
                 <div :class="message.is_mine ? 'flex items-start justify-end gap-2' : 'flex items-start gap-2'">
                     <template x-if="!message.is_mine">

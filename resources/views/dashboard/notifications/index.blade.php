@@ -2,12 +2,17 @@
 @section('title', __('notifications.title'))
 
 @php
+// Sprint C.13 — palette routed through semantic Tailwind tokens
+// instead of raw hex. The keys still describe a colour family so
+// existing call-sites don't have to change, but the values resolve
+// via CSS variables so a future palette refresh doesn't need a
+// mass file edit. See tailwind.config.js + resources/css/app.css.
 $notifColors = [
-    'blue'   => ['bg' => 'bg-[#4f7cff]/10', 'text' => 'text-[#4f7cff]'],
-    'green'  => ['bg' => 'bg-[#00d9b5]/10', 'text' => 'text-[#00d9b5]'],
-    'orange' => ['bg' => 'bg-[#ffb020]/10', 'text' => 'text-[#ffb020]'],
-    'purple' => ['bg' => 'bg-[#8B5CF6]/10', 'text' => 'text-[#8B5CF6]'],
-    'red'    => ['bg' => 'bg-[#ff4d7f]/10', 'text' => 'text-[#ff4d7f]'],
+    'blue'   => ['bg' => 'bg-accent-info/10',    'text' => 'text-accent-info'],
+    'green'  => ['bg' => 'bg-accent-success/10', 'text' => 'text-accent-success'],
+    'orange' => ['bg' => 'bg-accent-warning/10', 'text' => 'text-accent-warning'],
+    'purple' => ['bg' => 'bg-accent-violet/10',  'text' => 'text-accent-violet'],
+    'red'    => ['bg' => 'bg-accent-magenta/10', 'text' => 'text-accent-magenta'],
 ];
 @endphp
 
@@ -28,12 +33,12 @@ $notifColors = [
 </x-dashboard.page-header>
 
 @if(session('status'))
-<div class="mb-6 bg-[#00d9b5]/5 border border-[#00d9b5]/30 rounded-xl p-4 text-[13px] text-[#00d9b5]">{{ session('status') }}</div>
+<div class="mb-6 bg-accent-success/5 border border-accent-success/30 rounded-xl p-4 text-[13px] text-accent-success">{{ session('status') }}</div>
 @endif
 
 @if($unreadCount > 0)
 <div class="mb-6 inline-flex items-center gap-2 text-[12px] text-muted">
-    <span class="bg-[#ff4d7f] text-white text-[11px] font-bold px-2 py-0.5 rounded-full min-w-[22px] text-center">{{ $unreadCount }}</span>
+    <span class="bg-accent-magenta text-white text-[11px] font-bold px-2 py-0.5 rounded-full min-w-[22px] text-center">{{ $unreadCount }}</span>
     {{ __('notifications.unread_count', ['count' => $unreadCount]) }}
 </div>
 @endif

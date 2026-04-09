@@ -5,6 +5,7 @@ namespace App\Services\Privacy;
 use App\Models\Consent;
 use App\Models\PrivacyRequest;
 use App\Models\User;
+use App\Notifications\DataExportReadyNotification;
 use Illuminate\Support\Facades\Storage;
 use ZipArchive;
 
@@ -87,9 +88,124 @@ class DataExportService
             );
         }
 
+        // Phase 2.5 (UAE Compliance Roadmap — post-implementation
+        // hardening). PDPL Article 13(2) — "the data subject shall
+        // have the right to obtain a copy of the personal data" — is
+        // not satisfied by JSON metadata alone. The user has the right
+        // to receive the actual files they uploaded (trade license,
+        // beneficial owner ID copies, ICV certificates, etc.).
+        //
+        // The DSAR archive grows files into a /files/ tree organised
+        // by source so the user (or their auditor) can locate any
+        // single document immediately. Missing files are SKIPPED with
+        // a manifest entry — never throw, since one missing PDF
+        // shouldn't fail the whole DSAR fulfillment.
+        $this->addUploadedFiles($zip, $user);
+
         $zip->close();
 
+        // PDPL Article 13(2) — the data subject must be told their
+        // export is available. Without this notification the archive
+        // would sit on disk while the user wonders if their request
+        // was even received.
+        if ($request) {
+            try {
+                $user->notify(new DataExportReadyNotification($request));
+            } catch (\Throwable $e) {
+                \Log::warning('DataExportService notification failed', [
+                    'user_id' => $user->id,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
+        }
+
         return $zipPath;
+    }
+
+    /**
+     * Phase 2.5 — copy every PDPL-relevant file the user (or their
+     * company) uploaded into the archive. Returns the manifest of
+     * what was copied + what was missing, which the caller writes
+     * into the index for completeness.
+     */
+    private function addUploadedFiles(ZipArchive $zip, User $user): array
+    {
+        $manifest = ['copied' => [], 'missing' => []];
+        $disk = Storage::disk('local');
+
+        $sources = [];
+
+        // Company documents (trade license, VAT cert, MoA, etc.)
+        if ($user->company) {
+            $companyDocs = \App\Models\CompanyDocument::where('company_id', $user->company_id)->get();
+            foreach ($companyDocs as $doc) {
+                $sources[] = [
+                    'category' => 'company-documents',
+                    'label'    => ($doc->type?->value ?? 'document') . '-' . $doc->id,
+                    'path'     => $doc->file_path,
+                    'original' => $doc->original_filename,
+                ];
+            }
+
+            // ICV certificates uploaded by the supplier
+            $icvs = \App\Models\IcvCertificate::where('company_id', $user->company_id)->get();
+            foreach ($icvs as $cert) {
+                $sources[] = [
+                    'category' => 'icv-certificates',
+                    'label'    => $cert->issuer . '-' . $cert->certificate_number,
+                    'path'     => $cert->file_path,
+                    'original' => $cert->original_filename,
+                ];
+            }
+        }
+
+        // Tax invoices the user authored / received — only the PDFs
+        // that match the user's company side. We don't dump every
+        // tax invoice on the platform.
+        if ($user->company_id) {
+            $taxInvoices = \App\Models\TaxInvoice::query()
+                ->where(function ($q) use ($user) {
+                    $q->where('supplier_company_id', $user->company_id)
+                      ->orWhere('buyer_company_id', $user->company_id);
+                })
+                ->whereNotNull('pdf_path')
+                ->get();
+            foreach ($taxInvoices as $inv) {
+                $sources[] = [
+                    'category' => 'tax-invoices',
+                    'label'    => $inv->invoice_number,
+                    'path'     => $inv->pdf_path,
+                    'original' => $inv->invoice_number . '.pdf',
+                ];
+            }
+        }
+
+        foreach ($sources as $src) {
+            if (empty($src['path']) || !$disk->exists($src['path'])) {
+                $manifest['missing'][] = $src['category'] . '/' . $src['label'];
+                continue;
+            }
+
+            // Sanitise the original filename — strip path components
+            // an attacker may have stuffed into the upload form.
+            $cleanName = preg_replace('/[^A-Za-z0-9._-]/', '_', basename($src['original'] ?? $src['label']));
+            if ($cleanName === '' || $cleanName === '.') {
+                $cleanName = $src['label'] . '.bin';
+            }
+
+            $archivePath = "files/{$src['category']}/{$src['label']}_{$cleanName}";
+            $zip->addFromString($archivePath, $disk->get($src['path']) ?? '');
+            $manifest['copied'][] = $archivePath;
+        }
+
+        // Drop the manifest into the archive itself so the user can
+        // reconcile what's in /files/ with what was in their account.
+        $zip->addFromString(
+            'files/_manifest.json',
+            json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        );
+
+        return $manifest;
     }
 
     private function indexPayload(User $user, ?PrivacyRequest $request): array
@@ -151,15 +267,36 @@ class DataExportService
     private function consentsPayload(User $user): array
     {
         return $this->consents->ledgerFor($user)
-            ->map(fn (Consent $c) => [
-                'id'           => $c->id,
-                'consent_type' => $c->consent_type,
-                'version'      => $c->version,
-                'granted_at'   => $c->granted_at?->toIso8601String(),
-                'withdrawn_at' => $c->withdrawn_at?->toIso8601String(),
-                'ip_address'   => $c->ip_address,
-                'user_agent'   => $c->user_agent,
-            ])
+            ->map(function (Consent $c) {
+                $row = [
+                    'id'           => $c->id,
+                    'consent_type' => $c->consent_type,
+                    'version'      => $c->version,
+                    'granted_at'   => $c->granted_at?->toIso8601String(),
+                    'withdrawn_at' => $c->withdrawn_at?->toIso8601String(),
+                    'ip_address'   => $c->ip_address,
+                    'user_agent'   => $c->user_agent,
+                ];
+                // Phase 2.5 — embed the exact policy text the user
+                // agreed to so the DSAR is self-contained. PDPL Article
+                // 13(2) requires the controller to make the policy
+                // available "in a clear and transparent manner" — and
+                // a JSON pointer to a URL that may have changed since
+                // doesn't satisfy that.
+                if ($c->privacy_policy_version_id) {
+                    $version = \App\Models\PrivacyPolicyVersion::find($c->privacy_policy_version_id);
+                    if ($version) {
+                        $row['policy_snapshot'] = [
+                            'version'        => $version->version,
+                            'effective_from' => $version->effective_from?->toIso8601String(),
+                            'sha256'         => $version->sha256,
+                            'body_en'        => $version->body_en,
+                            'body_ar'        => $version->body_ar,
+                        ];
+                    }
+                }
+                return $row;
+            })
             ->all();
     }
 

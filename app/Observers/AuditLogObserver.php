@@ -149,6 +149,27 @@ class AuditLogObserver
         if (isset($model->buyer_company_id) && is_numeric($model->buyer_company_id)) {
             return (int) $model->buyer_company_id;
         }
+        // EscrowAccount → contract → buyer company. EscrowRelease → account
+        // → contract → buyer company. Walking the relation here keeps the
+        // observer self-contained instead of leaking escrow knowledge into
+        // every other transactional model.
+        if ($model instanceof \App\Models\EscrowRelease && $model->escrow_account_id) {
+            $accountCompanyId = \App\Models\EscrowAccount::query()
+                ->whereKey($model->escrow_account_id)
+                ->join('contracts', 'contracts.id', '=', 'escrow_accounts.contract_id')
+                ->value('contracts.buyer_company_id');
+            if ($accountCompanyId) {
+                return (int) $accountCompanyId;
+            }
+        }
+        if ($model instanceof \App\Models\EscrowAccount && $model->contract_id) {
+            $contractCompanyId = \App\Models\Contract::query()
+                ->whereKey($model->contract_id)
+                ->value('buyer_company_id');
+            if ($contractCompanyId) {
+                return (int) $contractCompanyId;
+            }
+        }
         return auth()->user()?->company_id;
     }
 

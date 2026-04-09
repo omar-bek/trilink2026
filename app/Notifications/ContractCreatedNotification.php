@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Contract;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -14,14 +15,11 @@ use Illuminate\Notifications\Notification;
  * buyer accepts a bid. Recipients are every user belonging to a
  * party of the contract (buyer + supplier sides) so both teams know
  * the agreement is now waiting for them to sign.
- *
- * Without this notification the contract appeared in the listings
- * silently and users had to refresh the page or stumble onto it via
- * the bid history — which is exactly the gap the user reported.
  */
 class ContractCreatedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Contract $contract,
@@ -40,23 +38,29 @@ class ContractCreatedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject("New Contract {$this->contract->contract_number} — Awaiting Signature")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("A new contract has been generated and is awaiting your signature.")
-            ->line("**Contract:** {$this->contract->contract_number}")
-            ->line("**Title:** {$this->contract->title}")
-            ->line('**Total Value:** ' . ($this->contract->currency ?? 'AED') . ' ' . number_format((float) $this->contract->total_amount, 2))
-            ->action('Review & Sign', route('dashboard.contracts.show', ['id' => $this->contract->id]))
-            ->line('Both parties must agree on every clause before signing — propose changes from the contract page if any wording needs to be reworked.');
+        $number   = $this->contract->contract_number;
+        $title    = $this->contract->title;
+        $currency = $this->contract->currency ?? 'AED';
+        $amount   = number_format((float) $this->contract->total_amount, 2);
+
+        return $this->baseMail($notifiable, 'notifications.contract.created.subject', ['number' => $number])
+            ->line($this->t($notifiable, 'notifications.contract.created.line1'))
+            ->line($this->t($notifiable, 'notifications.contract.created.line_number', ['number' => $number]))
+            ->line($this->t($notifiable, 'notifications.contract.created.line_title', ['title' => $title]))
+            ->line($this->t($notifiable, 'notifications.contract.created.line_value', ['currency' => $currency, 'amount' => $amount]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_sign'),
+                route('dashboard.contracts.show', ['id' => $this->contract->id])
+            )
+            ->line($this->t($notifiable, 'notifications.contract.created.line_footer'));
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type'        => 'info',
-            'title'       => 'New Contract Created',
-            'message'     => "Contract {$this->contract->contract_number} is awaiting your signature",
+            'title'       => $this->t($notifiable, 'notifications.contract.created.title'),
+            'message'     => $this->t($notifiable, 'notifications.contract.created.message', ['number' => $this->contract->contract_number]),
             'entity_type' => 'contract',
             'entity_id'   => $this->contract->id,
         ];

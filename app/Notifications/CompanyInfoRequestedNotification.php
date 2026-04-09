@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Company;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,6 +17,7 @@ use Illuminate\Notifications\Notification;
 class CompanyInfoRequestedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Company $company,
@@ -31,21 +33,25 @@ class CompanyInfoRequestedNotification extends Notification implements ShouldQue
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject('Action required — additional info needed for ' . $this->company->name)
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("Our admin team has reviewed your registration for **{$this->company->name}** and needs a few more details before they can approve it.")
-            ->when($this->note !== '', fn ($mail) => $mail->line("**Admin note:** {$this->note}"))
-            ->action('Complete missing information', route('register.success'))
-            ->line('Once you submit the requested items the team will pick the review back up.');
+        $mail = $this->baseMail($notifiable, 'notifications.company.info_requested.subject', ['name' => $this->company->name])
+            ->line($this->t($notifiable, 'notifications.company.info_requested.message', ['name' => $this->company->name]));
+
+        if ($this->note !== '') {
+            $mail->line($this->note);
+        }
+
+        return $mail->action(
+            $this->t($notifiable, 'notifications.common.action_view'),
+            route('register.success')
+        );
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type'         => 'company_info_requested',
-            'title'        => 'Action required on your registration',
-            'message'      => "Admin team needs more info before approving {$this->company->name}.",
+            'title'        => $this->t($notifiable, 'notifications.company.info_requested.title'),
+            'message'      => $this->t($notifiable, 'notifications.company.info_requested.message', ['name' => $this->company->name]),
             'entity_type'  => 'company',
             'entity_id'    => $this->company->id,
             'note'         => $this->note,

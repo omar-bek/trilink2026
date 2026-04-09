@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\PurchaseRequest;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -15,6 +16,7 @@ use Illuminate\Notifications\Notification;
 class PurchaseRequestRejectedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly PurchaseRequest $pr,
@@ -34,27 +36,29 @@ class PurchaseRequestRejectedNotification extends Notification implements Should
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)
-            ->subject("Purchase request rejected — {$this->pr->title}")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("Your purchase request **{$this->pr->title}** was rejected by your manager.");
+        $ref = (string) $this->pr->title;
+
+        $mail = $this->baseMail($notifiable, 'notifications.purchase_request.rejected.subject', ['ref' => $ref])
+            ->line($this->t($notifiable, 'notifications.purchase_request.rejected.message', ['ref' => $ref]));
 
         if ($this->reason) {
-            $mail->line("**Reason:** {$this->reason}");
+            $mail->line($this->t($notifiable, 'notifications.purchase_request.rejected.line_reason', ['reason' => $this->reason]));
         }
 
-        return $mail->line('You can revise the details and submit again when ready.')
-            ->action('View Request', route('dashboard.purchase-requests.show', ['id' => $this->pr->id]));
+        return $mail->action(
+            $this->t($notifiable, 'notifications.common.action_view'),
+            route('dashboard.purchase-requests.show', ['id' => $this->pr->id])
+        );
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type'        => 'warning',
-            'title'       => 'Purchase request rejected',
-            'message'     => $this->reason
-                ? "Rejected: {$this->reason}"
-                : "Your request \"{$this->pr->title}\" was rejected",
+            'title'       => $this->t($notifiable, 'notifications.purchase_request.rejected.title'),
+            'message'     => $this->t($notifiable, 'notifications.purchase_request.rejected.message', [
+                'ref' => (string) $this->pr->title,
+            ]),
             'entity_type' => 'purchase_request',
             'entity_id'   => $this->pr->id,
         ];

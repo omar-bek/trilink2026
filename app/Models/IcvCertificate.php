@@ -63,6 +63,9 @@ class IcvCertificate extends Model
         'uploaded_by',
         'verified_by',
         'verified_at',
+        // Phase 4.5 — last expiry-reminder threshold sent (60, 30, 7).
+        // Used by NotifyExpiringIcvCertificatesCommand to avoid spam.
+        'last_expiry_reminder_threshold',
     ];
 
     protected function casts(): array

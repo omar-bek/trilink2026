@@ -6,6 +6,7 @@ use App\Models\Bid;
 use App\Models\Contract;
 use App\Models\Dispute;
 use App\Models\EscrowAccount;
+use App\Models\EscrowRelease;
 use App\Models\Payment;
 use App\Models\PurchaseRequest;
 use App\Models\Rfq;
@@ -107,6 +108,18 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by($request->ip());
         });
 
+        // Contract sign attempts. Step-up authentication uses the
+        // user's password, so a leaked password could be brute-forced
+        // through the sign endpoint. We cap to 5 attempts per minute
+        // per (user, contract) pair so a determined attacker has to
+        // pace themselves and the legitimate user (who occasionally
+        // typos the password) is not affected.
+        RateLimiter::for('contract.sign', function (Request $request) {
+            $userId   = $request->user()?->id ?: $request->ip();
+            $contract = $request->route('id') ?: '0';
+            return Limit::perMinute(5)->by("contract.sign:{$userId}:{$contract}");
+        });
+
         // Audit logging (Phase 0 / task 0.11). Every state change on the
         // six core transactional models writes an `audit_logs` row via
         // App\Observers\AuditLogObserver. Single shared observer keeps the
@@ -117,6 +130,15 @@ class AppServiceProvider extends ServiceProvider
         PurchaseRequest::observe(AuditLogObserver::class);
         Payment::observe(AuditLogObserver::class);
         Shipment::observe(AuditLogObserver::class);
+
+        // Phase 3 / Sprint A — escrow movements (account state flips +
+        // every individual deposit / release / refund) are financial
+        // events and must produce an immutable audit row. Without this,
+        // a malicious bank-partner adapter or a privilege-escalated user
+        // could trigger an off-ledger release and there would be no
+        // tamper-evident record of who pulled the trigger.
+        EscrowAccount::observe(AuditLogObserver::class);
+        EscrowRelease::observe(AuditLogObserver::class);
 
         // Phase 1 (UAE Compliance Roadmap) — auto-issue tax invoices when
         // a Payment row transitions into COMPLETED. The observer dispatches

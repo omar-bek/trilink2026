@@ -29,6 +29,18 @@ export default {
                 icon:        'var(--c-icon)',
                 accent:      'var(--c-accent)',
                 'accent-h':  'var(--c-accent-h)',
+                // Sprint C.13 — semantic categorical tokens used for
+                // status badges, notification icons, and KPI cards.
+                // Adding these here is the single source of truth so
+                // a future palette tweak doesn't require touching 50+
+                // Blade files. Each maps to a CSS variable defined in
+                // resources/css/app.css.
+                'accent-info':    'var(--c-accent-info)',
+                'accent-success': 'var(--c-accent-success)',
+                'accent-warning': 'var(--c-accent-warning)',
+                'accent-danger':  'var(--c-accent-danger)',
+                'accent-magenta': 'var(--c-accent-magenta)',
+                'accent-violet':  'var(--c-accent-violet)',
             },
         },
     },

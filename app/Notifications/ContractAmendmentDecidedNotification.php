@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Contract;
 use App\Models\ContractAmendment;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -20,6 +21,7 @@ use Illuminate\Notifications\Notification;
 class ContractAmendmentDecidedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Contract $contract,
@@ -41,26 +43,41 @@ class ContractAmendmentDecidedNotification extends Notification implements Shoul
 
     public function toMail(object $notifiable): MailMessage
     {
-        $changes = $this->amendment->changes ?? [];
-        $section = $changes['section_title'] ?? '—';
-        $verb = $this->decision === 'approved' ? 'approved' : 'rejected';
+        $number   = $this->contract->contract_number;
+        $decision = $this->localisedDecision($notifiable);
 
-        return (new MailMessage)
-            ->subject("Contract {$this->contract->contract_number} — Amendment {$verb}")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("{$this->deciderName} has {$verb} the proposed amendment to \"{$section}\" on contract {$this->contract->contract_number}.")
-            ->action('View Contract', route('dashboard.contracts.show', ['id' => $this->contract->id]));
+        return $this->baseMail($notifiable, 'notifications.contract.amendment_decided.subject', [
+                'number'   => $number,
+                'decision' => $decision,
+            ])
+            ->line($this->t($notifiable, 'notifications.contract.amendment_decided.line1', [
+                'number'   => $number,
+                'decision' => $decision,
+            ]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_view_contract'),
+                route('dashboard.contracts.show', ['id' => $this->contract->id])
+            );
     }
 
     public function toArray(object $notifiable): array
     {
-        $section = ($this->amendment->changes ?? [])['section_title'] ?? '—';
         return [
             'type'        => $this->decision === 'approved' ? 'success' : 'error',
-            'title'       => $this->decision === 'approved' ? 'Amendment Approved' : 'Amendment Rejected',
-            'message'     => "{$this->deciderName} {$this->decision} the change to \"{$section}\" on contract {$this->contract->contract_number}",
+            'title'       => $this->t($notifiable, 'notifications.contract.amendment_decided.title'),
+            'message'     => $this->t($notifiable, 'notifications.contract.amendment_decided.message', [
+                'number'   => $this->contract->contract_number,
+                'decision' => $this->localisedDecision($notifiable),
+            ]),
             'entity_type' => 'contract',
             'entity_id'   => $this->contract->id,
         ];
+    }
+
+    private function localisedDecision(object $notifiable): string
+    {
+        $key = 'notifications.contract.amendment_decided.verb_' . $this->decision;
+        $value = trans($key, [], $this->localeFor($notifiable));
+        return $value === $key ? $this->decision : $value;
     }
 }

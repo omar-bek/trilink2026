@@ -15,10 +15,13 @@ class SanctionsScreening extends Model
 {
     use HasFactory;
 
-    public const RESULT_CLEAN    = 'clean';
-    public const RESULT_HIT      = 'hit';
-    public const RESULT_REVIEW   = 'review';
-    public const RESULT_ERROR    = 'error';
+    public const RESULT_CLEAN        = 'clean';
+    public const RESULT_HIT          = 'hit';
+    public const RESULT_REVIEW       = 'review';
+    public const RESULT_ERROR        = 'error';
+    // Distinct from ERROR — the upstream is healthy but rate-limited
+    // us. Treat as "needs retry" instead of "the company is clean".
+    public const RESULT_RATE_LIMITED = 'rate_limited';
 
     protected $fillable = [
         'company_id',

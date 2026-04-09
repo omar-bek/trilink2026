@@ -13,8 +13,10 @@ use App\Enums\RfqStatus;
 use App\Enums\RfqType;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Enums\DocumentType;
 use App\Models\Bid;
 use App\Models\Company;
+use App\Models\CompanyDocument;
 use App\Models\Contract;
 use App\Models\Dispute;
 use App\Models\Payment;
@@ -62,6 +64,21 @@ class NotificationsTest extends TestCase
             'email'               => $role->value . '@n.test',
             'city'                => 'Dubai',
             'country'             => 'UAE',
+        ]);
+
+        // Sprint A.5 — every test company needs a valid trade license
+        // because PaymentService::approve() and EscrowService::release()
+        // re-check at action time. In the production flow the license
+        // is always present (ContractService blocks creation without
+        // it); the test fixtures have to mirror that invariant.
+        CompanyDocument::create([
+            'company_id' => $company->id,
+            'type'       => DocumentType::TRADE_LICENSE,
+            'label'      => 'Trade License',
+            'file_path'  => 'test/trade-license.pdf',
+            'status'     => CompanyDocument::STATUS_VERIFIED,
+            'issued_at'  => now()->subYear(),
+            'expires_at' => now()->addYear(),
         ]);
 
         return User::create([

@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Bid;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,6 +12,7 @@ use Illuminate\Notifications\Notification;
 class NewBidNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Bid $bid,
@@ -29,22 +31,37 @@ class NewBidNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject('New Bid Received')
-            ->line("A new bid has been submitted for RFQ #{$this->bid->rfq->rfq_number}")
-            ->line("Amount: {$this->bid->price} {$this->bid->currency}")
-            ->action('View Bid', config('app.frontend_url') . "/bids/{$this->bid->id}");
+        $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
+        $amount    = number_format((float) $this->bid->price, 2);
+        $currency  = $this->bid->currency ?? 'AED';
+
+        return $this->baseMail($notifiable, 'notifications.bid.new.subject', ['rfq' => $rfqNumber])
+            ->line($this->t($notifiable, 'notifications.bid.new.line1'))
+            ->line($this->t($notifiable, 'notifications.bid.new.line_rfq', ['rfq' => $rfqNumber]))
+            ->line($this->t($notifiable, 'notifications.bid.new.line_amount', ['amount' => $amount, 'currency' => $currency]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_view_bid'),
+                route('dashboard.bids.show', ['id' => $this->bid->id])
+            );
     }
 
     public function toArray(object $notifiable): array
     {
+        $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
+        $amount    = number_format((float) $this->bid->price, 2);
+        $currency  = $this->bid->currency ?? 'AED';
+
         return [
-            'type' => 'info',
-            'title' => 'New Bid Received',
-            'message' => "A new bid of {$this->bid->price} {$this->bid->currency} has been submitted",
+            'type'        => 'info',
+            'title'       => $this->t($notifiable, 'notifications.bid.new.title'),
+            'message'     => $this->t($notifiable, 'notifications.bid.new.message', [
+                'amount'   => $amount,
+                'currency' => $currency,
+                'rfq'      => $rfqNumber,
+            ]),
             'entity_type' => 'bid',
-            'entity_id' => $this->bid->id,
-            'rfq_id' => $this->bid->rfq_id,
+            'entity_id'   => $this->bid->id,
+            'rfq_id'      => $this->bid->rfq_id,
         ];
     }
 }

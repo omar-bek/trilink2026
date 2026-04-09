@@ -107,6 +107,36 @@ class Contract extends Model
         return $this->belongsTo(EscrowAccount::class, 'escrow_account_id');
     }
 
+    /**
+     * Sprint Hardening — denormalized junction. Lives in
+     * `contract_parties` and is kept in sync with the canonical
+     * `parties` JSON column by ContractObserver. Use this when you
+     * need to query "all contracts where company X is a party"
+     * because it's an indexed lookup, not a JSON full-table-scan.
+     */
+    public function contractParties(): HasMany
+    {
+        return $this->hasMany(ContractParty::class);
+    }
+
+    /**
+     * Query scope: every contract that company $companyId is a
+     * party of, regardless of role. Replaces the legacy
+     * `whereJsonContains('parties', ['company_id' => $cid])` calls.
+     * Internally a single indexed JOIN against contract_parties.
+     *
+     * Use ->forCompany($cid) on any Contract query to get the
+     * tenant-scoped result set.
+     */
+    public function scopeForCompany($query, int $companyId)
+    {
+        return $query->whereIn('id', function ($sub) use ($companyId) {
+            $sub->select('contract_id')
+                ->from('contract_parties')
+                ->where('company_id', $companyId);
+        });
+    }
+
     protected static function booted(): void
     {
         static::creating(function (Contract $contract) {

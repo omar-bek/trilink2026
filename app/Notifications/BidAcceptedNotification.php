@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Bid;
 use App\Models\Contract;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,6 +18,7 @@ use Illuminate\Notifications\Notification;
 class BidAcceptedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Bid $bid,
@@ -36,17 +38,26 @@ class BidAcceptedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)
-            ->subject("Your bid was accepted — {$this->bid->rfq?->title}")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("Your bid on RFQ #{$this->bid->rfq?->rfq_number} has been **accepted** by the buyer.")
-            ->line('**Amount:** ' . ($this->bid->currency ?? 'AED') . ' ' . number_format((float) $this->bid->price, 2));
+        $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
+        $title     = $this->bid->rfq?->title ?? '';
+        $amount    = number_format((float) $this->bid->price, 2);
+        $currency  = $this->bid->currency ?? 'AED';
+
+        $mail = $this->baseMail($notifiable, 'notifications.bid.accepted.subject', ['title' => $title])
+            ->line($this->t($notifiable, 'notifications.bid.accepted.line1', ['rfq' => $rfqNumber]))
+            ->line($this->t($notifiable, 'notifications.bid.accepted.line_amount', ['amount' => $amount, 'currency' => $currency]));
 
         if ($this->contract) {
-            $mail->action('View Contract', route('dashboard.contracts.show', ['id' => $this->contract->id]))
-                ->line('A contract has been generated and is ready for your review and signature.');
+            $mail->line($this->t($notifiable, 'notifications.bid.accepted.line_contract'))
+                ->action(
+                    $this->t($notifiable, 'notifications.common.action_view_contract'),
+                    route('dashboard.contracts.show', ['id' => $this->contract->id])
+                );
         } else {
-            $mail->action('View Bid', route('dashboard.bids.show', ['id' => $this->bid->id]));
+            $mail->action(
+                $this->t($notifiable, 'notifications.common.action_view_bid'),
+                route('dashboard.bids.show', ['id' => $this->bid->id])
+            );
         }
 
         return $mail;
@@ -54,10 +65,12 @@ class BidAcceptedNotification extends Notification implements ShouldQueue
 
     public function toArray(object $notifiable): array
     {
+        $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
+
         return [
             'type'        => 'success',
-            'title'       => 'Bid Accepted',
-            'message'     => "Your bid on #{$this->bid->rfq?->rfq_number} was accepted",
+            'title'       => $this->t($notifiable, 'notifications.bid.accepted.title'),
+            'message'     => $this->t($notifiable, 'notifications.bid.accepted.message', ['rfq' => $rfqNumber]),
             'entity_type' => $this->contract ? 'contract' : 'bid',
             'entity_id'   => $this->contract?->id ?? $this->bid->id,
         ];

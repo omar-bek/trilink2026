@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Payment;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,6 +12,7 @@ use Illuminate\Notifications\Notification;
 class PaymentStatusNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Payment $payment,
@@ -23,35 +25,60 @@ class PaymentStatusNotification extends Notification implements ShouldQueue
     {
         return \App\Support\NotificationPreferences::channels(
             $notifiable instanceof \App\Models\User ? $notifiable : null,
-            'contract_milestones',
+            'payment_updates',
             ['database', 'mail']
         );
     }
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject("Payment {$this->action}")
-            ->line("Payment of {$this->payment->total_amount} {$this->payment->currency} has been {$this->action}.")
-            ->action('View Payment', config('app.frontend_url') . "/payments/{$this->payment->id}");
+        $ref    = $this->payment->id;
+        $status = $this->localisedAction($notifiable);
+
+        return $this->baseMail($notifiable, 'notifications.payment.status.subject', [
+                'ref'    => $ref,
+                'status' => $status,
+            ])
+            ->line($this->t($notifiable, 'notifications.payment.status.line1', [
+                'ref'    => $ref,
+                'status' => $status,
+            ]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_view_payment'),
+                route('dashboard.payments.show', ['id' => $this->payment->id])
+            );
     }
 
     public function toArray(object $notifiable): array
     {
         $type = match ($this->action) {
-            'approved' => 'success',
-            'rejected' => 'error',
-            'completed' => 'success',
-            default => 'info',
+            'approved', 'completed' => 'success',
+            'rejected'              => 'error',
+            default                 => 'info',
         };
 
         return [
-            'type' => $type,
-            'title' => "Payment " . ucfirst($this->action),
-            'message' => "Payment of {$this->payment->total_amount} {$this->payment->currency} has been {$this->action}",
+            'type'        => $type,
+            'title'       => $this->t($notifiable, 'notifications.payment.status.title'),
+            'message'     => $this->t($notifiable, 'notifications.payment.status.message', [
+                'ref'    => $this->payment->id,
+                'status' => $this->localisedAction($notifiable),
+            ]),
             'entity_type' => 'payment',
-            'entity_id' => $this->payment->id,
+            'entity_id'   => $this->payment->id,
             'contract_id' => $this->payment->contract_id,
         ];
+    }
+
+    /**
+     * Translate the raw action verb (approved, rejected, …) into a
+     * locale-aware label so the message reads naturally in both
+     * English and Arabic.
+     */
+    private function localisedAction(object $notifiable): string
+    {
+        $key = 'notifications.payment.actions.' . $this->action;
+        $localised = trans($key, [], $this->localeFor($notifiable));
+        return $localised === $key ? $this->action : $localised;
     }
 }

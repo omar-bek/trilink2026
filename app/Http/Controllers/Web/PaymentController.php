@@ -53,6 +53,15 @@ class PaymentController extends Controller
             $tab = 'all';
         }
 
+        // Direction filter (?direction=outgoing|incoming|all). Mirrors
+        // the contracts listing — a tenant playing both buyer and
+        // supplier roles can narrow to one cash-flow direction. Outgoing
+        // = this company is paying; incoming = this company is being paid.
+        $directionFilter = $request->query('direction', 'all');
+        if (! in_array($directionFilter, ['all', 'outgoing', 'incoming'], true)) {
+            $directionFilter = 'all';
+        }
+
         // Free-text search (?q=...) over payment number, contract number,
         // milestone label and recipient company name.
         $search = trim((string) $request->query('q', ''));
@@ -63,6 +72,12 @@ class PaymentController extends Controller
             $listing->whereIn('status', $pendingStatuses);
         } elseif ($tab === 'completed') {
             $listing->whereIn('status', $completedStatuses);
+        }
+
+        if ($companyId && $directionFilter === 'outgoing') {
+            $listing->where('company_id', $companyId);
+        } elseif ($companyId && $directionFilter === 'incoming') {
+            $listing->where('recipient_company_id', $companyId);
         }
 
         if ($search !== '') {
@@ -111,6 +126,22 @@ class PaymentController extends Controller
             'completed' => (clone $base)->whereIn('status', $completedStatuses)->count(),
         ];
 
+        // Per-direction counts so the chips can show "Outgoing (5)" /
+        // "Incoming (12)". Computed against the search/tab-filtered query
+        // EXCLUDING the direction filter itself, so the counts always
+        // reflect "if I clicked this chip, this is what I'd see".
+        $directionListing = (clone $base);
+        if ($tab === 'pending') {
+            $directionListing->whereIn('status', $pendingStatuses);
+        } elseif ($tab === 'completed') {
+            $directionListing->whereIn('status', $completedStatuses);
+        }
+        $directionCounts = [
+            'all'      => (clone $directionListing)->count(),
+            'outgoing' => $companyId ? (clone $directionListing)->where('company_id', $companyId)->count() : 0,
+            'incoming' => $companyId ? (clone $directionListing)->where('recipient_company_id', $companyId)->count() : 0,
+        ];
+
         $stats = [
             'pending'        => $tabCounts['pending'],
             'pending_amount' => $this->shortMoney((float) $pendingAmount),
@@ -119,16 +150,26 @@ class PaymentController extends Controller
         ];
 
         $payments = (clone $listing)
-            ->with(['contract', 'recipientCompany'])
+            ->with(['contract', 'recipientCompany', 'company'])
             ->latest()
             ->get()
-            ->map(function (Payment $p) {
+            ->map(function (Payment $p) use ($companyId) {
                 $statusKey = $this->mapPaymentStatus($this->statusValue($p->status));
                 $isPaid    = $statusKey === 'paid';
                 $dueDate   = $p->approved_at ?? $p->created_at;
                 $isOverdue = !$isPaid && $dueDate && $dueDate->isPast() && $dueDate->diffInDays(now()) > 7;
                 $contractTotal = (float) ($p->contract?->total_amount ?? 0);
                 $pct = $contractTotal > 0 ? (int) round(((float) $p->amount / $contractTotal) * 100) : 0;
+
+                // Direction + counterparty resolution. The current company
+                // is the PAYER when its id matches `company_id`; otherwise
+                // it's the RECIPIENT. The counterparty is whichever side
+                // this company is NOT — same pattern as the contracts list.
+                $isOutgoing   = $companyId && (int) $p->company_id === (int) $companyId;
+                $direction    = $isOutgoing ? 'outgoing' : 'incoming';
+                $counterparty = $isOutgoing
+                    ? ($p->recipientCompany?->name ?? '—')
+                    : ($p->company?->name ?? '—');
 
                 return [
                     // Real DB id used for routing to the show page.
@@ -143,7 +184,15 @@ class PaymentController extends Controller
                         ? ucfirst(str_replace('_', ' ', $p->payment_gateway))
                         : __('payments.bank_transfer'),
                     'contract'  => $p->contract?->contract_number ?? '—',
-                    'supplier'  => $p->recipientCompany?->name ?? '—',
+                    // Direction-aware counterparty label. The view picks
+                    // "From" / "To" based on `direction` so an outgoing
+                    // payment shows the supplier and an incoming payment
+                    // shows the buyer — without separate views.
+                    'direction'    => $direction,
+                    'counterparty' => $counterparty,
+                    // Legacy `supplier` key kept so any existing snippet
+                    // (older blade includes / CSV exports) doesn't break.
+                    'supplier'  => $counterparty,
                     'milestone' => $p->milestone ?? __('payments.payment'),
                     'pct'       => $pct,
                     'of'        => $contractTotal,
@@ -156,7 +205,15 @@ class PaymentController extends Controller
             })
             ->toArray();
 
-        return view('dashboard.payments.index', compact('stats', 'payments', 'tab', 'tabCounts', 'search'));
+        return view('dashboard.payments.index', compact(
+            'stats',
+            'payments',
+            'tab',
+            'tabCounts',
+            'search',
+            'directionFilter',
+            'directionCounts',
+        ));
     }
 
     public function show(string $id): View
@@ -181,6 +238,18 @@ class PaymentController extends Controller
         $contractTotal = (float) ($p->contract?->total_amount ?? 0);
         $pct = $contractTotal > 0 ? (int) round(((float) $p->amount / $contractTotal) * 100) : 0;
 
+        // Direction + counterparty resolution — same shape as the index
+        // map so both pages render the badge consistently. The current
+        // user is the PAYER when its company id matches `company_id`,
+        // otherwise it's the RECIPIENT.
+        $myCompanyId  = $user?->company_id;
+        $isOutgoing   = $myCompanyId && (int) $p->company_id === (int) $myCompanyId;
+        $direction    = $isOutgoing ? 'outgoing' : 'incoming';
+        $counterparty = [
+            'name' => $isOutgoing ? ($p->recipientCompany?->name ?? '—') : ($p->company?->name ?? '—'),
+            'role' => $isOutgoing ? 'supplier' : 'buyer',
+        ];
+
         $payment = [
             'db_id'     => $p->id,
             'id'        => $this->paymentNumber($p),
@@ -198,6 +267,9 @@ class PaymentController extends Controller
                 : null,
             'supplier'  => $p->recipientCompany?->name ?? '—',
             'buyer'     => $p->company?->name ?? '—',
+            // Direction-aware fields used by the unified detail view.
+            'direction'    => $direction,    // 'outgoing' | 'incoming'
+            'counterparty' => $counterparty, // {name, role}
             'amount'    => $this->money((float) $p->amount, $p->currency ?? 'AED'),
             'vat'       => $this->money((float) $p->vat_amount, $p->currency ?? 'AED'),
             'total'     => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),

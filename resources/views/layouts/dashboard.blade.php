@@ -6,6 +6,18 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     {{-- Authenticated app pages: keep them out of search engine indexes. --}}
     <meta name="robots" content="noindex, nofollow">
+
+    {{-- Sprint B.7 — PWA. Manifest + theme color + Apple touch icon
+         make the dashboard installable on Android, iOS and desktop.
+         The service worker (registered below) provides an offline
+         fallback page for navigation requests. --}}
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0f1117">
+    <link rel="apple-touch-icon" href="/logo/logo.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TriLink">
+
     @include('partials.seo')
     <link rel="preconnect" href="https://fonts.bunny.net">
     @if(app()->getLocale() === 'ar')
@@ -90,5 +102,25 @@
 
     @stack('scripts')
     @livewireScripts
+
+    {{-- Sprint B.7 — register the service worker. Wrapped in a feature
+         check so older browsers (or browsers with service workers
+         disabled) silently no-op instead of throwing. The worker is
+         versioned by the constants inside service-worker.js — bump
+         them to invalidate old caches on a new release. --}}
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker
+                    .register('/service-worker.js', { scope: '/' })
+                    .catch(function (err) {
+                        // Service worker registration failures must NEVER
+                        // surface to the user — log to console only so an
+                        // engineer can pick it up via remote debugging.
+                        console.warn('TriLink SW registration failed:', err);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>

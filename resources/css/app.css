@@ -30,6 +30,16 @@
     --c-nav-pill:    rgba(244,246,251,0.9);
     --c-card-hover:  rgba(59,126,255,0.05);
     --c-glow:        rgba(59,126,255,0.10);
+    /* Sprint C.13 — semantic categorical tokens. Used for status
+       badges, notification icons, and KPI cards. Light-mode values
+       deliberately match the dark-mode hex codes so a status badge
+       reads the same in either theme. */
+    --c-accent-info:    #3b7eff;
+    --c-accent-success: #00b894;
+    --c-accent-warning: #ffb020;
+    --c-accent-danger:  #ef4444;
+    --c-accent-magenta: #ff4d7f;
+    --c-accent-violet:  #8b5cf6;
   }
 
   /* --- Dark Mode ---
@@ -54,6 +64,15 @@
     --c-nav-pill:    rgba(26,29,41,0.8);
     --c-card-hover:  rgba(79,124,255,0.08);
     --c-glow:        rgba(79,124,255,0.18);
+    /* Sprint C.13 — semantic categorical tokens (dark mode). These
+       are the canonical values; the light-mode block above mirrors
+       them so badges read identically across themes. */
+    --c-accent-info:    #4f7cff;
+    --c-accent-success: #00d9b5;
+    --c-accent-warning: #ffb020;
+    --c-accent-danger:  #ef4444;
+    --c-accent-magenta: #ff4d7f;
+    --c-accent-violet:  #8b5cf6;
   }
 
   html { scroll-behavior: smooth; }

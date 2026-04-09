@@ -55,6 +55,14 @@ class Company extends Model
         'free_zone_authority',
         'is_designated_zone',
         'legal_jurisdiction',
+        // Approval routing engine — contracts above this AED amount
+        // require an internal approver to release them to signature.
+        // Null = no threshold (all contracts go straight through).
+        'approval_threshold_aed',
+        // Notification recipient role filter — JSON array of UserRole
+        // values that should receive contract events. Null = legacy
+        // "notify everyone in the company" behaviour.
+        'notification_recipient_roles',
     ];
 
     protected function casts(): array
@@ -80,6 +88,9 @@ class Company extends Model
             'is_designated_zone'  => 'boolean',
             'free_zone_authority' => FreeZoneAuthority::class,
             'legal_jurisdiction'  => LegalJurisdiction::class,
+            // Notification recipient role filter — JSON list of
+            // UserRole values that opt in to contract events.
+            'notification_recipient_roles' => 'array',
         ];
     }
 
@@ -102,6 +113,31 @@ class Company extends Model
     public function icvCertificates(): HasMany
     {
         return $this->hasMany(IcvCertificate::class);
+    }
+
+    /**
+     * Phase 5.5 (UAE Compliance Roadmap — post-implementation hardening) —
+     * compute the company's Peppol Participant Identifier from its UAE
+     * tax_number. The Peppol routing layer addresses every party by a
+     * scheme-prefixed string of the form `<scheme>:<value>`. The UAE
+     * scheme code is 0235 (registered with the Peppol authority for
+     * the UAE Federal Tax Authority TRN namespace).
+     *
+     * This is a derived value, not stored on the column, so it stays
+     * in sync automatically when the TRN is updated. Returns null when
+     * the company has no TRN — those rows can't be addressed via
+     * Peppol and the FTA submission would fail anyway.
+     *
+     * Used by {@see \App\Services\EInvoice\PintAeMapper} when stamping
+     * the EndpointID on AccountingSupplierParty / Customer.
+     */
+    public function peppolParticipantId(): ?string
+    {
+        $trn = $this->tax_number;
+        if (empty($trn)) {
+            return null;
+        }
+        return '0235:' . $trn;
     }
 
     /**

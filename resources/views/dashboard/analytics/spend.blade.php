@@ -39,8 +39,8 @@ $fmt = fn ($v) => number_format((float) $v, 0);
     {{-- Monthly trend --}}
     <div class="lg:col-span-2 bg-surface border border-th-border rounded-[16px] p-5 sm:p-[25px]">
         <div class="flex items-center gap-3 mb-5">
-            <div class="w-10 h-10 rounded-[12px] bg-[#4f7cff]/10 border border-[#4f7cff]/20 flex items-center justify-center flex-shrink-0">
-                <svg class="w-[18px] h-[18px] text-[#4f7cff]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+            <div class="w-10 h-10 rounded-[12px] bg-accent-info/10 border border-accent-info/20 flex items-center justify-center flex-shrink-0">
+                <svg class="w-[18px] h-[18px] text-accent-info" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
             </div>
             <h3 class="text-[15px] font-bold text-primary">{{ __('analytics.monthly_trend') }}</h3>
         </div>
@@ -64,8 +64,8 @@ $fmt = fn ($v) => number_format((float) $v, 0);
     {{-- Top suppliers --}}
     <div class="bg-surface border border-th-border rounded-[16px] p-5 sm:p-[25px]">
         <div class="flex items-center gap-3 mb-5">
-            <div class="w-10 h-10 rounded-[12px] bg-[#00d9b5]/10 border border-[#00d9b5]/20 flex items-center justify-center flex-shrink-0">
-                <svg class="w-[18px] h-[18px] text-[#00d9b5]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0"/></svg>
+            <div class="w-10 h-10 rounded-[12px] bg-accent-success/10 border border-accent-success/20 flex items-center justify-center flex-shrink-0">
+                <svg class="w-[18px] h-[18px] text-accent-success" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0"/></svg>
             </div>
             <h3 class="text-[15px] font-bold text-primary">{{ __('analytics.top_suppliers') }}</h3>
         </div>
@@ -91,8 +91,8 @@ $fmt = fn ($v) => number_format((float) $v, 0);
             </div>
         @empty
             <div class="text-center py-8">
-                <div class="mx-auto w-12 h-12 rounded-full bg-[#00d9b5]/10 border border-[#00d9b5]/20 flex items-center justify-center mb-2">
-                    <svg class="w-6 h-6 text-[#00d9b5]" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21V7l9-4 9 4v14M9 21V12h6v9"/></svg>
+                <div class="mx-auto w-12 h-12 rounded-full bg-accent-success/10 border border-accent-success/20 flex items-center justify-center mb-2">
+                    <svg class="w-6 h-6 text-accent-success" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21V7l9-4 9 4v14M9 21V12h6v9"/></svg>
                 </div>
                 <p class="text-[12px] text-muted">{{ __('analytics.no_data') }}</p>
             </div>
@@ -104,8 +104,8 @@ $fmt = fn ($v) => number_format((float) $v, 0);
 {{-- Spend by category --}}
 <div class="mt-6 bg-surface border border-th-border rounded-[16px] p-[25px]">
     <div class="flex items-center gap-3 mb-5">
-        <div class="w-10 h-10 rounded-[12px] bg-[#8B5CF6]/10 border border-[#8B5CF6]/20 flex items-center justify-center flex-shrink-0">
-            <svg class="w-[18px] h-[18px] text-[#8B5CF6]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z"/></svg>
+        <div class="w-10 h-10 rounded-[12px] bg-accent-violet/10 border border-accent-violet/20 flex items-center justify-center flex-shrink-0">
+            <svg class="w-[18px] h-[18px] text-accent-violet" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z"/></svg>
         </div>
         <h3 class="text-[15px] font-bold text-primary">{{ __('analytics.spend_by_category') }}</h3>
     </div>

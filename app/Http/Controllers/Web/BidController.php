@@ -475,6 +475,12 @@ class BidController extends Controller
 
         $bid = $this->findOrFail($id)->load(['rfq.category', 'rfq.company', 'company', 'provider']);
 
+        // IDOR guard: a bid is only visible to (a) the supplier company that
+        // submitted it, (b) the buyer company that owns the parent RFQ, or
+        // (c) admin / government. Without this any user with bid.view could
+        // enumerate competitor bid prices, payment terms and attachments.
+        $this->authorizeBidParticipant($bid);
+
         // Supplier viewing their own bid gets the "my submitted bid" layout
         // (Bid Status timeline, Buyer Information on the right, no supplier
         // card). Routed via the role + company-type helper so a company
@@ -549,12 +555,13 @@ class BidController extends Controller
         // supplier with no completed contracts).
         $supplier = $bid->company;
 
-        // Real "completed" count: contracts where this supplier appears in the
-        // parties JSON and the status is completed/active.
+        // Real "completed" count: contracts where this supplier is a
+        // party AND the status is completed/active. Indexed lookup
+        // through the contract_parties junction.
         $completedCount = 0;
         if ($supplier) {
             $completedCount = \App\Models\Contract::query()
-                ->whereJsonContains('parties', ['company_id' => $supplier->id])
+                ->forCompany($supplier->id)
                 ->whereIn('status', ['completed', 'active', 'signed'])
                 ->count();
         }
@@ -1051,11 +1058,14 @@ class BidController extends Controller
             $winningBid->provider->notify(new \App\Notifications\BidAcceptedNotification($winningBid, $contract));
         }
 
-        // Notify rejected submitters. `provider` is the user who submitted
-        // the bid, which is the correct target for a per-bid notification.
+        // Notify rejected submitters with the procurement-grade "losing
+        // bid" notice. This replaces the older per-bid BidRejected ping
+        // — the new wording explicitly says "the buyer chose someone
+        // else for this RFQ" instead of the harsher "your bid was
+        // rejected", which is what mature procurement platforms do.
         foreach ($rejectedBids as $rejected) {
             if ($rejected->provider) {
-                $rejected->provider->notify(new \App\Notifications\BidRejectedNotification($rejected));
+                $rejected->provider->notify(new \App\Notifications\LosingBidNotification($rejected));
             }
         }
 
@@ -1140,13 +1150,8 @@ class BidController extends Controller
     public function downloadAttachment(string $id, int $idx): StreamedResponse
     {
         $bid  = $this->findOrFail($id)->load('rfq');
-        $user = auth()->user();
-        abort_unless($user?->hasPermission('bid.view'), 403);
-
-        // Authorize: either the bid's supplier company OR the RFQ's buyer company.
-        $isSupplier = $user->company_id === $bid->company_id;
-        $isBuyer    = $user->company_id === ($bid->rfq?->company_id);
-        abort_unless($isSupplier || $isBuyer, 403);
+        abort_unless(auth()->user()?->hasPermission('bid.view'), 403);
+        $this->authorizeBidParticipant($bid);
 
         $attachments = (array) ($bid->attachments ?? []);
         $entry = $attachments[$idx] ?? null;
@@ -1166,12 +1171,8 @@ class BidController extends Controller
     public function download(string $id): Response
     {
         $bid = $this->findOrFail($id)->load(['rfq.company', 'rfq.category', 'company']);
-        $user = auth()->user();
-        abort_unless($user?->hasPermission('bid.view'), 403);
-
-        $isSupplier = $user->company_id === $bid->company_id;
-        $isBuyer    = $user->company_id === ($bid->rfq?->company_id);
-        abort_unless($isSupplier || $isBuyer, 403);
+        abort_unless(auth()->user()?->hasPermission('bid.view'), 403);
+        $this->authorizeBidParticipant($bid);
 
         $price = (float) $bid->price;
         $pdf = Pdf::loadView('dashboard.bids.pdf', [
@@ -1189,6 +1190,36 @@ class BidController extends Controller
         }
 
         return Bid::findOrFail((int) $id);
+    }
+
+    /**
+     * IDOR guard for bid show / download paths. A bid is only accessible to
+     * (a) the supplier company that submitted it, (b) the buyer company that
+     * owns the parent RFQ, or (c) admin / government users. Aborts 404
+     * (not 403) so the existence of the bid is not leaked to a probing
+     * attacker enumerating IDs.
+     */
+    private function authorizeBidParticipant(Bid $bid): void
+    {
+        $user = auth()->user();
+        if (!$user) {
+            abort(404);
+        }
+        if (method_exists($user, 'isAdmin') && $user->isAdmin()) {
+            return;
+        }
+        if (method_exists($user, 'isGovernment') && $user->isGovernment()) {
+            return;
+        }
+        $userCompanyId = (int) ($user->company_id ?? 0);
+        if ($userCompanyId === 0) {
+            abort(404);
+        }
+        $isSupplier = $userCompanyId === (int) $bid->company_id;
+        $isBuyer    = $userCompanyId === (int) ($bid->rfq?->company_id ?? 0);
+        if (!$isSupplier && !$isBuyer) {
+            abort(404);
+        }
     }
 
     private function mapBidStatus(string $status): string

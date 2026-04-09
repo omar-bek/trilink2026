@@ -6,6 +6,7 @@ use App\Enums\BidStatus;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
 use App\Enums\ContractStatus;
+use App\Enums\DocumentType;
 use App\Enums\PaymentStatus;
 use App\Enums\PurchaseRequestStatus;
 use App\Enums\RfqStatus;
@@ -16,6 +17,7 @@ use App\Enums\UserStatus;
 use App\Models\Bid;
 use App\Models\Category;
 use App\Models\Company;
+use App\Models\CompanyDocument;
 use App\Models\Contract;
 use App\Models\Payment;
 use App\Models\PurchaseRequest;
@@ -58,6 +60,8 @@ class DashboardWebFlowTest extends TestCase
             'country'             => 'UAE',
         ]);
 
+        $this->attachValidTradeLicense($company);
+
         $user = User::create([
             'first_name' => 'Bob',
             'last_name'  => 'Buyer',
@@ -87,6 +91,8 @@ class DashboardWebFlowTest extends TestCase
             'country'             => 'UAE',
         ]);
 
+        $this->attachValidTradeLicense($company);
+
         $user = User::create([
             'first_name' => 'Sara',
             'last_name'  => 'Supplier',
@@ -101,6 +107,27 @@ class DashboardWebFlowTest extends TestCase
         $this->actingAs($user);
 
         return [$user, $company];
+    }
+
+    /**
+     * Sprint A.5 — every test company needs a valid trade license
+     * because ContractService::createFromBid() and PaymentService /
+     * EscrowService all re-check at action time. In production the
+     * license is always present (registration gates on it); test
+     * fixtures must mirror that invariant or the bid → contract →
+     * payment flow blocks.
+     */
+    private function attachValidTradeLicense(Company $company): void
+    {
+        CompanyDocument::create([
+            'company_id' => $company->id,
+            'type'       => DocumentType::TRADE_LICENSE,
+            'label'      => 'Trade License',
+            'file_path'  => 'test/trade-license.pdf',
+            'status'     => CompanyDocument::STATUS_VERIFIED,
+            'issued_at'  => now()->subYear(),
+            'expires_at' => now()->addYear(),
+        ]);
     }
 
     public function test_landing_page_renders(): void
@@ -229,6 +256,9 @@ class DashboardWebFlowTest extends TestCase
 
         $this->loginAsSupplier();
 
+        // Phase 2 trade fields are mandatory: incoterm + country_of_origin
+        // + tax_treatment are validated by StoreBidRequest. Without them
+        // the form fails validation and no bid row is created.
         $payload = [
             'price'              => 95000,
             'currency'           => 'AED',
@@ -236,6 +266,9 @@ class DashboardWebFlowTest extends TestCase
             'payment_terms'      => '30/70',
             'validity_date'      => now()->addDays(30)->format('Y-m-d'),
             'notes'              => 'High-quality steel',
+            'incoterm'           => 'CIF',
+            'country_of_origin'  => 'AE',
+            'tax_treatment'      => 'exclusive',
         ];
 
         $this->post("/dashboard/rfqs/{$rfq->id}/bids", $payload)
@@ -254,6 +287,10 @@ class DashboardWebFlowTest extends TestCase
 
         $supplierA = Company::create(['name' => 'A', 'registration_number' => 'A', 'type' => CompanyType::SUPPLIER, 'status' => CompanyStatus::ACTIVE]);
         $supplierB = Company::create(['name' => 'B', 'registration_number' => 'B', 'type' => CompanyType::SUPPLIER, 'status' => CompanyStatus::ACTIVE]);
+        // Both inline supplier companies need a valid trade license so
+        // ContractService::createFromBid can issue the contract on accept.
+        $this->attachValidTradeLicense($supplierA);
+        $this->attachValidTradeLicense($supplierB);
 
         $rfq = Rfq::create([
             'title'      => 'Cables',

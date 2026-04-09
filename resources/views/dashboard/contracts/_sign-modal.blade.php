@@ -23,9 +23,67 @@
 @props(['contract', 'signing_company_name'])
 
 <div
-    x-data="{ open: false, consent: false, password: '', showPassword: false }"
-    x-on:open-sign-modal.window="open = true"
-    x-on:keydown.escape.window="open = false"
+    x-data="{
+        open: false,
+        consent: false,
+        password: '',
+        showPassword: false,
+        // Element that opened the modal — focus is returned to it on
+        // close so keyboard users land back where they came from
+        // instead of the page top.
+        triggerEl: null,
+        focusables() {
+            return Array.from(this.$refs.dialog.querySelectorAll(
+                'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\'-1\'])'
+            ));
+        },
+        openModal(ev) {
+            this.triggerEl = (ev && ev.target) || document.activeElement;
+            this.open = true;
+            this.$nextTick(() => {
+                const items = this.focusables();
+                if (items.length) {
+                    // Focus the password input when present, otherwise
+                    // the first focusable element in tab order.
+                    const pwd = this.$refs.dialog.querySelector('#sign-password');
+                    (pwd || items[0]).focus();
+                }
+            });
+        },
+        closeModal() {
+            this.open = false;
+            // Restore focus to whichever element opened us. Wrapped in
+            // requestAnimationFrame so it runs after Alpine has hidden
+            // the dialog (otherwise the browser refuses to focus an
+            // element nested in display:none).
+            requestAnimationFrame(() => {
+                if (this.triggerEl && document.contains(this.triggerEl)) {
+                    this.triggerEl.focus();
+                }
+            });
+        },
+        trapTab(ev) {
+            if (!this.open) return;
+            const items = this.focusables();
+            if (items.length === 0) return;
+            const first = items[0];
+            const last  = items[items.length - 1];
+            // Shift+Tab on the first element wraps to the last; Tab on
+            // the last wraps to the first. Together they make the
+            // dialog a closed loop so keyboard focus can never escape
+            // to the (visually hidden) page underneath.
+            if (ev.shiftKey && document.activeElement === first) {
+                ev.preventDefault();
+                last.focus();
+            } else if (!ev.shiftKey && document.activeElement === last) {
+                ev.preventDefault();
+                first.focus();
+            }
+        }
+    }"
+    x-on:open-sign-modal.window="openModal($event)"
+    x-on:keydown.escape.window="if (open) closeModal()"
+    x-on:keydown.tab="trapTab($event)"
     x-cloak
 >
     {{-- Backdrop --}}
@@ -33,7 +91,7 @@
         x-show="open"
         x-transition.opacity
         class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
-        @click="open = false"
+        @click="closeModal()"
         aria-hidden="true"
     ></div>
 
@@ -41,6 +99,7 @@
     <div
         x-show="open"
         x-transition
+        x-ref="dialog"
         class="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
         role="dialog"
         aria-modal="true"
@@ -64,7 +123,7 @@
                 </div>
                 <button
                     type="button"
-                    @click="open = false"
+                    @click="closeModal()"
                     class="w-8 h-8 rounded-lg text-muted hover:text-primary dark:text-[#b4b6c0] dark:hover:text-white flex items-center justify-center flex-shrink-0"
                     aria-label="{{ __('common.close') }}"
                 >
@@ -147,7 +206,7 @@
                 <div class="flex items-center justify-end gap-2 pt-2">
                     <button
                         type="button"
-                        @click="open = false"
+                        @click="closeModal()"
                         class="px-4 py-2.5 rounded-xl text-[13px] font-semibold text-muted dark:text-[#b4b6c0] hover:text-primary dark:hover:text-white"
                     >
                         {{ __('contracts.amendment_cancel') }}

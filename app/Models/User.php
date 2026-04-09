@@ -6,6 +6,7 @@ use App\Concerns\Searchable;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -16,7 +17,7 @@ use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable implements JWTSubject
+class User extends Authenticatable implements JWTSubject, HasLocalePreference
 {
     use HasFactory, Notifiable, SoftDeletes, HasRoles, HasApiTokens, Searchable;
 
@@ -44,6 +45,8 @@ class User extends Authenticatable implements JWTSubject
         'branch_id',
         'custom_permissions',
         'last_login',
+        'notification_preferences',
+        'locale',
     ];
 
     protected $hidden = [
@@ -72,7 +75,74 @@ class User extends Authenticatable implements JWTSubject
             'two_factor_secret'         => 'encrypted',
             'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at'   => 'datetime',
+            // Sprint D.17 — per-user notification preferences. Stored
+            // as JSON so adding a new notification type doesn't require
+            // a schema migration. See defaultNotificationPreferences()
+            // and shouldDeliverNotification() for the read recipe.
+            'notification_preferences'  => 'array',
         ];
+    }
+
+    /**
+     * Default notification preferences applied when the user has not
+     * explicitly customised theirs. Centralised here so the form, the
+     * API and any future digest job all read from the same source of
+     * truth.
+     *
+     * @return array<string,mixed>
+     */
+    public static function defaultNotificationPreferences(): array
+    {
+        return [
+            'channels' => [
+                'database' => true,
+                'mail'     => true,
+            ],
+            'digest' => [
+                // realtime: notifications fire immediately as they happen
+                // daily:    rolled up into a single morning summary
+                // off:      delivered to the bell only, never emailed
+                'mode' => 'realtime',
+            ],
+            'types' => [
+                // Empty by default — when a type isn't listed here we
+                // fall back to "channels" above.
+            ],
+        ];
+    }
+
+    /**
+     * Resolve the effective channels for a notification type. The form
+     * only stores deltas; this method does the merge so callers don't
+     * need to know how the JSON is laid out.
+     *
+     * @return array<int,string>
+     */
+    public function deliveryChannelsFor(string $type): array
+    {
+        $prefs = $this->notification_preferences ?? self::defaultNotificationPreferences();
+
+        // "Off" digest mode disables email entirely — bell stays on so
+        // the user can still find what they missed.
+        $digestMode = $prefs['digest']['mode'] ?? 'realtime';
+
+        $perType = $prefs['types'][$type] ?? null;
+        if (is_array($perType)) {
+            $channels = $perType;
+        } else {
+            $channels = [];
+            foreach (($prefs['channels'] ?? []) as $name => $enabled) {
+                if ($enabled) {
+                    $channels[] = $name;
+                }
+            }
+        }
+
+        if ($digestMode === 'off') {
+            $channels = array_values(array_filter($channels, fn ($c) => $c !== 'mail'));
+        }
+
+        return $channels;
     }
 
     public function getFullNameAttribute(): string
@@ -83,6 +153,19 @@ class User extends Authenticatable implements JWTSubject
     public function getJWTIdentifier(): mixed
     {
         return $this->getKey();
+    }
+
+    /**
+     * Implements Laravel's HasLocalePreference contract — when a
+     * notification or mailable is dispatched to this user, Laravel
+     * automatically calls App::setLocale() with this value before
+     * rendering it. That makes Arabic-speaking users get Arabic
+     * emails even though queue workers run with no HTTP context.
+     */
+    public function preferredLocale(): ?string
+    {
+        $locale = $this->locale;
+        return in_array($locale, ['en', 'ar'], true) ? $locale : null;
     }
 
     public function getJWTCustomClaims(): array

@@ -42,6 +42,8 @@ class Consent extends Model
         'user_id',
         'consent_type',
         'version',
+        // Phase 2.5 — FK to the immutable snapshot of the policy text.
+        'privacy_policy_version_id',
         'granted_at',
         'withdrawn_at',
         'ip_address',
@@ -59,6 +61,16 @@ class Consent extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Phase 2.5 — the exact policy version row this consent agreed
+     * to. Nullable for backwards compatibility (pre-Phase-2.5
+     * consents have a version string but no FK).
+     */
+    public function privacyPolicyVersion(): BelongsTo
+    {
+        return $this->belongsTo(PrivacyPolicyVersion::class);
     }
 
     public function isActive(): bool

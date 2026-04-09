@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Bid;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,6 +17,7 @@ use Illuminate\Notifications\Notification;
 class BidRejectedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Bid $bid,
@@ -34,20 +36,25 @@ class BidRejectedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject("Bid update — {$this->bid->rfq?->title}")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("Your bid on RFQ #{$this->bid->rfq?->rfq_number} was not selected by the buyer.")
-            ->line("We'll notify you when new RFQs matching your categories are posted.")
-            ->action('Browse Available RFQs', route('dashboard.rfqs'));
+        $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
+
+        return $this->baseMail($notifiable, 'notifications.bid.rejected.subject', ['rfq' => $rfqNumber])
+            ->line($this->t($notifiable, 'notifications.bid.rejected.line1', ['rfq' => $rfqNumber]))
+            ->line($this->t($notifiable, 'notifications.bid.rejected.line2'))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_view_rfq'),
+                route('dashboard.rfqs')
+            );
     }
 
     public function toArray(object $notifiable): array
     {
+        $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
+
         return [
             'type'        => 'warning',
-            'title'       => 'Bid Not Selected',
-            'message'     => "Your bid on #{$this->bid->rfq?->rfq_number} was not selected",
+            'title'       => $this->t($notifiable, 'notifications.bid.rejected.title'),
+            'message'     => $this->t($notifiable, 'notifications.bid.rejected.message', ['rfq' => $rfqNumber]),
             'entity_type' => 'bid',
             'entity_id'   => $this->bid->id,
         ];

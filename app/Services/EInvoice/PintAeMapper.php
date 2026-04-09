@@ -97,7 +97,16 @@ class PintAeMapper
         $this->buildLegalMonetaryTotal($doc, $root, $invoice);
         $this->buildLineItems($doc, $root, $invoice);
 
-        return $doc->saveXML();
+        $xml = $doc->saveXML();
+
+        // Sprint Hardening — structural conformance check before
+        // we hand the document to the dispatcher. Catches missing
+        // mandatory elements + bad currency / country / TRN shapes
+        // BEFORE the ASP rejects them with an opaque "validation
+        // failed" error. See validate() for the rule list.
+        $this->validate($xml, 'Invoice');
+
+        return $xml;
     }
 
     /**
@@ -186,7 +195,170 @@ class PintAeMapper
         $this->buildLegalMonetaryTotal($doc, $root, $adapter);
         $this->buildLineItems($doc, $root, $adapter);
 
-        return $doc->saveXML();
+        $xml = $doc->saveXML();
+
+        // Same conformance gate as toUbl() — credit notes have to
+        // pass the same FTA invariants the dispatcher would otherwise
+        // discover the hard way.
+        $this->validate($xml, 'CreditNote');
+
+        return $xml;
+    }
+
+    /**
+     * Sprint Hardening — structural conformance check on a generated
+     * UBL document. This is NOT a full XSD schema validation — the
+     * official FTA PINT-AE schema is licensed and we don't ship it
+     * in vendor/. Instead, we enforce the invariants the FTA
+     * validator rejects most often, in code:
+     *
+     *   1. Document is well-formed XML and parses without errors.
+     *   2. Mandatory header (CustomizationID, ProfileID, ID, IssueDate,
+     *      DocumentCurrencyCode) is present and non-empty.
+     *   3. Both parties are present.
+     *   4. Currency is a 3-letter ISO 4217 code.
+     *   5. Country (PostalAddress/Country/IdentificationCode) is a
+     *      2-letter ISO 3166-1 code.
+     *   6. Every monetary amount parses as a non-negative decimal.
+     *   7. The party EndpointID (Peppol routing) is present with
+     *      schemeID="0235" — without it the document can't be routed
+     *      on the Peppol network.
+     *
+     * If config('einvoice.xsd_path') points to a real XSD on disk
+     * (a customer who has licensed the schema can drop it there),
+     * we ALSO run libxml's schemaValidate. The code path stays the
+     * same so a partner with the schema gets the strongest possible
+     * check; partners without it still benefit from the structural
+     * checks.
+     *
+     * Throws RuntimeException with a precise reason on the first
+     * failure — fail fast so the dispatcher can stamp the failure
+     * on the submission row.
+     *
+     * @throws \RuntimeException
+     */
+    public function validate(string $xml, string $documentType = 'Invoice'): void
+    {
+        // (1) Well-formedness — load with libxml errors captured so
+        // we can surface a precise message instead of a generic warning.
+        $previous = libxml_use_internal_errors(true);
+        $doc = new DOMDocument();
+        $loaded = $doc->loadXML($xml);
+        $errors = libxml_get_errors();
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        if (!$loaded) {
+            $first = $errors[0]->message ?? 'unknown XML parse error';
+            throw new \RuntimeException("PintAeMapper: generated {$documentType} XML is not well-formed: " . trim($first));
+        }
+
+        $xpath = new \DOMXPath($doc);
+        $xpath->registerNamespace('cac', self::NS_CAC);
+        $xpath->registerNamespace('cbc', self::NS_CBC);
+
+        // (2) Mandatory header elements. Each one is a top-level cbc:*
+        // child of the root element. We use local-name() so the same
+        // XPath works for both Invoice and CreditNote roots without
+        // hardcoding two namespaces.
+        $required = ['CustomizationID', 'ProfileID', 'ID', 'IssueDate', 'DocumentCurrencyCode'];
+        foreach ($required as $tag) {
+            $nodes = $xpath->query("/*/*[local-name()='{$tag}']");
+            if ($nodes === false || $nodes->length === 0) {
+                throw new \RuntimeException("PintAeMapper: {$documentType} is missing mandatory element {$tag}.");
+            }
+            $value = trim((string) $nodes->item(0)->textContent);
+            if ($value === '') {
+                throw new \RuntimeException("PintAeMapper: {$documentType} mandatory element {$tag} is empty.");
+            }
+        }
+
+        // (3) Both parties must be present and non-empty.
+        foreach (['AccountingSupplierParty', 'AccountingCustomerParty'] as $partyTag) {
+            $nodes = $xpath->query("/*/cac:{$partyTag}");
+            if ($nodes === false || $nodes->length === 0) {
+                throw new \RuntimeException("PintAeMapper: {$documentType} is missing {$partyTag}.");
+            }
+        }
+
+        // (4) Currency code = 3 uppercase ASCII letters (ISO 4217).
+        $currencyNodes = $xpath->query("/*/cbc:DocumentCurrencyCode");
+        if ($currencyNodes !== false && $currencyNodes->length > 0) {
+            $currency = trim((string) $currencyNodes->item(0)->textContent);
+            if (!preg_match('/^[A-Z]{3}$/', $currency)) {
+                throw new \RuntimeException("PintAeMapper: invalid currency code '{$currency}' (expected ISO 4217, e.g. AED).");
+            }
+        }
+
+        // (5) Every PostalAddress/Country/IdentificationCode must be a
+        // 2-letter ISO 3166-1 code (e.g. AE, SA, IN). The FTA's
+        // validator rejects bare country names like "United Arab Emirates".
+        $countryNodes = $xpath->query("//cac:Country/cbc:IdentificationCode");
+        if ($countryNodes !== false) {
+            foreach ($countryNodes as $node) {
+                $code = trim((string) $node->textContent);
+                if (!preg_match('/^[A-Z]{2}$/', $code)) {
+                    throw new \RuntimeException("PintAeMapper: invalid country code '{$code}' (expected ISO 3166-1 alpha-2, e.g. AE).");
+                }
+            }
+        }
+
+        // (6) Every cbc element with currencyID is a monetary amount.
+        // It must parse as a non-negative decimal — the FTA rejects
+        // anything else (negative amounts go on credit notes, not
+        // invoices, via the InvoiceTypeCode/CreditNoteTypeCode flag).
+        $amountNodes = $xpath->query("//*[@currencyID]");
+        if ($amountNodes !== false) {
+            foreach ($amountNodes as $node) {
+                $raw = trim((string) $node->textContent);
+                if (!preg_match('/^-?\d+(\.\d+)?$/', $raw)) {
+                    throw new \RuntimeException("PintAeMapper: monetary amount '{$raw}' is not a valid decimal.");
+                }
+                if ((float) $raw < 0) {
+                    throw new \RuntimeException("PintAeMapper: monetary amount '{$raw}' is negative — credit notes use the dedicated CreditNote document type, not negative invoice amounts.");
+                }
+            }
+        }
+
+        // (7) Peppol routing identifier — every party must carry an
+        // EndpointID with the UAE FTA scheme '0235'. Without this the
+        // ASP cannot route the document on the network.
+        $endpointNodes = $xpath->query("//cac:Party/cbc:EndpointID");
+        if ($endpointNodes === false || $endpointNodes->length < 2) {
+            throw new \RuntimeException("PintAeMapper: {$documentType} must carry an EndpointID for both parties (Peppol routing).");
+        }
+        foreach ($endpointNodes as $node) {
+            $scheme = $node->getAttribute('schemeID');
+            if ($scheme !== '0235') {
+                throw new \RuntimeException("PintAeMapper: EndpointID schemeID must be '0235' for UAE FTA TRN, got '{$scheme}'.");
+            }
+        }
+
+        // (8) Optional: real XSD validation when the customer has
+        // licensed the schema. Configured via einvoice.xsd_path. We
+        // gate it behind file_exists() so a missing file is a no-op
+        // instead of a hard failure on every test run. The config()
+        // call is wrapped in a try/catch so the mapper can run from
+        // a pure unit test (no Laravel kernel) without crashing — in
+        // that environment we just skip the optional XSD step.
+        $xsdPath = null;
+        try {
+            $xsdPath = function_exists('config') ? config('einvoice.xsd_path') : null;
+        } catch (\Throwable) {
+            $xsdPath = null;
+        }
+        if (is_string($xsdPath) && $xsdPath !== '' && file_exists($xsdPath)) {
+            $previous = libxml_use_internal_errors(true);
+            $passed = $doc->schemaValidate($xsdPath);
+            $errors = libxml_get_errors();
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+
+            if (!$passed) {
+                $first = $errors[0]->message ?? 'unknown schema error';
+                throw new \RuntimeException("PintAeMapper: {$documentType} fails XSD validation: " . trim($first));
+            }
+        }
     }
 
     /**
@@ -220,6 +392,18 @@ class PintAeMapper
 
         $inner = $doc->createElementNS(self::NS_CAC, 'cac:Party');
         $partyEl->appendChild($inner);
+
+        // Phase 5.5 (UAE Compliance Roadmap — post-implementation
+        // hardening). Peppol routing layer addresses every party by
+        // its Participant Identifier — the EndpointID with a scheme
+        // attribute. The UAE FTA TRN namespace is registered as
+        // scheme `0235`. Without this element a real ASP cannot route
+        // the document to its destination on the Peppol network.
+        if (!empty($party['trn'])) {
+            $endpoint = $doc->createElementNS(self::NS_CBC, 'cbc:EndpointID', $party['trn']);
+            $endpoint->setAttribute('schemeID', '0235');
+            $inner->appendChild($endpoint);
+        }
 
         // Party name
         $partyName = $doc->createElementNS(self::NS_CAC, 'cac:PartyName');

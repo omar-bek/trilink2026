@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TriLink — Offline</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0f1117">
+    <style>
+        :root { color-scheme: dark; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #0f1117;
+            color: #ffffff;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card {
+            max-width: 440px;
+            width: calc(100% - 32px);
+            margin: 16px;
+            background: #1a1d29;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 32px 28px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+        }
+        .icon {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 20px;
+            border-radius: 14px;
+            background: rgba(79, 124, 255, 0.12);
+            color: #4f7cff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        h1 {
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0 0 8px;
+        }
+        p {
+            font-size: 13px;
+            line-height: 1.55;
+            color: #b4b6c0;
+            margin: 0 0 20px;
+        }
+        button {
+            background: #4f7cff;
+            color: #ffffff;
+            border: 0;
+            border-radius: 12px;
+            padding: 12px 22px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        button:hover { background: #3d68e8; }
+        .hint {
+            font-size: 11px;
+            color: #6b6f7c;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">
+            <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M8.464 8.464a5 5 0 000 7.072M15.536 8.464a5 5 0 010 7.072M12 12h.01"/>
+            </svg>
+        </div>
+        <h1>You're offline</h1>
+        <p>TriLink needs an internet connection to load this page. Reconnect and we'll pick up where you left off.</p>
+        <button type="button" onclick="window.location.reload()">Try again</button>
+        <p class="hint">Your unsaved work is preserved locally.</p>
+    </div>
+</body>
+</html>

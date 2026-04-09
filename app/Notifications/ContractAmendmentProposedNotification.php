@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Contract;
 use App\Models\ContractAmendment;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -19,6 +20,7 @@ use Illuminate\Notifications\Notification;
 class ContractAmendmentProposedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Contract $contract,
@@ -39,25 +41,24 @@ class ContractAmendmentProposedNotification extends Notification implements Shou
 
     public function toMail(object $notifiable): MailMessage
     {
-        $changes = $this->amendment->changes ?? [];
-        $section = $changes['section_title'] ?? '—';
-        $kindLabel = ($changes['kind'] ?? 'modify') === 'add' ? 'add a new clause to' : 'modify a clause in';
+        $number = $this->contract->contract_number;
 
-        return (new MailMessage)
-            ->subject("Contract {$this->contract->contract_number} — Amendment Proposed")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("{$this->proposerName} has proposed to {$kindLabel} \"{$section}\" of contract {$this->contract->contract_number}.")
-            ->line('The proposed wording is awaiting your approval. Until either party approves or rejects it, the contract cannot be signed.')
-            ->action('Review Amendment', route('dashboard.contracts.show', ['id' => $this->contract->id]));
+        return $this->baseMail($notifiable, 'notifications.contract.amendment_proposed.subject', ['number' => $number])
+            ->line($this->t($notifiable, 'notifications.contract.amendment_proposed.line1', ['number' => $number]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_review'),
+                route('dashboard.contracts.show', ['id' => $this->contract->id])
+            );
     }
 
     public function toArray(object $notifiable): array
     {
-        $section = ($this->amendment->changes ?? [])['section_title'] ?? '—';
         return [
             'type'        => 'warning',
-            'title'       => 'Amendment Proposed',
-            'message'     => "{$this->proposerName} proposed a change to \"{$section}\" on contract {$this->contract->contract_number}",
+            'title'       => $this->t($notifiable, 'notifications.contract.amendment_proposed.title'),
+            'message'     => $this->t($notifiable, 'notifications.contract.amendment_proposed.message', [
+                'number' => $this->contract->contract_number,
+            ]),
             'entity_type' => 'contract',
             'entity_id'   => $this->contract->id,
         ];

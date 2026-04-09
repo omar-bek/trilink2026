@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Web;
 
 use App\Enums\AmendmentStatus;
+use App\Enums\AuditAction;
 use App\Enums\ContractStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\ShipmentStatus;
+use App\Models\AuditLog;
+use App\Models\ContractApproval;
+use App\Models\ContractInternalNote;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Models\Company;
@@ -34,8 +38,10 @@ class ContractController extends Controller
 {
     use FormatsForViews;
 
-    public function __construct(private readonly ContractService $service)
-    {
+    public function __construct(
+        private readonly ContractService $service,
+        private readonly ?\App\Services\AI\ContractRiskAnalysisService $riskService = null,
+    ) {
     }
 
     /**
@@ -44,26 +50,145 @@ class ContractController extends Controller
      * suppliers only see contracts where their company is a party. Admin
      * sees everything.
      */
+    /**
+     * Spend Analytics dashboard — buyer-side analytics over the
+     * tenant's contracts. KPIs:
+     *   - Total spend (this month / quarter / year)
+     *   - Average velocity (created → signed in days)
+     *   - Top 5 suppliers by aggregated contract value
+     *   - Status breakdown (active / pending / completed)
+     *   - 12-month spend timeseries
+     *
+     * Tenant scope: same as the index page — buyer companies see
+     * their own contracts, suppliers see contracts where their
+     * company is a party. Admin / government see everything.
+     */
+    public function analytics(): View
+    {
+        $user = auth()->user();
+        abort_unless($user?->hasPermission('contract.view'), 403);
+
+        $companyId = $this->currentCompanyId();
+
+        // Tenant scope: include every contract where THIS company appears
+        // on either side. Uses the indexed contract_parties junction
+        // (synced by ContractObserver from the canonical parties JSON)
+        // instead of `whereJsonContains` so the query plan is a single
+        // index lookup instead of a JSON full-table scan.
+        $base = Contract::query();
+        if ($companyId) {
+            $base->forCompany($companyId);
+        }
+
+        $now           = now();
+        $thisMonthFrom = $now->copy()->startOfMonth();
+        $thisQtrFrom   = $now->copy()->firstOfQuarter();
+        $thisYearFrom  = $now->copy()->startOfYear();
+
+        // Spend KPIs — sum of total_amount, scoped to the tenant.
+        $totalAll       = (float) (clone $base)->sum('total_amount');
+        $totalThisMonth = (float) (clone $base)->where('created_at', '>=', $thisMonthFrom)->sum('total_amount');
+        $totalThisQtr   = (float) (clone $base)->where('created_at', '>=', $thisQtrFrom)->sum('total_amount');
+        $totalThisYear  = (float) (clone $base)->where('created_at', '>=', $thisYearFrom)->sum('total_amount');
+
+        // Status breakdown for the donut.
+        $statusCounts = (clone $base)
+            ->selectRaw('status, COUNT(*) as cnt')
+            ->groupBy('status')
+            ->pluck('cnt', 'status')
+            ->all();
+
+        // Average velocity = days between created_at and the first
+        // signature in the signatures JSON. We can't compute this in
+        // pure SQL because signatures is JSON; iterate in PHP across
+        // the most recent 200 signed contracts (good-enough sample).
+        $signedSample = (clone $base)
+            ->whereNotNull('signatures')
+            ->latest()
+            ->limit(200)
+            ->get(['id', 'created_at', 'signatures']);
+        $velocityDays = [];
+        foreach ($signedSample as $c) {
+            $sigs = $c->signatures ?? [];
+            if (empty($sigs)) continue;
+            $firstAt = collect($sigs)->pluck('signed_at')->filter()->sort()->first();
+            if (!$firstAt) continue;
+            try {
+                $diff = $c->created_at?->diffInDays(\Carbon\Carbon::parse($firstAt));
+                if ($diff !== null) {
+                    $velocityDays[] = (float) $diff;
+                }
+            } catch (\Throwable) {}
+        }
+        $avgVelocity = !empty($velocityDays) ? round(array_sum($velocityDays) / count($velocityDays), 1) : null;
+
+        // Top 5 suppliers by aggregated contract value. We can't
+        // GROUP BY a JSON path cleanly across SQLite/MySQL, so iterate
+        // through the rows in PHP.
+        $supplierTotals = [];
+        $sample = (clone $base)->limit(500)->get(['id', 'total_amount', 'parties']);
+        foreach ($sample as $c) {
+            foreach ($c->parties ?? [] as $party) {
+                if (($party['role'] ?? '') !== 'supplier') continue;
+                $cid = $party['company_id'] ?? null;
+                if (!$cid) continue;
+                $supplierTotals[$cid] = ($supplierTotals[$cid] ?? 0) + (float) $c->total_amount;
+            }
+        }
+        arsort($supplierTotals);
+        $topSupplierIds = array_slice(array_keys($supplierTotals), 0, 5);
+        $supplierNames = Company::whereIn('id', $topSupplierIds)->pluck('name', 'id');
+        $topSuppliers = collect($topSupplierIds)
+            ->map(fn ($id) => [
+                'name'   => $supplierNames[$id] ?? '—',
+                'value'  => $this->money($supplierTotals[$id], 'AED'),
+                'raw'    => $supplierTotals[$id],
+            ])
+            ->all();
+
+        // 12-month spend timeseries — group rows by year-month.
+        $twelveMonthsAgo = $now->copy()->subMonths(11)->startOfMonth();
+        $rows = (clone $base)
+            ->where('created_at', '>=', $twelveMonthsAgo)
+            ->get(['created_at', 'total_amount']);
+        $monthly = [];
+        for ($m = 0; $m < 12; $m++) {
+            $key = $twelveMonthsAgo->copy()->addMonths($m)->format('Y-m');
+            $monthly[$key] = ['label' => $twelveMonthsAgo->copy()->addMonths($m)->format('M'), 'value' => 0.0];
+        }
+        foreach ($rows as $r) {
+            $key = $r->created_at?->format('Y-m');
+            if ($key && isset($monthly[$key])) {
+                $monthly[$key]['value'] += (float) $r->total_amount;
+            }
+        }
+        $monthlyMax = max(array_column($monthly, 'value')) ?: 1;
+
+        return view('dashboard.contracts.analytics', [
+            'kpis' => [
+                'total_all'   => $this->money($totalAll, 'AED'),
+                'this_month'  => $this->money($totalThisMonth, 'AED'),
+                'this_qtr'    => $this->money($totalThisQtr, 'AED'),
+                'this_year'   => $this->money($totalThisYear, 'AED'),
+                'avg_velocity'=> $avgVelocity,
+            ],
+            'status_counts' => $statusCounts,
+            'top_suppliers' => $topSuppliers,
+            'monthly'       => array_values($monthly),
+            'monthly_max'   => $monthlyMax,
+        ]);
+    }
+
     public function exportCsv(Request $request): StreamedResponse
     {
         abort_unless(auth()->user()?->hasPermission('contract.view'), 403);
 
-        $companyId  = $this->currentCompanyId();
-        // Drives the buyer-vs-supplier query branch — see
-        // FormatsForViews::isSupplierSideUser() for the role + company-type
-        // dispatch rules.
-        $isSupplier = $this->isSupplierSideUser();
+        $companyId = $this->currentCompanyId();
 
+        // Tenant scope: indexed lookup via the contract_parties junction.
         $base = Contract::query();
         if ($companyId) {
-            if ($isSupplier) {
-                $base->where(function ($q) use ($companyId) {
-                    $q->whereJsonContains('parties', ['company_id' => $companyId])
-                      ->orWhere('buyer_company_id', $companyId);
-                });
-            } else {
-                $base->where('buyer_company_id', $companyId);
-            }
+            $base->forCompany($companyId);
         }
 
         $ids = (array) $request->query('ids', []);
@@ -151,29 +276,48 @@ class ContractController extends Controller
             $statusFilter = 'all';
         }
 
+        // Direction filter — a tenant that plays both buyer AND supplier
+        // roles in the platform can narrow the listing to one direction.
+        // 'all' (default) shows everything, 'buying' shows only contracts
+        // where this company is the buyer, 'selling' only the ones where
+        // it's a supplier party. The frontend renders these as filter
+        // chips on the listing page.
+        $direction = $request->query('direction', 'all');
+        if (! in_array($direction, ['all', 'buying', 'selling'], true)) {
+            $direction = 'all';
+        }
+
         $sort = $request->query('sort', 'newest');
         if (! in_array($sort, ['newest', 'oldest', 'value_desc', 'value_asc', 'ending_soon'], true)) {
             $sort = 'newest';
         }
 
-        // Suppliers see contracts where THEIR company is a party (via parties JSON)
-        // plus ones where the buyer_company_id matches them (legacy / fallback).
-        // The helper checks both the user's role AND the company TYPE so a
-        // company_manager / finance / sales of a supplier company is correctly
-        // routed to the supplier branch — the previous role-only check left
-        // those users on an empty buyer index.
-        $isSupplier = $this->isSupplierSideUser();
-
+        // Tenant scope: every contract where THIS company is either the
+        // buyer OR a supplier party. Indexed via the contract_parties
+        // junction (synced from the canonical parties JSON by the
+        // ContractObserver) — single index lookup, no JSON full scan.
         $base = Contract::query();
         if ($companyId) {
-            if ($isSupplier) {
-                $base->where(function ($q) use ($companyId) {
-                    $q->whereJsonContains('parties', ['company_id' => $companyId])
-                      ->orWhere('buyer_company_id', $companyId);
-                });
-            } else {
-                $base->where('buyer_company_id', $companyId);
-            }
+            $base->forCompany($companyId);
+        }
+
+        // Apply the direction filter at the SQL level so pagination + counts
+        // stay consistent with what the user actually sees. The "selling"
+        // branch joins through the junction with role!='buyer' so it
+        // matches every supplier-side row regardless of historical
+        // JSON shape inconsistencies.
+        if ($companyId && $direction === 'buying') {
+            $base->where('buyer_company_id', $companyId);
+        } elseif ($companyId && $direction === 'selling') {
+            $base->whereIn('id', function ($sub) use ($companyId) {
+                $sub->select('contract_id')
+                    ->from('contract_parties')
+                    ->where('company_id', $companyId)
+                    ->where('role', '!=', 'buyer');
+            })->where(function ($q) use ($companyId) {
+                $q->whereNull('buyer_company_id')
+                  ->orWhere('buyer_company_id', '!=', $companyId);
+            });
         }
 
         // Stats are computed against the un-search/-filtered base, so the
@@ -186,6 +330,34 @@ class ContractController extends Controller
             'active'    => (clone $statsBase)->where('status', ContractStatus::ACTIVE->value)->count(),
             'completed' => (clone $statsBase)->where('status', ContractStatus::COMPLETED->value)->count(),
             'value'     => $this->shortMoney((float) $totalValue),
+        ];
+
+        // Per-direction counts so the filter chips can show "Buying (12)"
+        // and "Selling (8)" alongside their labels. Computed against the
+        // pre-direction base (so the "all" count matches before narrowing).
+        $directionBase = Contract::query();
+        if ($companyId) {
+            $directionBase->forCompany($companyId);
+        }
+        $directionCounts = [
+            'all'     => (clone $directionBase)->count(),
+            'buying'  => $companyId
+                ? (clone $directionBase)->where('buyer_company_id', $companyId)->count()
+                : 0,
+            'selling' => $companyId
+                ? (clone $directionBase)
+                    ->whereIn('id', function ($sub) use ($companyId) {
+                        $sub->select('contract_id')
+                            ->from('contract_parties')
+                            ->where('company_id', $companyId)
+                            ->where('role', '!=', 'buyer');
+                    })
+                    ->where(function ($q) use ($companyId) {
+                        $q->whereNull('buyer_company_id')
+                          ->orWhere('buyer_company_id', '!=', $companyId);
+                    })
+                    ->count()
+                : 0,
         ];
 
         // Apply listing filters AFTER computing stats so the cards stay stable.
@@ -205,13 +377,11 @@ class ContractController extends Controller
             default       => $base->latest(),
         };
 
-        // Pre-load all supplier names referenced in `parties` JSON to avoid N+1.
-        // Payments are eager-loaded so the supplier card's "Received / Pending"
-        // numbers are computed from real data instead of a progress estimate.
-        // Paginate so a tenant with 500+ contracts doesn't blow the
-        // request memory cap on a single GET — the previous ->get()
-        // path materialised every contract on every page load.
-        $perPage = 15;
+        // Pre-load every party company referenced in the listing so the
+        // counterparty column doesn't N+1 across the page. Payments are
+        // eager-loaded so the per-row "Received / Pending" totals come
+        // from real data instead of a progress estimate.
+        $perPage      = 15;
         $paginator    = (clone $base)->with('payments')->paginate($perPage)->withQueryString();
         $contractRows = $paginator->getCollection();
 
@@ -224,84 +394,27 @@ class ContractController extends Controller
 
         $companyNames = Company::whereIn('id', $partyCompanyIds)->pluck('name', 'id');
 
-        if ($isSupplier) {
-            return $this->supplierIndex($contractRows, $companyNames, $stats, $totalValue, $paginator);
-        }
-
-        $contracts = $contractRows->map(function (Contract $c) use ($companyNames) {
+        $contracts = $contractRows->map(function (Contract $c) use ($companyNames, $companyId) {
             $statusKey = $this->mapContractStatus($this->statusValue($c->status));
             [$progress, $label, $color] = $this->progressFor($statusKey, $c);
 
-            return [
-                'id'             => $c->contract_number,
-                'numeric_id'     => $c->id,
-                'status'         => $statusKey,
-                'title'          => $c->title,
-                'supplier'       => $this->supplierName($c, $companyNames),
-                'amount'         => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
-                'started'        => $this->date($c->start_date ?? $c->created_at),
-                'expected'       => $this->date($c->end_date),
-                'progress_label' => $label,
-                'progress'       => $progress,
-                'progress_color' => $color,
-            ];
-        })->toArray();
+            // Direction + counterparty resolution. The current company is
+            // the buyer when its id matches `buyer_company_id`; otherwise
+            // it's a supplier party (it would never appear in the listing
+            // otherwise — see the WHERE clause above). The counterparty
+            // is whichever side this company is NOT.
+            $isBuyer       = $companyId && (int) $c->buyer_company_id === (int) $companyId;
+            $myRole        = $isBuyer ? 'buyer' : 'supplier';
+            $direction     = $isBuyer ? 'buying' : 'selling';
+            $counterparty  = $isBuyer
+                ? $this->supplierName($c, $companyNames)
+                : ($companyNames[$c->buyer_company_id] ?? '—');
 
-        return view('dashboard.contracts.index', compact('stats', 'contracts', 'statusFilter', 'sort', 'paginator'));
-    }
-
-    /**
-     * Supplier-side "My Contracts" — same query, different framing. Splits
-     * contracts by status into Active / Completed tabs, computes the average
-     * progress KPI, and shows buyer names + pending payments instead of a
-     * supplier column.
-     */
-    private function supplierIndex($contractRows, $companyNames, array $stats, float $totalValue, $paginator = null): View
-    {
-        $activeContracts   = collect();
-        $completedContracts = collect();
-
-        // Batch-fetch buyer feedback ratings for every completed contract in
-        // one query so the per-row loop doesn't N+1 against the feedback
-        // table. Keyed by contract_id.
-        $ratingsByContract = [];
-        if (\Illuminate\Support\Facades\Schema::hasTable('feedback')) {
-            $completedIds = $contractRows
-                ->filter(fn (Contract $c) => $this->mapContractStatus($this->statusValue($c->status)) === 'completed')
-                ->pluck('id')
-                ->all();
-            if ($completedIds !== []) {
-                $ratingsByContract = \DB::table('feedback')
-                    ->whereIn('contract_id', $completedIds)
-                    ->get(['contract_id', 'rater_company_id', 'rating'])
-                    ->mapWithKeys(fn ($row) => [
-                        $row->contract_id . ':' . $row->rater_company_id => (float) $row->rating,
-                    ])
-                    ->all();
-            }
-        }
-
-        foreach ($contractRows as $c) {
-            $statusKey = $this->mapContractStatus($this->statusValue($c->status));
-            [$progress, $label] = $this->progressFor($statusKey, $c);
-
-            $rfqRef = $c->purchase_request_id
-                ? 'RFQ-' . str_pad((string) $c->purchase_request_id, 4, '0', STR_PAD_LEFT)
-                : '—';
-
-            $buyerName = $c->buyer_company_id && isset($companyNames[$c->buyer_company_id])
-                ? $companyNames[$c->buyer_company_id]
-                : '—';
-
-            $daysLeft = $c->end_date
-                ? max(0, (int) now()->startOfDay()->diffInDays($c->end_date->startOfDay(), false))
-                : null;
-
-            // "Received" + "pending" payment totals for this contract. Use
-            // total_amount (post-VAT) since that's what was actually wired.
-            $paidAmount = 0.0;
+            // Received vs pending payment totals from the eager-loaded
+            // payments relation. Used by both directions because every
+            // tenant cares about cash position regardless of role.
+            $paidAmount    = 0.0;
             $pendingAmount = 0.0;
-            $rating = null;
             if ($c->relationLoaded('payments') && $c->payments) {
                 foreach ($c->payments as $p) {
                     if (in_array($this->statusValue($p->status), ['completed', 'paid'], true)) {
@@ -310,73 +423,51 @@ class ContractController extends Controller
                         $pendingAmount += (float) $p->total_amount;
                     }
                 }
-            } else {
-                // Rough estimate when payments relation isn't hydrated.
-                $paidAmount = (float) $c->total_amount * ($progress / 100);
-                $pendingAmount = (float) $c->total_amount - $paidAmount;
             }
 
-            // Real review for this completed contract from the buyer's side
-            // is sourced from the prefetched $ratingsByContract map above.
-            if ($statusKey === 'completed' && $c->buyer_company_id) {
-                $rating = $ratingsByContract[$c->id . ':' . $c->buyer_company_id] ?? null;
-            }
+            $daysLeft = $c->end_date
+                ? max(0, (int) now()->startOfDay()->diffInDays($c->end_date->startOfDay(), false))
+                : null;
 
-            $row = [
-                'id'             => $c->contract_number,
-                'numeric_id'     => $c->id,
-                'rfq_ref'        => '#' . $rfqRef,
-                'status'         => $statusKey,
-                'status_label'   => $label,
-                'title'          => $c->title,
-                'buyer'          => $buyerName,
-                'amount'         => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
-                'progress'       => $progress,
-                'started'        => $this->date($c->start_date ?? $c->created_at),
-                'expected'       => $this->date($c->end_date),
-                'days_left'      => $daysLeft,
-                'received'       => $this->money($paidAmount, $c->currency ?? 'AED'),
-                'pending'        => $this->money($pendingAmount, $c->currency ?? 'AED'),
-                'rating'         => $rating,
-                'completed_at'   => $statusKey === 'completed' ? $this->date($c->updated_at) : null,
+            return [
+                'id'                  => $c->contract_number,
+                'numeric_id'          => $c->id,
+                'status'              => $statusKey,
+                'title'               => $c->title,
+                // Direction + counterparty are the new role-aware fields.
+                // The view uses them to render a Buying/Selling badge and
+                // the right counterparty label per row.
+                'my_role'             => $myRole,
+                'direction'           => $direction,
+                'counterparty'        => $counterparty,
+                // Legacy `supplier` key kept so any unrelated callers
+                // (PDF / CSV / Blade snippets) that still reference it
+                // don't break. Always points at the OTHER side.
+                'supplier'            => $counterparty,
+                'amount'              => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+                'started'             => $this->date($c->start_date ?? $c->created_at),
+                'expected'            => $this->date($c->end_date),
+                'days_left'           => $daysLeft,
+                'progress_label'      => $label,
+                'progress'            => $progress,
+                'progress_color'      => $color,
+                'received'            => $this->money($paidAmount, $c->currency ?? 'AED'),
+                'pending'             => $this->money($pendingAmount, $c->currency ?? 'AED'),
             ];
+        })->toArray();
 
-            if ($statusKey === 'completed') {
-                $completedContracts->push($row);
-            } else {
-                $activeContracts->push($row);
-            }
-        }
-
-        // Supplier-specific KPIs: active + completed + total value + avg progress.
-        $avgProgress = $contractRows->isNotEmpty()
-            ? (int) round($contractRows->avg(function (Contract $c) {
-                [$progress] = $this->progressFor($this->mapContractStatus($this->statusValue($c->status)), $c);
-                return $progress;
-            }))
-            : 0;
-
-        // The "active" stat card on the supplier index has historically
-        // been fed from the parent stats array, which counts only rows
-        // with status === ACTIVE. That number disagreed with the active
-        // TAB on the same page (which buckets every non-completed
-        // contract — draft, pending, signed, active — as "active"). The
-        // KPI now counts the actual content of the active bucket so
-        // the card and the tab agree.
-        return view('dashboard.contracts.index-supplier', [
-            'stats' => [
-                'active'       => $activeContracts->count(),
-                'completed'    => $completedContracts->count(),
-                'total_value'  => $this->money($totalValue, 'AED'),
-                'avg_progress' => $avgProgress,
-            ],
-            'active_contracts'    => $activeContracts->all(),
-            'completed_contracts' => $completedContracts->all(),
-            'paginator'           => $paginator,
-        ]);
+        return view('dashboard.contracts.index', compact(
+            'stats',
+            'contracts',
+            'statusFilter',
+            'direction',
+            'directionCounts',
+            'sort',
+            'paginator',
+        ));
     }
 
-    public function show(string $id): View
+    public function show(string $id, Request $request): View
     {
         abort_unless(auth()->user()?->hasPermission('contract.view'), 403);
 
@@ -386,6 +477,48 @@ class ContractController extends Controller
         // companies that are parties of them — buyer + everyone in the
         // parties JSON column. Admin and government bypass this check.
         $this->authorizeContractParty($contract);
+
+        // PDPL Article 24 — record every contract access. The
+        // AuditLogObserver only fires on Eloquent state changes
+        // (create / update / delete), not reads, so we capture the
+        // view explicitly here.
+        //
+        // Throttled to ONE log row per (user, contract, day) so a
+        // user who refreshes the page 100 times in a day produces
+        // a single audit row, not 100. The legitimate audit signal
+        // — "did this user look at this contract today?" — is
+        // preserved without flooding the audit_logs table.
+        // Wrapped in try/catch so a logging failure can NEVER
+        // prevent the user from seeing the contract.
+        try {
+            $viewer = auth()->user();
+            $cacheKey = sprintf('audit:contract:viewed:%s:%s:%s',
+                $viewer?->id ?? 'anon',
+                $contract->id,
+                now()->toDateString(),
+            );
+            if (!\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+                AuditLog::create([
+                    'user_id'       => $viewer?->id,
+                    'company_id'    => $viewer?->company_id,
+                    'action'        => AuditAction::VIEW->value,
+                    'resource_type' => 'Contract',
+                    'resource_id'   => $contract->id,
+                    'ip_address'    => $request->ip(),
+                    'user_agent'    => substr((string) $request->userAgent(), 0, 255),
+                    'status'        => 'success',
+                ]);
+                // 24-hour TTL — fresh cache key tomorrow means a
+                // first view of the same contract on a new day
+                // produces a fresh audit row.
+                \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->addDay());
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Contract view audit log failed', [
+                'contract_id' => $contract->id,
+                'error'       => $e->getMessage(),
+            ]);
+        }
 
         $statusKey = $this->mapContractStatus($this->statusValue($contract->status));
         [$progress, $progressLabel, $progressColor] = $this->progressFor($statusKey, $contract);
@@ -400,8 +533,15 @@ class ContractController extends Controller
         }
 
         // Resolve party companies + their primary contact user.
+        // Also eager-load icvCertificates + insurances so the
+        // party card can render the supplier's compliance signals
+        // (latest ICV score, insurance status) without N+1 queries.
         $partyCompanyIds = collect($contract->parties ?? [])->pluck('company_id')->filter()->unique();
-        $companies = Company::with(['users' => fn ($q) => $q->orderBy('id')])
+        $companies = Company::with([
+                'users' => fn ($q) => $q->orderBy('id'),
+                'icvCertificates',
+                'insurances',
+            ])
             ->whereIn('id', $partyCompanyIds)
             ->get()
             ->keyBy('id');
@@ -459,6 +599,17 @@ class ContractController extends Controller
                     'hash'       => $signature['contract_hash'] ?? null,
                     'consent_at' => $signature['consent_at']  ?? null,
                 ] : null,
+                // Compliance signals — surface ICV score and the
+                // insurance coverage state on the party card so a
+                // reviewer can spot a non-compliant supplier without
+                // navigating to the company profile. Both are null
+                // for buyer-side parties because they typically
+                // don't matter (the supplier is the one being vetted).
+                'icv_score'         => $role === 'supplier' ? $company?->latestActiveIcvScore() : null,
+                'is_insured'        => $role === 'supplier' ? ($company?->isInsured() ?? false) : null,
+                // Public profile route so the user can drill into the
+                // supplier directory page in one click.
+                'profile_url'       => $cid ? route('dashboard.suppliers.profile', ['id' => $cid]) : null,
             ];
         })->all();
 
@@ -521,22 +672,52 @@ class ContractController extends Controller
             && !$userCompanyAlreadySigned
             && in_array($this->statusValue($contract->status), $signableStatuses, true);
 
-        // Supplier-side detail view renders a different action panel
-        // (Update Progress / Upload Documents / Schedule Shipment) while
-        // the buyer gets the sign-and-review layout. The helper looks at
-        // both role AND company type so cross-cutting roles attached to a
-        // supplier company also land on the supplier-side panel.
-        $isSupplier = $this->isSupplierSideUser();
+        // Role-in-this-contract: the same user/company can be a buyer in
+        // one contract and a supplier in another. The unified show view
+        // gates direction-specific UI (Update Progress / Upload Documents /
+        // Schedule Shipment for the supplier side; Buy Again / internal
+        // approval banner for the buyer side) on this value, NOT on the
+        // user's global role/company type.
+        $myCompanyId = $user?->company_id;
+        $isBuyerHere = $myCompanyId && (int) $contract->buyer_company_id === (int) $myCompanyId;
+        $myRole      = $isBuyerHere ? 'buyer' : 'supplier';
+        $direction   = $isBuyerHere ? 'buying' : 'selling';
 
-        // Buyer card for the supplier-side sidebar.
-        $buyerCompanyId = $contract->buyer_company_id;
-        $buyerCompany = $buyerCompanyId
+        // Counterparty resolution — the other side of the trade. Used by
+        // the unified detail view for the "Counterparty" sidebar card so
+        // the user always sees who they're dealing with regardless of
+        // direction. Falls back to the first non-current-company party
+        // when the current user is the buyer.
+        $buyerCompanyId   = $contract->buyer_company_id;
+        $buyerCompanyRow  = $buyerCompanyId
             ? Company::with(['users' => fn ($q) => $q->orderBy('id')])->find($buyerCompanyId)
             : null;
+
+        if ($isBuyerHere) {
+            // Counterparty is the supplier party (first non-buyer entry).
+            $supplierPartyId = collect($contract->parties ?? [])
+                ->firstWhere(fn ($p) => ($p['company_id'] ?? null) && (int) $p['company_id'] !== (int) $buyerCompanyId)['company_id'] ?? null;
+            $counterpartyCompany = $supplierPartyId
+                ? Company::with(['users' => fn ($q) => $q->orderBy('id')])->find($supplierPartyId)
+                : null;
+        } else {
+            // Counterparty is the buyer.
+            $counterpartyCompany = $buyerCompanyRow;
+        }
+
+        $counterparty = [
+            'name'  => $counterpartyCompany?->name ?? '—',
+            'email' => $counterpartyCompany?->email ?? $counterpartyCompany?->users->first()?->email ?? '—',
+            'phone' => $counterpartyCompany?->phone ?? '—',
+            'role'  => $isBuyerHere ? 'supplier' : 'buyer',
+        ];
+
+        // Buyer contact stays in the data array for backwards compatibility
+        // with any include / partial that still references it.
         $buyerContact = [
-            'name'  => $buyerCompany?->name ?? '—',
-            'email' => $buyerCompany?->email ?? $buyerCompany?->users->first()?->email ?? '—',
-            'phone' => $buyerCompany?->phone ?? '—',
+            'name'  => $buyerCompanyRow?->name ?? '—',
+            'email' => $buyerCompanyRow?->email ?? $buyerCompanyRow?->users->first()?->email ?? '—',
+            'phone' => $buyerCompanyRow?->phone ?? '—',
         ];
 
         // Reusable payment schedule for the <x-payment-schedule> component.
@@ -644,7 +825,7 @@ class ContractController extends Controller
             && $userIsParty
             && $preSignature;
 
-        $amendments = $amendmentRecords->map(function (ContractAmendment $a) use ($user) {
+        $amendments = $amendmentRecords->map(function (ContractAmendment $a) use ($user, $userIsParty) {
             $changes      = $a->changes ?? [];
             $proposerUser = $a->requestedBy;
             $proposerCo   = $proposerUser?->company_id;
@@ -655,15 +836,34 @@ class ContractController extends Controller
             // either 'mine' (current user's company) or 'theirs' so the
             // view can render left/right bubbles without re-resolving
             // the user → company link on every render.
-            $messages = $a->messages->map(function (ContractAmendmentMessage $m) use ($user) {
-                return [
-                    'id'        => $m->id,
-                    'body'      => $m->body,
-                    'author'    => $m->user?->name ?? '—',
-                    'when'      => $m->created_at?->diffForHumans() ?? '—',
-                    'is_mine'   => $user && (int) $m->company_id === (int) $user->company_id,
-                ];
-            })->all();
+            //
+            // Only the LATEST 20 messages are seeded server-side. The
+            // rest are loaded on demand via the polling endpoint with
+            // ?before=<id> when the user clicks "Load earlier". This
+            // keeps the initial HTML payload bounded even on threads
+            // with hundreds of messages.
+            $totalMessages = $a->messages->count();
+            $messages = $a->messages
+                ->slice(max(0, $totalMessages - 20))
+                ->values()
+                ->map(function (ContractAmendmentMessage $m) use ($user) {
+                    return [
+                        'id'      => $m->id,
+                        'body'    => $m->body,
+                        'author'  => $m->user?->name ?? '—',
+                        'when'    => $m->created_at?->diffForHumans() ?? '—',
+                        'is_mine' => $user && (int) $m->company_id === (int) $user->company_id,
+                    ];
+                })
+                ->all();
+
+            // Bilingual mismatch flag — true when the proposed text is
+            // in a language different from the current UI locale.
+            // The view shows a warning before approve so the approver
+            // knows they're about to save the same text into BOTH
+            // language slots of the bilingual contract envelope.
+            $proposedLang = $changes['lang'] ?? null;
+            $bilingualMismatch = $proposedLang && $proposedLang !== app()->getLocale();
 
             return [
                 'id'             => $a->id,
@@ -679,6 +879,8 @@ class ContractController extends Controller
                 'proposed_by'    => $proposerUser?->name ?? '—',
                 'proposed_by_me' => $isMine,
                 'proposed_at'    => $a->created_at?->diffForHumans() ?? '—',
+                'proposed_lang'  => $proposedLang,
+                'bilingual_mismatch' => $bilingualMismatch,
                 // Counter-party can only approve / reject if pending AND not the proposer's company.
                 'can_decide'     => $statusValue === AmendmentStatus::PENDING_APPROVAL->value
                     && $user
@@ -686,7 +888,8 @@ class ContractController extends Controller
                     && $proposerCo !== $user->company_id,
                 // Discussion thread for this clause amendment.
                 'messages'       => $messages,
-                'message_count'  => count($messages),
+                'message_count'  => $totalMessages,
+                'has_more_messages' => $totalMessages > count($messages),
                 // Either party can post a message any time before the
                 // contract is fully signed (so the conversation can
                 // continue right up until the moment of signature).
@@ -809,11 +1012,63 @@ class ContractController extends Controller
                 && empty($contract->signatures),
             'can_terminate'         => $userIsParty
                 && in_array($this->statusValue($contract->status), [ContractStatus::ACTIVE->value, ContractStatus::SIGNED->value], true),
+            // Renew button — buyer-side only, visible whenever the
+            // contract is in a state where renewal makes sense
+            // (active, completed or terminated). Pre-signature
+            // contracts haven't been "real" yet so renewing them
+            // is just creating a new contract.
+            'can_renew'             => $user
+                && (int) $user->company_id === (int) $contract->buyer_company_id
+                && in_array($this->statusValue($contract->status), [ContractStatus::ACTIVE->value, ContractStatus::COMPLETED->value, ContractStatus::TERMINATED->value], true),
             // Line items + payments history surface in the supplier
             // Items / Payments tabs (which were stub placeholders
             // before this commit).
             'line_items'            => $lineItems,
             'payments_history'      => $paymentsHistory,
+            // Current version of the contract terms — used by the
+            // "View changes" button in the show page so users can jump
+            // straight into the diff view when there is more than one
+            // snapshot to compare against.
+            'version'               => $contract->version,
+            'has_revisions'         => $contract->version > 1,
+            // AI Risk Analysis snippet — overall band, score, top 3
+            // findings. The full analysis lives behind the dedicated
+            // /ai/contracts/{id}/risk endpoint; the show page only
+            // surfaces the headline so the buyer/supplier can spot a
+            // dangerous clause without leaving the contract page.
+            // Permission-gated and try/catch'd so users without ai.use
+            // (or environments without the AI service configured) get
+            // null and the view simply hides the card.
+            'risk'                  => $this->buildRiskSnippet($contract, $user),
+            // Internal approval state — surfaces a bright banner on
+            // the contract show page when the contract is waiting on
+            // an internal approver before being released to the
+            // counter-party for signature.
+            'awaiting_internal_approval' => $this->statusValue($contract->status) === ContractStatus::PENDING_INTERNAL_APPROVAL->value,
+            'can_approve_internally'     => $user
+                && $user->hasPermission('contract.approve')
+                && (int) $user->company_id === (int) $contract->buyer_company_id
+                && $this->statusValue($contract->status) === ContractStatus::PENDING_INTERNAL_APPROVAL->value,
+            'approval_threshold_aed'     => optional(Company::find($contract->buyer_company_id))->approval_threshold_aed,
+            // Internal team notes — strict tenant scope: only notes
+            // authored by users from the CURRENT user's company. Notes
+            // from the counter-party are never even loaded into memory
+            // so a Blade leak (forgotten @if) cannot expose them.
+            'internal_notes'        => $user
+                ? ContractInternalNote::where('contract_id', $contract->id)
+                    ->where('company_id', $user->company_id)
+                    ->with('user:id,first_name,last_name,email')
+                    ->latest()
+                    ->get()
+                    ->map(fn ($n) => [
+                        'id'      => $n->id,
+                        'body'    => $n->body,
+                        'author'  => trim(($n->user?->first_name ?? '') . ' ' . ($n->user?->last_name ?? '')) ?: ($n->user?->email ?? '—'),
+                        'when'    => $n->created_at?->diffForHumans() ?? '—',
+                        'is_mine' => $n->user_id === $user->id,
+                    ])
+                    ->all()
+                : [],
             'amounts_meta'          => [
                 'tax_treatment'     => $contract->amounts['tax_treatment']     ?? null,
                 'incoterm'          => $contract->amounts['incoterm']          ?? null,
@@ -828,6 +1083,13 @@ class ContractController extends Controller
             'start_date'      => $this->longDate($contract->start_date ?? $contract->created_at),
             'end_date'        => $this->longDate($contract->end_date),
             'buyer_contact'   => $buyerContact,
+            // Direction-aware fields. The unified show view branches off
+            // these to render the right action panel + header badge for
+            // each side of the trade — instead of dispatching to a
+            // separate supplier-only template.
+            'my_role'         => $myRole,            // 'buyer' | 'supplier'
+            'direction'       => $direction,         // 'buying' | 'selling'
+            'counterparty'    => $counterparty,      // {name, email, phone, role}
             'total_amount'    => $this->money($totalAmount, $currency),
             // Status is an enum cast — use statusValue() helper. Sum total_amount
             // (amount + VAT) so "Received" reflects what was actually transferred.
@@ -840,10 +1102,6 @@ class ContractController extends Controller
                 $currency
             ),
         ];
-
-        if ($isSupplier) {
-            return view('dashboard.contracts.show-supplier', ['contract' => $data]);
-        }
 
         return view('dashboard.contracts.show', ['contract' => $data]);
     }
@@ -996,6 +1254,107 @@ class ContractController extends Controller
     }
 
     /**
+     * Phase 6 (UAE Compliance Roadmap) — kick off the UAE Pass OAuth
+     * flow. The user clicks "Sign with UAE Pass" on the contract show
+     * page; this action validates that the contract is signable, mints
+     * a CSRF state value, stashes it in the session, and redirects to
+     * UAE Pass.
+     *
+     * The matching callback (uaePassCallback) handles the return leg.
+     */
+    public function uaePassRedirect(string $id, \App\Services\Signing\UaePassProvider $uaePass): \Symfony\Component\HttpFoundation\Response
+    {
+        $contract = $this->findOrFail($id);
+        $user = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.sign'), 403);
+        $this->authorizeContractParty($contract);
+
+        if (!$uaePass->isEnabled()) {
+            return back()->withErrors([
+                'contract' => __('contracts.uae_pass_disabled'),
+            ]);
+        }
+
+        $state = $uaePass->newState();
+        // Bind the state to BOTH the session AND the contract id so a
+        // user signing two contracts in parallel doesn't get the
+        // states crossed.
+        session()->put("uae_pass.state.{$contract->id}", [
+            'state'      => $state,
+            'expires_at' => now()->addSeconds((int) config('uae_pass.state_ttl_seconds', 600))->toIso8601String(),
+        ]);
+
+        return redirect()->away($uaePass->buildAuthorizationUrl((string) $contract->id, $state));
+    }
+
+    /**
+     * Phase 6 — UAE Pass callback handler. Validates the state,
+     * exchanges the code, fetches the verified profile, then calls
+     * ContractService::sign with `signature_grade = advanced` and the
+     * UAE Pass identifiers stamped into the audit context.
+     */
+    public function uaePassCallback(string $id, Request $request, \App\Services\Signing\UaePassProvider $uaePass): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.sign'), 403);
+        $this->authorizeContractParty($contract);
+
+        $stateBag = session()->pull("uae_pass.state.{$contract->id}");
+        if (!$stateBag || !is_array($stateBag) || empty($stateBag['state'])) {
+            return redirect()
+                ->route('dashboard.contracts.show', ['id' => $contract->id])
+                ->withErrors(['contract' => __('contracts.uae_pass_state_missing')]);
+        }
+        if (isset($stateBag['expires_at']) && now()->isAfter($stateBag['expires_at'])) {
+            return redirect()
+                ->route('dashboard.contracts.show', ['id' => $contract->id])
+                ->withErrors(['contract' => __('contracts.uae_pass_state_expired')]);
+        }
+
+        try {
+            $assertion = $uaePass->handleCallback($request, (string) $stateBag['state']);
+        } catch (\RuntimeException $e) {
+            return redirect()
+                ->route('dashboard.contracts.show', ['id' => $contract->id])
+                ->withErrors(['contract' => $e->getMessage()]);
+        }
+
+        $result = $this->service->sign(
+            id: $contract->id,
+            userId: $user->id,
+            companyId: $user->company_id,
+            signature: null,
+            auditContext: [
+                'ip_address'         => $request->ip(),
+                'user_agent'         => substr((string) $request->userAgent(), 0, 500),
+                'consent_text'       => __('contracts.sign_consent_text', [
+                    'number' => $contract->contract_number,
+                    'amount' => ($contract->currency ?: 'AED') . ' ' . number_format((float) $contract->total_amount, 2),
+                ]),
+                'consent_at'         => now()->toIso8601String(),
+                // Phase 6 — UAE Pass identity assertion satisfies the
+                // Advanced grade under Federal Decree-Law 46/2021 Article 18.
+                'signature_grade'    => 'advanced',
+                'uae_pass_user_id'   => $assertion['uae_pass_user_id'] ?? null,
+                'uae_pass_full_name' => $assertion['full_name'] ?? null,
+            ],
+        );
+
+        if (is_string($result)) {
+            return redirect()
+                ->route('dashboard.contracts.show', ['id' => $contract->id])
+                ->withErrors(['contract' => $result]);
+        }
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.signed_successfully_uae_pass'));
+    }
+
+    /**
      * Either party proposes an amendment to the contract terms — modifying
      * an existing clause or adding a new one. The amendment is stored as
      * PENDING_APPROVAL until the OTHER party approves or rejects it.
@@ -1045,6 +1404,16 @@ class ContractController extends Controller
             $oldText = $sections[$si]['items'][$ii];
         }
 
+        // Detect the language of the proposed text so we can warn the
+        // counter-party at approve time that the amendment will be
+        // saved in BOTH locales as the same string. The detection is
+        // a simple heuristic: any character in the Arabic Unicode
+        // block (0x0600-0x06FF) marks the text as Arabic. Anything
+        // else is treated as Latin/English. Good enough for the UAE
+        // bilingual workflow — it's not a real translation engine,
+        // it just tells the approver "you're about to mix languages".
+        $detectedLang = preg_match('/[\x{0600}-\x{06FF}]/u', $validated['new_text']) ? 'ar' : 'en';
+
         $amendment = ContractAmendment::create([
             'contract_id'  => $contract->id,
             'from_version' => $contract->version,
@@ -1055,6 +1424,7 @@ class ContractController extends Controller
                 'item_index'     => $validated['kind'] === 'modify' ? (int) $validated['item_index'] : null,
                 'old_text'       => $oldText,
                 'new_text'       => $validated['new_text'],
+                'lang'           => $detectedLang,
             ],
             'reason'           => $validated['reason'] ?? null,
             'status'           => AmendmentStatus::PENDING_APPROVAL,
@@ -1421,23 +1791,40 @@ class ContractController extends Controller
 
         $amendment = ContractAmendment::where('contract_id', $contract->id)->findOrFail($amendmentId);
 
-        $since = $request->query('since');
-        $sinceCarbon = null;
-        if (is_string($since) && $since !== '') {
-            try {
-                $sinceCarbon = \Carbon\Carbon::parse($since);
-            } catch (\Throwable) {
-                $sinceCarbon = null;
-            }
-        }
+        $since  = $request->query('since');
+        $before = $request->query('before');
 
+        // Two operating modes on the same endpoint:
+        //   - ?since=<iso>   → polling: return messages NEWER than $since
+        //                     ordered oldest-first (chronological feed)
+        //   - ?before=<id>   → load-earlier: return up to 20 messages
+        //                     OLDER than message id $before, oldest-first
+        // Both modes return the same JSON shape so the Alpine view
+        // can append in either direction without branching.
         $query = ContractAmendmentMessage::where('contract_amendment_id', $amendment->id)
             ->with('user:id,first_name,last_name,email,company_id')
             ->orderBy('created_at');
-        if ($sinceCarbon) {
-            $query->where('created_at', '>', $sinceCarbon);
+
+        if ($before !== null && $before !== '') {
+            $beforeId = (int) $before;
+            $query->where('id', '<', $beforeId)
+                  ->orderBy('created_at', 'desc')
+                  ->limit(20);
+            $messages = $query->get()->reverse()->values();
+        } else {
+            $sinceCarbon = null;
+            if (is_string($since) && $since !== '') {
+                try {
+                    $sinceCarbon = \Carbon\Carbon::parse($since);
+                } catch (\Throwable) {
+                    $sinceCarbon = null;
+                }
+            }
+            if ($sinceCarbon) {
+                $query->where('created_at', '>', $sinceCarbon);
+            }
+            $messages = $query->get();
         }
-        $messages = $query->get();
 
         return response()->json([
             'amendment_id' => $amendment->id,
@@ -1454,6 +1841,234 @@ class ContractController extends Controller
                 ];
             })->all(),
         ]);
+    }
+
+    /**
+     * Renew an existing contract — clones it into a fresh
+     * PENDING_SIGNATURES draft with new start/end dates and an
+     * empty signatures array. Used from the Renew alert
+     * notification or the contract show page when a contract is
+     * approaching its end date or has just expired.
+     *
+     * Authorization: only the buyer side can initiate a renewal
+     * (the supplier proposes a renewal via standard contract
+     * creation, not by cloning the buyer's contract).
+     */
+    public function renew(string $id, Request $request): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        // Buyer-side gate — the supplier should not be able to
+        // unilaterally renew a contract; that's a fresh sale on
+        // their side and goes through the normal RFQ → bid flow.
+        abort_unless((int) $user->company_id === (int) $contract->buyer_company_id, 403);
+
+        $statusValue = $this->statusValue($contract->status);
+        if (!in_array($statusValue, [
+            ContractStatus::ACTIVE->value,
+            ContractStatus::COMPLETED->value,
+            ContractStatus::TERMINATED->value,
+        ], true)) {
+            return back()->withErrors(['contract' => __('contracts.renew_window_closed')]);
+        }
+
+        $validated = $request->validate([
+            'extend_days' => ['required', 'integer', 'min:1', 'max:1825'],
+        ]);
+
+        $renewed = $this->service->renewContract($contract->id, (int) $validated['extend_days']);
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $renewed->id])
+            ->with('status', __('contracts.renewed_successfully', ['number' => $contract->contract_number]));
+    }
+
+    /**
+     * Internal-approval action — `decision` is 'approved' or
+     * 'rejected'. Only users from the BUYER company with the
+     * `contract.approve` permission can act, and only while the
+     * contract is in PENDING_INTERNAL_APPROVAL status. On approve,
+     * the status flips to PENDING_SIGNATURES so the supplier can
+     * sign. On reject, the status flips to CANCELLED with the
+     * rejection notes appended to the description.
+     */
+    public function decideApproval(string $id, Request $request): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.approve'), 403);
+        $this->authorizeContractParty($contract);
+
+        // Internal approval is buyer-side only — the supplier should
+        // never be able to approve a contract on behalf of the buyer.
+        abort_unless((int) $user->company_id === (int) $contract->buyer_company_id, 403);
+
+        if ($this->statusValue($contract->status) !== ContractStatus::PENDING_INTERNAL_APPROVAL->value) {
+            return back()->withErrors([
+                'contract' => __('contracts.approval_window_closed'),
+            ]);
+        }
+
+        $validated = $request->validate([
+            'decision' => ['required', 'in:approved,rejected'],
+            'notes'    => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        DB::transaction(function () use ($contract, $user, $validated) {
+            ContractApproval::create([
+                'contract_id' => $contract->id,
+                'user_id'     => $user->id,
+                'company_id'  => $user->company_id,
+                'decision'    => $validated['decision'],
+                'notes'       => $validated['notes'] ?? null,
+            ]);
+
+            if ($validated['decision'] === ContractApproval::DECISION_APPROVED) {
+                $contract->update(['status' => ContractStatus::PENDING_SIGNATURES]);
+            } else {
+                $contract->update([
+                    'status'      => ContractStatus::CANCELLED,
+                    'description' => trim(($contract->description ?? '') . "\n\n[INTERNAL REJECT " . now()->toDateString() . " by " . $this->displayName($user) . "] " . ($validated['notes'] ?? '')),
+                ]);
+            }
+        });
+
+        $messageKey = $validated['decision'] === ContractApproval::DECISION_APPROVED
+            ? 'contracts.approval_approved'
+            : 'contracts.approval_rejected';
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __($messageKey));
+    }
+
+    /**
+     * Generate the e-Signature Audit Certificate PDF — a separate
+     * legal document that lists every signature applied to the
+     * contract along with the full evidentiary metadata captured at
+     * sign time (IP address, user agent, terms hash, consent
+     * timestamp, contract version). This is the document a UAE
+     * lawyer would attach to a court submission to prove the
+     * electronic signature meets Federal Decree-Law 46/2021
+     * Article 18 standards.
+     *
+     * Generated on demand — there's no stored PDF — so the latest
+     * signature data always reflects the live `signatures` JSON.
+     */
+    public function auditCertificate(string $id): Response
+    {
+        $contract = $this->findOrFail($id)
+            ->load(['buyerCompany']);
+
+        $user = auth()->user();
+        abort_unless($user?->hasPermission('contract.pdf'), 403);
+        $this->authorizeContractParty($contract);
+
+        // Resolve signing parties so the certificate can name them
+        // properly. Same lookup the contract PDF uses.
+        $partyCompanyIds = collect($contract->parties ?? [])
+            ->pluck('company_id')
+            ->filter()
+            ->unique()
+            ->all();
+        $companies = Company::whereIn('id', $partyCompanyIds)->get()->keyBy('id');
+
+        $events = collect($contract->signatures ?? [])
+            ->map(function ($sig) use ($companies) {
+                $companyId = $sig['company_id'] ?? null;
+                $company   = $companyId ? $companies->get($companyId) : null;
+                $signer    = isset($sig['user_id']) ? User::find($sig['user_id']) : null;
+                $signerName = $signer
+                    ? trim(($signer->first_name ?? '') . ' ' . ($signer->last_name ?? ''))
+                    : '—';
+                return [
+                    'company_name'   => $company?->name ?? '—',
+                    'company_trn'    => $company?->tax_number ?? '—',
+                    'signer_name'    => $signerName ?: ($signer->email ?? '—'),
+                    'signer_email'   => $signer?->email ?? '—',
+                    'signed_at'      => $sig['signed_at']     ?? '—',
+                    'ip_address'     => $sig['ip_address']    ?? '—',
+                    'user_agent'     => $sig['user_agent']    ?? '—',
+                    'consent_text'   => $sig['consent_text']  ?? '—',
+                    'consent_at'     => $sig['consent_at']    ?? '—',
+                    'contract_hash'  => $sig['contract_hash'] ?? '—',
+                    'contract_version' => $sig['contract_version'] ?? $contract->version,
+                ];
+            })
+            ->all();
+
+        $pdf = Pdf::loadView('contracts.audit-certificate', [
+            'contract' => $contract,
+            'events'   => $events,
+            'generated_at' => now()->toDayDateTimeString() . ' UTC',
+        ]);
+
+        $filename = $contract->contract_number . '-audit-certificate.pdf';
+        return $pdf->download($filename);
+    }
+
+    /**
+     * Post a new internal team note on a contract. Notes are visible
+     * ONLY to other users of the SAME company as the author — they
+     * are never returned to the counter-party. Used for internal
+     * commentary that supports negotiation strategy without leaking
+     * to the supplier/buyer on the other side of the contract.
+     */
+    public function postInternalNote(string $id, Request $request): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        $validated = $request->validate([
+            'body' => ['required', 'string', 'max:2000'],
+        ]);
+
+        ContractInternalNote::create([
+            'contract_id' => $contract->id,
+            'user_id'     => $user->id,
+            'company_id'  => $user->company_id,
+            'body'        => trim($validated['body']),
+        ]);
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.internal_note_added'));
+    }
+
+    /**
+     * Delete an internal team note. Only the original author can
+     * delete (not just any user from the same company) so individual
+     * accountability is preserved.
+     */
+    public function deleteInternalNote(string $id, int $noteId): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        $note = ContractInternalNote::where('contract_id', $contract->id)
+            ->where('company_id', $user->company_id)
+            ->findOrFail($noteId);
+
+        if ((int) $note->user_id !== (int) $user->id) {
+            abort(403, __('contracts.internal_note_delete_forbidden'));
+        }
+
+        $note->delete();
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.internal_note_deleted'));
     }
 
     /**
@@ -1721,11 +2336,17 @@ class ContractController extends Controller
     }
 
     /**
-     * Helper: send a notification to every user belonging to a contract
-     * party, optionally excluding one company (typically the actor's
-     * own). Wrapped in try/catch so a notification failure can NEVER
-     * roll back a contract action — the contract is the source of
-     * truth, the notification is best-effort.
+     * Helper: dispatch a contract notification fan-out via the
+     * SendContractNotificationsJob queue. Returns immediately —
+     * the actual delivery happens on the `notifications` queue,
+     * filtered by each company's `notification_recipient_roles`
+     * config so a 50-employee company doesn't get 50 emails per
+     * event.
+     *
+     * Wrapped in try/catch so a dispatch failure (e.g. queue
+     * unavailable) can NEVER roll back a contract action — the
+     * contract is the source of truth, the notification is
+     * best-effort.
      */
     private function notifyAmendment(
         Contract $contract,
@@ -1739,7 +2360,6 @@ class ContractController extends Controller
                 ->push($contract->buyer_company_id)
                 ->filter()
                 ->unique()
-                ->reject(fn ($cid) => $excludeCompanyId !== null && (int) $cid === (int) $excludeCompanyId)
                 ->values()
                 ->all();
 
@@ -1747,10 +2367,11 @@ class ContractController extends Controller
                 return;
             }
 
-            $recipients = User::whereIn('company_id', $partyCompanyIds)->get();
-            if ($recipients->isNotEmpty()) {
-                Notification::send($recipients, $notification);
-            }
+            \App\Jobs\SendContractNotificationsJob::dispatch(
+                companyIds: $partyCompanyIds,
+                notification: $notification,
+                excludeCompanyId: $excludeCompanyId,
+            );
         } catch (\Throwable $e) {
             \Log::warning('Amendment notification dispatch failed', [
                 'contract_id'  => $contract->id,
@@ -1985,7 +2606,7 @@ class ContractController extends Controller
     private function mapContractStatus(string $status): string
     {
         return match ($status) {
-            'draft', 'pending_signatures' => 'pending',
+            'draft', 'pending_signatures', 'pending_internal_approval' => 'pending',
             'signed', 'active'            => 'active',
             'completed'                   => 'completed',
             'terminated', 'cancelled'     => 'closed',
@@ -2214,25 +2835,113 @@ class ContractController extends Controller
     }
 
     /**
-     * @return array<int, array{name:string, url:?string}>
+     * @return array<int, array{name:string, url:?string, status:?string}>
+     *
+     * Returns the user-facing document list for the contract show
+     * page. Previously this method returned every amendment as a
+     * `Amendment #N.pdf` row with a null URL — that surfaced as a
+     * dead row in the Documents card. The amendments now route into
+     * the diff view (which IS where the user sees the wording change),
+     * and we only include APPROVED amendments because pending ones
+     * are not yet part of the contract.
      */
     private function buildDocuments(Contract $contract): array
     {
         $documents = [
             [
-                'name' => $contract->contract_number . '.pdf',
-                'url'  => route('dashboard.contracts.pdf', ['id' => $contract->id]),
+                'name'   => $contract->contract_number . '.pdf',
+                'url'    => route('dashboard.contracts.pdf', ['id' => $contract->id]),
+                'status' => null,
             ],
         ];
 
-        foreach ($contract->amendments ?? [] as $amendment) {
+        // e-Signature Audit Certificate — separate PDF that lists every
+        // signature with IP, device, hash and consent timestamp. Only
+        // surface it when at least one party has signed (otherwise the
+        // certificate is empty).
+        if (!empty($contract->signatures)) {
             $documents[] = [
-                'name' => __('contracts.amendment') . ' #' . $amendment->id . '.pdf',
-                'url'  => null,
+                'name'   => __('contracts.audit_certificate_filename', ['number' => $contract->contract_number]),
+                'url'    => route('dashboard.contracts.audit-certificate', ['id' => $contract->id]),
+                'status' => 'audit',
+            ];
+        }
+
+        foreach ($contract->amendments ?? [] as $amendment) {
+            $statusValue = $amendment->status instanceof \BackedEnum
+                ? $amendment->status->value
+                : (string) $amendment->status;
+            // Only approved amendments make it into the document list
+            // because they actually changed the contract terms — and
+            // we route them to the diff view instead of generating a
+            // standalone PDF per amendment (which would be redundant
+            // with the contract PDF + the new versions snapshots).
+            if ($statusValue !== AmendmentStatus::APPROVED->value) {
+                continue;
+            }
+            $documents[] = [
+                'name'   => __('contracts.amendment') . ' #' . $amendment->id,
+                'url'    => route('dashboard.contracts.diff', ['id' => $contract->id]) . '?from=' . max(1, ((int) ($amendment->from_version ?? 1))) . '&to=' . ((int) ($amendment->from_version ?? 1) + 1),
+                'status' => 'amendment',
             ];
         }
 
         return $documents;
+    }
+
+    /**
+     * AI Risk Analysis snippet for the contract show page sidebar.
+     * Returns a small array `{score, band, top_findings[]}` or null
+     * when the user lacks the ai.use permission or the analysis
+     * service is unavailable. The full analyse() call is cached
+     * inside the service itself so re-rendering the show page
+     * doesn't trigger a fresh Claude call every time.
+     */
+    private function buildRiskSnippet(Contract $contract, ?User $user): ?array
+    {
+        if (!$user || !$user->hasPermission('ai.use')) {
+            return null;
+        }
+        if (!$this->riskService) {
+            return null;
+        }
+        try {
+            $analysis = $this->riskService->analyse($contract);
+        } catch (\Throwable $e) {
+            \Log::warning('Risk analysis snippet failed', [
+                'contract_id' => $contract->id,
+                'error'       => $e->getMessage(),
+            ]);
+            return null;
+        }
+
+        $findings = collect($analysis['findings'] ?? [])
+            // Sort by severity high → low so the buyer sees the worst
+            // ones first when there are more than 3.
+            ->sortByDesc(function ($f) {
+                return match (strtolower((string) ($f['severity'] ?? ''))) {
+                    'high'   => 3,
+                    'medium' => 2,
+                    'low'    => 1,
+                    default  => 0,
+                };
+            })
+            ->take(3)
+            ->values()
+            ->map(fn ($f) => [
+                'severity'    => strtolower((string) ($f['severity'] ?? 'low')),
+                'category'    => (string) ($f['category'] ?? ''),
+                'title'       => (string) ($f['title'] ?? ''),
+                'description' => (string) ($f['description'] ?? ''),
+            ])
+            ->all();
+
+        return [
+            'score'         => (int) ($analysis['score'] ?? 0),
+            'band'          => strtolower((string) ($analysis['overall'] ?? 'low')),
+            'top_findings'  => $findings,
+            'total_findings'=> count($analysis['findings'] ?? []),
+        ];
     }
 
     /**

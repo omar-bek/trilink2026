@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Company;
 use App\Models\SanctionsScreening;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -27,6 +28,7 @@ use Illuminate\Notifications\Notification;
 class SanctionsHitDetectedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Company $company,
@@ -42,20 +44,15 @@ class SanctionsHitDetectedNotification extends Notification implements ShouldQue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $verdict = strtoupper($this->screening->result);
-        $count   = $this->screening->match_count;
-        $company = $this->company->name;
-
-        $message = (new MailMessage)
-            ->subject("Sanctions {$verdict} — {$company}")
+        $message = $this->baseMail($notifiable, 'notifications.sanctions.hit.subject', ['name' => $this->company->name])
             ->error()
-            ->greeting('Action required')
-            ->line("A sanctions screening just returned **{$verdict}** for **{$company}** ({$count} matched entities).")
-            ->line('The company has been demoted to UNVERIFIED and cannot transact until reviewed.');
+            ->line($this->t($notifiable, 'notifications.sanctions.hit.line1'))
+            ->line($this->t($notifiable, 'notifications.sanctions.hit.line_subject', ['name' => $this->company->name]))
+            ->line($this->t($notifiable, 'notifications.sanctions.hit.line2'));
 
         try {
             $message = $message->action(
-                'Open verification queue',
+                $this->t($notifiable, 'notifications.common.action_review'),
                 route('admin.verification.index'),
             );
         } catch (\Throwable) {
@@ -64,15 +61,15 @@ class SanctionsHitDetectedNotification extends Notification implements ShouldQue
             // the entire notification.
         }
 
-        return $message->line('Inspect the matched entities, then confirm the hit or mark as false positive.');
+        return $message;
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type'         => 'sanctions_hit',
-            'title'        => 'Sanctions screening alert',
-            'message'      => "{$this->company->name} flagged ({$this->screening->result}, {$this->screening->match_count} matches)",
+            'title'        => $this->t($notifiable, 'notifications.sanctions.hit.title'),
+            'message'      => $this->t($notifiable, 'notifications.sanctions.hit.message', ['name' => $this->company->name]),
             'entity_type'  => 'company',
             'entity_id'    => $this->company->id,
             'screening_id' => $this->screening->id,

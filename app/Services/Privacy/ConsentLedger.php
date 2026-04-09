@@ -43,14 +43,30 @@ class ConsentLedger
             throw new \InvalidArgumentException("Unknown consent type: {$type}");
         }
 
+        // Phase 2.5 — link the consent to the immutable policy version
+        // snapshot if one exists for this version string. The lookup
+        // is by version because that's the public-facing identifier
+        // the controller has at hand. Returns null silently for
+        // grant types that aren't tied to a published document
+        // (cookies_essential, marketing_email — those are toggle-style
+        // and don't have a policy text behind them).
+        $policyVersionId = null;
+        if ($type === \App\Models\Consent::TYPE_PRIVACY_POLICY
+            || $type === \App\Models\Consent::TYPE_DATA_PROCESSING) {
+            $policyVersionId = \App\Models\PrivacyPolicyVersion::query()
+                ->where('version', $version)
+                ->value('id');
+        }
+
         return Consent::create([
-            'user_id'      => $user->id,
-            'consent_type' => $type,
-            'version'      => $version,
-            'granted_at'   => CarbonImmutable::now(),
-            'withdrawn_at' => null,
-            'ip_address'   => $this->captureIp(),
-            'user_agent'   => $this->captureUserAgent(),
+            'user_id'                   => $user->id,
+            'consent_type'              => $type,
+            'version'                   => $version,
+            'privacy_policy_version_id' => $policyVersionId,
+            'granted_at'                => CarbonImmutable::now(),
+            'withdrawn_at'              => null,
+            'ip_address'                => $this->captureIp(),
+            'user_agent'                => $this->captureUserAgent(),
         ]);
     }
 

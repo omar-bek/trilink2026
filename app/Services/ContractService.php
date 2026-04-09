@@ -24,8 +24,46 @@ use Illuminate\Support\Facades\Notification;
 
 class ContractService
 {
-    public function __construct(private readonly PaymentService $paymentService)
+    public function __construct(
+        private readonly PaymentService $paymentService,
+        private readonly \App\Services\Signing\SignatureGradeResolver $gradeResolver,
+    ) {
+    }
+
+    /**
+     * Phase 6 (UAE Compliance Roadmap) — refuse the signature when the
+     * achieved grade is weaker than the legal floor for this contract.
+     * Returns the resolved {@see SignatureGrade} on success, or a
+     * user-facing error string on failure (matches the rest of the
+     * sign() return contract).
+     */
+    private function resolveAndAssertGrade(Contract $contract, array $auditContext): \App\Enums\SignatureGrade|string
     {
+        $required = $this->gradeResolver->requiredFor($contract);
+
+        // The achieved grade comes from the auditContext. The
+        // controller is responsible for setting it correctly:
+        //   - Plain step-up password flow → 'simple'
+        //   - UAE Pass callback           → 'advanced'
+        //   - TSP-issued envelope         → 'qualified'
+        // Default to 'simple' for backwards compatibility — that's
+        // what the platform was always producing pre-Phase-6.
+        $achievedRaw = (string) ($auditContext['signature_grade'] ?? 'simple');
+        $achieved = \App\Enums\SignatureGrade::tryFrom($achievedRaw);
+        if (!$achieved) {
+            return "Invalid signature grade: {$achievedRaw}";
+        }
+
+        if (!$achieved->satisfies($required)) {
+            return sprintf(
+                'This contract requires a %s but the signature provided is only %s. %s',
+                $required->label(),
+                $achieved->label(),
+                $this->gradeResolver->reasonFor($contract)
+            );
+        }
+
+        return $achieved;
     }
 
     public function list(array $filters = []): LengthAwarePaginator
@@ -87,6 +125,19 @@ class ContractService
             return 'Contract is not in a signable state';
         }
 
+        // Phase 6 (UAE Compliance Roadmap) — refuse the signature when
+        // it doesn't meet the grade required by the resolver. This is
+        // the legal floor under Federal Decree-Law 46/2021: a Simple
+        // signature on a government contract is unenforceable.
+        //
+        // The achieved grade is whatever auditContext['signature_grade']
+        // says — the controller stamps it based on the source. UAE Pass
+        // → Advanced, TSP-issued → Qualified, plain step-up → Simple.
+        $grade = $this->resolveAndAssertGrade($contract, $auditContext);
+        if (is_string($grade)) {
+            return $grade; // grade-mismatch error message
+        }
+
         // Authorization: only a company that is actually a party of the
         // contract may sign. Without this check any user holding the
         // generic `contract.sign` permission could attach a forged
@@ -136,11 +187,25 @@ class ContractService
             'consent_at'     => $auditContext['consent_at']     ?? now()->toIso8601String(),
             'contract_hash'  => $contractHash,
             'contract_version' => $contract->version,
+            // Phase 6 (UAE Compliance Roadmap) — grade + provider trail
+            // for the public verify endpoint and any future court audit.
+            'signature_grade'    => $grade->value,
+            'uae_pass_user_id'   => $auditContext['uae_pass_user_id'] ?? null,
+            'uae_pass_full_name' => $auditContext['uae_pass_full_name'] ?? null,
+            'tsp_provider'       => $auditContext['tsp_provider'] ?? null,
+            'tsp_certificate_id' => $auditContext['tsp_certificate_id'] ?? null,
+            'signature_format'   => $auditContext['signature_format'] ?? null,
+            'signature_payload'  => $auditContext['signature_payload'] ?? null,
+            'timestamp_token'    => $auditContext['timestamp_token'] ?? null,
         ];
 
         $contract->update([
             'signatures' => $signatures,
             'status' => ContractStatus::PENDING_SIGNATURES,
+            // Cache the resolved required grade so future reads + the
+            // contract show page don't re-run the resolver per request.
+            'signature_grade_required' => $contract->signature_grade_required
+                ?? $this->gradeResolver->requiredFor($contract)->value,
         ]);
 
         if ($contract->allPartiesHaveSigned()) {
@@ -274,12 +339,25 @@ class ContractService
                 $totalAmount = round($price + $taxAmount, 2);
             }
 
+            // Approval routing — if the buyer company has set an
+            // approval_threshold_aed and the total contract value
+            // exceeds it, the contract enters PENDING_INTERNAL_APPROVAL
+            // and waits for an internal approver before being released
+            // to the supplier for signature. Null threshold = current
+            // behaviour (every contract goes straight to signatures).
+            $buyerCompany = Company::find($buyerCompanyId);
+            $threshold = $buyerCompany?->approval_threshold_aed ? (float) $buyerCompany->approval_threshold_aed : null;
+            $needsInternalApproval = $threshold !== null && $totalAmount > $threshold;
+            $initialStatus = $needsInternalApproval
+                ? ContractStatus::PENDING_INTERNAL_APPROVAL
+                : ContractStatus::PENDING_SIGNATURES;
+
             $contract = Contract::create([
                 'title'               => $rfq->title,
                 'description'         => $rfq->description,
                 'purchase_request_id' => $rfq->purchase_request_id,
                 'buyer_company_id'    => $buyerCompanyId,
-                'status'              => ContractStatus::PENDING_SIGNATURES,
+                'status'              => $initialStatus,
                 'parties'             => [
                     [
                         'company_id' => $buyerCompanyId,
@@ -332,6 +410,86 @@ class ContractService
             // creation path (RFQ accept, Buy-Now, cart checkout) gets
             // the same notification without each entry point having to
             // remember to call it.
+
+            return $contract->load('buyerCompany');
+        });
+    }
+
+    /**
+     * Clone an existing contract into a fresh PENDING_SIGNATURES
+     * draft for renewal. Used when a contract is approaching its
+     * end date or has just expired and the buyer wants to issue
+     * a new one with the same terms, supplier, and milestone
+     * structure but new start / end dates.
+     *
+     * The clone:
+     *   - Reuses parties, terms, payment_schedule percentages,
+     *     amounts (currency, tax_treatment, etc.) and the
+     *     description.
+     *   - Resets signatures, escrow_account_id, supplier_documents,
+     *     progress_percentage and progress_updates to empty so the
+     *     new contract starts clean.
+     *   - Recomputes payment_schedule due_dates against the new
+     *     contract window so the milestones land in the future.
+     *   - Generates a new contract_number and version=1 + records
+     *     a fresh ContractVersion v1 snapshot.
+     *
+     * The renewal flag is stored in the description for traceability
+     * (e.g. "Renewed from CTR-ABC123 on 2026-04-09") so a human
+     * reader of the new contract can trace it back to the original.
+     */
+    public function renewContract(int $sourceId, int $extendDays): Contract
+    {
+        return DB::transaction(function () use ($sourceId, $extendDays) {
+            $source = Contract::findOrFail($sourceId);
+
+            $newStart = Carbon::now()->startOfDay();
+            $newEnd   = $newStart->copy()->addDays(max(1, $extendDays));
+
+            // Recompute payment_schedule due dates against the new
+            // contract window. Milestone keys + percentages + tax
+            // metadata are preserved verbatim.
+            $oldSchedule = $source->payment_schedule ?? [];
+            $count = max(1, count($oldSchedule));
+            $totalDays = max(1, (int) $newStart->diffInDays($newEnd));
+            $newSchedule = [];
+            foreach (array_values($oldSchedule) as $i => $row) {
+                $offset = $count <= 1 ? 0 : (int) round(($totalDays * $i) / ($count - 1));
+                $row['due_date'] = $newStart->copy()->addDays($offset)->toDateString();
+                // Reset retention release date if applicable.
+                if (!empty($row['is_retention']) && !empty($row['release_after_days'])) {
+                    $row['due_date'] = $newEnd->copy()->addDays((int) $row['release_after_days'])->toDateString();
+                }
+                $newSchedule[] = $row;
+            }
+
+            $renewalNote = "[RENEWED FROM {$source->contract_number} on " . now()->toDateString() . "]";
+            $description = trim(($source->description ?? '') . "\n\n" . $renewalNote);
+
+            $contract = Contract::create([
+                'title'               => $source->title,
+                'description'         => $description,
+                'purchase_request_id' => $source->purchase_request_id,
+                'buyer_company_id'    => $source->buyer_company_id,
+                'status'              => ContractStatus::PENDING_SIGNATURES,
+                'parties'             => $source->parties,
+                'amounts'             => $source->amounts,
+                'total_amount'        => $source->total_amount,
+                'currency'            => $source->currency,
+                'payment_schedule'    => $newSchedule,
+                'signatures'          => [],
+                'terms'               => is_string($source->terms) ? $source->terms : json_encode($source->terms, JSON_UNESCAPED_UNICODE),
+                'start_date'          => $newStart,
+                'end_date'            => $newEnd,
+                'version'             => 1,
+            ]);
+
+            ContractVersion::create([
+                'contract_id' => $contract->id,
+                'version'     => 1,
+                'snapshot'    => $contract->toArray(),
+                'created_by'  => auth()->id(),
+            ]);
 
             return $contract->load('buyerCompany');
         });
@@ -636,6 +794,20 @@ class ContractService
     {
         $terms = (string) ($bid->payment_terms ?? '');
 
+        // Detect a retention/holdback request in the payment_terms
+        // free text. UAE construction & manufacturing contracts
+        // routinely retain 5-10% for a warranty period (typically
+        // 12 months) before releasing the final tranche. Pattern:
+        //   "10% retention", "5% holdback for 12 months", etc.
+        $retentionPct  = 0;
+        $retentionDays = 365; // default: 12-month warranty period
+        if (preg_match('/(\d+)\s*%[^,;.]*\b(retention|holdback)\b/iu', $terms, $rm)) {
+            $retentionPct = max(0, min(20, (int) $rm[1]));
+        }
+        if (preg_match('/(\d+)\s*month/iu', $terms, $rd)) {
+            $retentionDays = max(30, (int) $rd[1] * 30);
+        }
+
         $percentages = [];
         if (preg_match_all('/(\d+)\s*%/', $terms, $m)) {
             $percentages = array_map('intval', $m[1]);
@@ -645,11 +817,28 @@ class ContractService
             $percentages = [30, 70];
         }
 
-        // Force the schedule to sum to exactly 100% by absorbing any rounding
-        // drift into the last milestone.
+        // If retention is in play, strip the retention percentage
+        // out of the active milestone list before normalising — it
+        // becomes its own dedicated trailing entry below so the
+        // escrow release logic and the contract show view treat it
+        // as a separate stage with its own release condition.
+        if ($retentionPct > 0) {
+            // Remove the LAST occurrence equal to retentionPct (the
+            // user wrote "70% delivery, 10% retention" → drop the 10
+            // from the active list).
+            $idx = array_search($retentionPct, array_reverse($percentages, true), true);
+            if ($idx !== false) {
+                unset($percentages[$idx]);
+                $percentages = array_values($percentages);
+            }
+        }
+
+        // Force the active schedule to sum to exactly (100 - retention)
+        // by absorbing any rounding drift into the last milestone.
+        $activeTarget = 100 - $retentionPct;
         $sum = array_sum($percentages);
-        if ($sum !== 100 && $sum > 0) {
-            $percentages[count($percentages) - 1] += (100 - $sum);
+        if ($sum !== $activeTarget && $sum > 0) {
+            $percentages[count($percentages) - 1] += ($activeTarget - $sum);
         }
 
         // Conventional milestone keys — match what ContractController.show
@@ -691,14 +880,36 @@ class ContractService
             };
 
             $schedule[] = [
-                'milestone'         => $key,
-                'percentage'        => $pct,
-                'amount'            => $amount,
-                'tax_rate'          => $taxRate,
-                'tax_amount'        => round($amount * $taxRate / 100, 2),
-                'currency'          => $currency,
-                'due_date'          => $dueDate->toDateString(),
-                'release_condition' => $releaseCondition,
+                'milestone'           => $key,
+                'percentage'          => $pct,
+                'amount'              => $amount,
+                'tax_rate'            => $taxRate,
+                'tax_amount'          => round($amount * $taxRate / 100, 2),
+                'currency'            => $currency,
+                'due_date'            => $dueDate->toDateString(),
+                'release_condition'   => $releaseCondition,
+                'is_retention'        => false,
+                'release_after_days'  => 0,
+            ];
+        }
+
+        // Trailing retention milestone — held by escrow until the
+        // warranty period expires, then released. The release_condition
+        // is `retention_period_elapsed` so the SweepEscrowReleases
+        // command can pick it up after end_date + release_after_days.
+        if ($retentionPct > 0) {
+            $retentionAmount = round($price * $retentionPct / 100, 2);
+            $schedule[] = [
+                'milestone'           => 'retention',
+                'percentage'          => $retentionPct,
+                'amount'              => $retentionAmount,
+                'tax_rate'            => $taxRate,
+                'tax_amount'          => round($retentionAmount * $taxRate / 100, 2),
+                'currency'            => $currency,
+                'due_date'            => $endDate->copy()->addDays($retentionDays)->toDateString(),
+                'release_condition'   => 'retention_period_elapsed',
+                'is_retention'        => true,
+                'release_after_days'  => $retentionDays,
             ];
         }
 

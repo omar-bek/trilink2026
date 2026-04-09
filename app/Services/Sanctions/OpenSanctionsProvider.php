@@ -3,6 +3,7 @@
 namespace App\Services\Sanctions;
 
 use App\Models\SanctionsScreening;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -23,6 +24,15 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
 {
     private const ENDPOINT = 'https://api.opensanctions.org/match/default';
 
+    /**
+     * Cache key prefix used to short-circuit calls when the upstream
+     * has 429-throttled us. While the key is set we return a
+     * deterministic 'rate_limited' result instead of hammering the
+     * API and burning the daily quota even harder. Cleared
+     * automatically when the cache TTL expires.
+     */
+    private const RATE_LIMIT_CACHE_KEY = 'sanctions:opensanctions:rate_limited_until';
+
     public function __construct(
         private readonly ?string $apiKey = null,
         private readonly int $timeout = 8,
@@ -39,6 +49,15 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
         $name = trim($name);
         if ($name === '') {
             return $this->error('Empty company name passed to screening');
+        }
+
+        // If a previous request hit the daily quota and the upstream
+        // returned 429, the cache key holds the upstream's
+        // Retry-After hint. Short-circuit immediately so we don't
+        // hammer the API and burn what's left of the quota.
+        if (Cache::has(self::RATE_LIMIT_CACHE_KEY)) {
+            $until = (int) Cache::get(self::RATE_LIMIT_CACHE_KEY, 0);
+            return $this->rateLimited($until);
         }
 
         try {
@@ -64,6 +83,29 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
             }
 
             $response = $request->post(self::ENDPOINT, $payload);
+
+            // Rate limit handling: 429 means we hit the daily quota.
+            // Capture the upstream's Retry-After hint (or default to
+            // one hour if missing), persist a cache cooldown so the
+            // next call short-circuits, and return a distinct
+            // "rate_limited" verdict so the caller can decide whether
+            // to schedule a retry instead of trusting an unreliable
+            // "clean" result.
+            if ($response->status() === 429) {
+                $retryAfter = (int) ($response->header('Retry-After') ?: 3600);
+                $retryAfter = max(60, min($retryAfter, 86400));
+                $until = now()->addSeconds($retryAfter)->getTimestamp();
+                Cache::put(self::RATE_LIMIT_CACHE_KEY, $until, now()->addSeconds($retryAfter));
+
+                Log::warning('OpenSanctions rate limited', [
+                    'name'        => $name,
+                    'retry_after' => $retryAfter,
+                    'limit'       => $response->header('X-RateLimit-Limit'),
+                    'remaining'   => $response->header('X-RateLimit-Remaining'),
+                ]);
+
+                return $this->rateLimited($until);
+            }
 
             if (!$response->successful()) {
                 return $this->error("HTTP {$response->status()}");
@@ -124,6 +166,23 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
             'match_count'      => 0,
             'matched_entities' => null,
             'notes'            => $note,
+        ];
+    }
+
+    /**
+     * Distinct verdict for "the API is up but throttled us". Caller
+     * (SanctionsScreeningService) interprets this as "retry later"
+     * instead of trusting an unreliable clean result.
+     *
+     * @return array{result:string, match_count:int, matched_entities:null, notes:string}
+     */
+    private function rateLimited(int $retryUnixTs): array
+    {
+        return [
+            'result'           => SanctionsScreening::RESULT_RATE_LIMITED,
+            'match_count'      => 0,
+            'matched_entities' => null,
+            'notes'            => 'Upstream rate limit hit; retry after ' . date('c', $retryUnixTs),
         ];
     }
 }

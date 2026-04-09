@@ -44,6 +44,8 @@ class Rfq extends Model
         // Phase 4 (UAE Compliance Roadmap) — ICV scoring weighting.
         'icv_weight_percentage',
         'icv_minimum_score',
+        // Phase 4.5 — issuer allowlist. Empty/null = any verified issuer.
+        'icv_required_issuers',
     ];
 
     protected function casts(): array
@@ -65,6 +67,8 @@ class Rfq extends Model
             // Phase 4 — ICV weighting on bid evaluation.
             'icv_weight_percentage' => 'integer',
             'icv_minimum_score'     => 'decimal:2',
+            // Phase 4.5 — issuer allowlist (e.g. ['adnoc'] for ADNOC tenders).
+            'icv_required_issuers'  => 'array',
         ];
     }
 

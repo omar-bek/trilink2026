@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\PurchaseRequest;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,6 +17,7 @@ use Illuminate\Notifications\Notification;
 class PurchaseRequestApprovedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly PurchaseRequest $pr,
@@ -36,20 +38,24 @@ class PurchaseRequestApprovedNotification extends Notification implements Should
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject("Purchase request approved — {$this->pr->title}")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("Your purchase request **{$this->pr->title}** has been approved by your manager.")
-            ->line('An RFQ has been auto-created so suppliers can start bidding.')
-            ->action('View Request', route('dashboard.purchase-requests.show', ['id' => $this->pr->id]));
+        $ref = (string) $this->pr->title;
+
+        return $this->baseMail($notifiable, 'notifications.purchase_request.approved.subject', ['ref' => $ref])
+            ->line($this->t($notifiable, 'notifications.purchase_request.approved.message', ['ref' => $ref]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_view'),
+                route('dashboard.purchase-requests.show', ['id' => $this->pr->id])
+            );
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type'        => 'success',
-            'title'       => 'Purchase request approved',
-            'message'     => "Your request \"{$this->pr->title}\" was approved",
+            'title'       => $this->t($notifiable, 'notifications.purchase_request.approved.title'),
+            'message'     => $this->t($notifiable, 'notifications.purchase_request.approved.message', [
+                'ref' => (string) $this->pr->title,
+            ]),
             'entity_type' => 'purchase_request',
             'entity_id'   => $this->pr->id,
         ];

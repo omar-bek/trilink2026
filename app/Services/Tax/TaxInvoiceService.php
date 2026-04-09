@@ -212,6 +212,17 @@ class TaxInvoiceService
 
             $this->renderAndStoreCreditNotePdf($cn);
 
+            // Phase 5.5 (UAE Compliance Roadmap — post-implementation
+            // hardening). Credit notes ALSO need to flow through the
+            // FTA Peppol clearance pipeline. Cabinet Decision 52/2017
+            // Article 60 — without a transmitted credit note, the
+            // buyer cannot reverse the input VAT they previously
+            // claimed and the supplier's output VAT figures stay
+            // inflated on the next return. Gated by config; afterCommit
+            // so the queue worker can't pick the job up before the row
+            // is persisted.
+            \App\Jobs\SubmitEInvoiceCreditNoteJob::dispatch($cn->id)->afterCommit();
+
             return $cn->fresh();
         });
     }

@@ -54,7 +54,10 @@ class IcvScoringService
         $weight = $this->normalizedWeight($rfq);
 
         $priceScore = $this->priceScoreFor($bid, $allBidsOnRfq);
-        $icvScore   = $this->icvScoreFor($bid);
+        // Phase 4.5 — pass the RFQ down so the issuer allowlist can be
+        // honoured. A supplier holding an MoIAT certificate gets ICV=0
+        // on an ADNOC-only RFQ even if their MoIAT score is 90%.
+        $icvScore   = $this->icvScoreFor($bid, $rfq);
 
         // composite = (1-w) * price + w * icv
         // When w = 0 we still want the composite to equal the price
@@ -155,13 +158,33 @@ class IcvScoringService
      * Pick the supplier's best usable ICV score. Returns 0 when no
      * verified non-expired certificate exists — that's the legally
      * defensible default ("no demonstrable in-country value").
+     *
+     * Phase 4.5 — when the RFQ has an `icv_required_issuers` allowlist,
+     * we restrict the certificate lookup to only those issuers. The
+     * supplier's best MoIAT score doesn't help on an ADNOC-only RFQ.
+     * Implemented inline (not on the Company helper) because the
+     * filter is RFQ-scoped, not company-scoped.
      */
-    private function icvScoreFor(Bid $bid): float
+    private function icvScoreFor(Bid $bid, ?Rfq $rfq = null): float
     {
         $bid->loadMissing('company');
         $company = $bid->company;
         if (!$company) {
             return 0.0;
+        }
+
+        $allowedIssuers = $rfq?->icv_required_issuers;
+        if (is_array($allowedIssuers) && $allowedIssuers !== []) {
+            // Restricted lookup: only certs from the allowed issuers
+            // count. Without this, the platform falsely qualifies a
+            // MoIAT-only supplier for an ADNOC tender they can't enter.
+            $cert = $company->icvCertificates()
+                ->where('status', \App\Models\IcvCertificate::STATUS_VERIFIED)
+                ->where('expires_date', '>=', now()->toDateString())
+                ->whereIn('issuer', $allowedIssuers)
+                ->orderByDesc('score')
+                ->first();
+            return $cert ? (float) $cert->score : 0.0;
         }
 
         $score = $company->latestActiveIcvScore();

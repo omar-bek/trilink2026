@@ -3,6 +3,16 @@
 
 @section('content')
 
+@php
+    // Direction badge — same shape as the contracts detail header so the
+    // user can spot at a glance whether this payment is leaving (paying)
+    // or arriving (receiving) for their company. Anchors them in the
+    // right cash-flow context the second the page loads.
+    $isOutgoingHere = ($payment['direction'] ?? null) === 'outgoing';
+    $payDirPill     = $isOutgoingHere
+        ? ['bg' => 'bg-accent/10',    'text' => 'text-accent',    'border' => 'border-accent/30',    'label' => __('payments.direction_outgoing'), 'icon' => 'M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18']
+        : ['bg' => 'bg-[#00d9b5]/10', 'text' => 'text-[#00d9b5]', 'border' => 'border-[#00d9b5]/30', 'label' => __('payments.direction_incoming'), 'icon' => 'M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3'];
+@endphp
 <div class="flex items-start justify-between gap-4 mb-8 flex-wrap">
     <div>
         <a href="{{ route('dashboard.payments') }}" class="inline-flex items-center gap-2 text-[13px] font-medium text-muted hover:text-primary mb-3">
@@ -13,6 +23,10 @@
         <h1 class="text-[28px] sm:text-[36px] font-bold text-primary leading-tight">{{ $payment['milestone'] }}</h1>
         <div class="flex items-center gap-3 mt-3 flex-wrap">
             <x-dashboard.status-badge :status="$payment['status']" />
+            <span class="inline-flex items-center gap-1 px-2.5 h-[24px] rounded-full border text-[11px] font-bold uppercase tracking-wider {{ $payDirPill['bg'] }} {{ $payDirPill['text'] }} {{ $payDirPill['border'] }}">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $payDirPill['icon'] }}"/></svg>
+                {{ $payDirPill['label'] }}
+            </span>
             <span class="text-[13px] text-muted">{{ $payment['method'] }}</span>
             <span class="text-faint">·</span>
             <span class="text-[13px] text-muted">{{ __('common.created') }}: {{ $payment['created'] }}</span>

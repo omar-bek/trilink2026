@@ -74,4 +74,43 @@ class ProfileController extends Controller
 
         return redirect()->route('profile.edit')->with('status', __('profile.logo_updated'));
     }
+
+    /**
+     * Sprint D.17 — persist per-user notification preferences. The form
+     * only sends a small payload (channel toggles + digest mode) and we
+     * shape it server-side into the canonical JSON read by
+     * User::deliveryChannelsFor() so the model is the single source of
+     * truth for what gets delivered where.
+     */
+    public function updateNotificationPreferences(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'channel_database' => ['nullable', 'boolean'],
+            'channel_mail'     => ['nullable', 'boolean'],
+            'digest_mode'      => ['required', 'in:realtime,daily,off'],
+        ]);
+
+        $user = $request->user();
+
+        // Read-modify-write so we don't trample any per-type overrides
+        // a future iteration may add via the API.
+        $current = $user->notification_preferences ?? \App\Models\User::defaultNotificationPreferences();
+        $current['channels'] = [
+            'database' => (bool) ($data['channel_database'] ?? false),
+            'mail'     => (bool) ($data['channel_mail'] ?? false),
+        ];
+        $current['digest'] = ['mode' => $data['digest_mode']];
+
+        // At least one channel must remain on — silently re-enabling the
+        // database channel is the right call here. Losing all channels
+        // would mean the user simply never finds out about anything,
+        // which is worse than a non-honoured "off" toggle.
+        if (!$current['channels']['database'] && !$current['channels']['mail']) {
+            $current['channels']['database'] = true;
+        }
+
+        $user->update(['notification_preferences' => $current]);
+
+        return redirect()->route('profile.edit')->with('status', __('profile.notifications_updated'));
+    }
 }

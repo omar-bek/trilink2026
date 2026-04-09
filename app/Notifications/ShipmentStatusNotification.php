@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Shipment;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -18,6 +19,7 @@ use Illuminate\Notifications\Notification;
 class ShipmentStatusNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Shipment $shipment,
@@ -37,39 +39,47 @@ class ShipmentStatusNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $label = ucwords(str_replace('_', ' ', $this->newStatus));
-        $contract = $this->shipment->contract;
-        $title = $contract?->title ?: 'your contract';
+        $ref    = $this->shipment->tracking_number ?: ('#' . $this->shipment->id);
+        $status = $this->localisedStatus($notifiable);
 
-        return (new MailMessage)
-            ->subject("Shipment update — {$label}")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("The shipment for **{$title}** is now **{$label}**.")
-            ->when(
-                $this->shipment->tracking_number,
-                fn ($mail) => $mail->line("Tracking number: **{$this->shipment->tracking_number}**")
-            )
-            ->when(
-                $this->shipment->estimated_delivery,
-                fn ($mail) => $mail->line('Estimated delivery: ' . $this->shipment->estimated_delivery->format('F j, Y'))
-            )
-            ->action('View Shipment', route('dashboard.shipments.show', ['id' => $this->shipment->id]));
+        return $this->baseMail($notifiable, 'notifications.shipment.status.subject', [
+                'ref'    => $ref,
+                'status' => $status,
+            ])
+            ->line($this->t($notifiable, 'notifications.shipment.status.message', [
+                'ref'    => $ref,
+                'status' => $status,
+            ]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_view'),
+                route('dashboard.shipments.show', ['id' => $this->shipment->id])
+            );
     }
 
     public function toArray(object $notifiable): array
     {
-        $label = ucwords(str_replace('_', ' ', $this->newStatus));
+        $ref = $this->shipment->tracking_number ?: ('#' . $this->shipment->id);
 
         return [
             'type'        => match ($this->newStatus) {
-                'delivered' => 'success',
+                'delivered'                  => 'success',
                 'in_clearance', 'in_transit' => 'info',
-                default => 'info',
+                default                      => 'info',
             },
-            'title'       => 'Shipment ' . $label,
-            'message'     => ($this->shipment->tracking_number ?? '—') . ' · ' . ($this->shipment->contract?->title ?? ''),
+            'title'       => $this->t($notifiable, 'notifications.shipment.status.title'),
+            'message'     => $this->t($notifiable, 'notifications.shipment.status.message', [
+                'ref'    => $ref,
+                'status' => $this->localisedStatus($notifiable),
+            ]),
             'entity_type' => 'shipment',
             'entity_id'   => $this->shipment->id,
         ];
+    }
+
+    private function localisedStatus(object $notifiable): string
+    {
+        $key = 'notifications.shipment.statuses.' . $this->newStatus;
+        $value = trans($key, [], $this->localeFor($notifiable));
+        return $value === $key ? ucwords(str_replace('_', ' ', $this->newStatus)) : $value;
     }
 }

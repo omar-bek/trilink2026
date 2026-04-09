@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Company;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,6 +17,7 @@ use Illuminate\Notifications\Notification;
 class CompanyInfoCompletedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Company $company,
@@ -30,19 +32,20 @@ class CompanyInfoCompletedNotification extends Notification implements ShouldQue
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject('Company resubmitted info — ' . $this->company->name)
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'Admin') . ',')
-            ->line("**{$this->company->name}** has just submitted the additional information you requested. Their registration is ready for re-review.")
-            ->action('Review Company', route('admin.companies.show', $this->company->id));
+        return $this->baseMail($notifiable, 'notifications.company.info_completed.subject', ['name' => $this->company->name])
+            ->line($this->t($notifiable, 'notifications.company.info_completed.message', ['name' => $this->company->name]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_review'),
+                route('admin.companies.show', $this->company->id)
+            );
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type'         => 'company_info_completed',
-            'title'        => 'Pending company resubmitted info',
-            'message'      => "{$this->company->name} has provided the additional info you requested.",
+            'title'        => $this->t($notifiable, 'notifications.company.info_completed.title'),
+            'message'      => $this->t($notifiable, 'notifications.company.info_completed.message', ['name' => $this->company->name]),
             'entity_type'  => 'company',
             'entity_id'    => $this->company->id,
             'action_url'   => route('admin.companies.show', $this->company->id),

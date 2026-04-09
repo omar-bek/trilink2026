@@ -73,10 +73,16 @@ class SanctionsScreeningService
             'notes'            => $result['notes'] ?? null,
         ]);
 
-        // Only update the company status when the call succeeded. An HTTP
-        // error keeps the company at its previous status — we never want a
-        // network blip to flip a clean company into "hit".
-        if ($result['result'] !== SanctionsScreening::RESULT_ERROR) {
+        // Only update the company status when the call succeeded with a
+        // meaningful verdict. An HTTP error or rate-limit keeps the
+        // company at its previous status — we never want a network blip
+        // (or a 429 from the upstream's daily quota) to flip a clean
+        // company into "hit", AND we never want it to silently mark a
+        // never-screened company as "clean" either. The screening row is
+        // still persisted so the audit trail captures the failed attempt
+        // and a future re-screen job can pick it up.
+        $unreliable = [SanctionsScreening::RESULT_ERROR, SanctionsScreening::RESULT_RATE_LIMITED];
+        if (!in_array($result['result'], $unreliable, true)) {
             $this->applyVerdict($company, $result['result']);
 
             if (in_array($result['result'], [SanctionsScreening::RESULT_HIT, SanctionsScreening::RESULT_REVIEW], true)) {

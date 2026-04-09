@@ -342,6 +342,14 @@ class RfqController extends Controller
         }
 
         $rfq = $this->findOrFail($id);
+
+        // IDOR guard: the buyer-side manage-bids panel exposes every
+        // competitor bid (price, supplier identity, payment terms, AI
+        // scores). Only the RFQ owner company OR admin / government may
+        // see it. Without this any user with rfq.view could enumerate
+        // RFQ IDs and harvest competitive intelligence.
+        $this->authorizeRfqOwner($rfq, $user);
+
         $rfq->loadMissing(['bids.company']);
 
         $items = collect($rfq->items ?? []);
@@ -713,6 +721,11 @@ class RfqController extends Controller
         abort_unless(auth()->user()?->hasPermission('bid.compare'), 403);
 
         $rfq = $this->findOrFail($id);
+
+        // IDOR guard: bid comparison reveals every competitor price and
+        // identity. Restrict to RFQ owner.
+        $this->authorizeRfqOwner($rfq, auth()->user());
+
         $rfq->loadMissing(['bids.company']);
 
         $currency = $rfq->currency ?? 'AED';
@@ -1008,6 +1021,30 @@ class RfqController extends Controller
         }
 
         return $query->findOrFail((int) $id);
+    }
+
+    /**
+     * IDOR guard for the buyer-side RFQ show panel. The buyer view exposes
+     * every competitor bid (price, supplier identity, payment terms, AI
+     * scores) so it must be restricted to the RFQ owner company. Aborts
+     * 404 — not 403 — to avoid leaking RFQ existence to a probing attacker.
+     * Admin and government bypass for cross-tenant oversight.
+     */
+    private function authorizeRfqOwner(Rfq $rfq, $user): void
+    {
+        if (!$user) {
+            abort(404);
+        }
+        if (method_exists($user, 'isAdmin') && $user->isAdmin()) {
+            return;
+        }
+        if (method_exists($user, 'isGovernment') && $user->isGovernment()) {
+            return;
+        }
+        $userCompanyId = (int) ($user->company_id ?? 0);
+        if ($userCompanyId === 0 || $userCompanyId !== (int) $rfq->company_id) {
+            abort(404);
+        }
     }
 
     private function mapRfqStatus(Rfq $rfq): string

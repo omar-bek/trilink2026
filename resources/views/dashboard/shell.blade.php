@@ -94,6 +94,13 @@ $sectionDefaults = [
     @endif
 </div>
 
+{{-- Sprint B.6 — onboarding checklist. Rendered only while at least
+     one required step is still pending; the service hides itself
+     once the company has finished setup. --}}
+@if(!empty($onboarding) && ($onboarding['visible'] ?? false))
+    @include('dashboard.partials.onboarding-checklist', ['onboarding' => $onboarding])
+@endif
+
 {{-- Row 1: 4 KPI cards (colored 2px border + big number + icon) --}}
 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-6">
     @foreach($stats as $stat)

@@ -23,6 +23,7 @@ use App\Models\Rfq;
 use App\Models\Shipment;
 use App\Models\User;
 use App\Services\AnalyticsService;
+use App\Services\OnboardingChecklistService;
 use App\Support\NotificationFormatter;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -42,6 +43,7 @@ class DashboardController extends Controller
     public function __construct(
         private readonly AnalyticsService $analytics,
         private readonly NotificationFormatter $notificationFormatter,
+        private readonly OnboardingChecklistService $onboarding = new OnboardingChecklistService(),
     ) {
     }
 
@@ -68,6 +70,12 @@ class DashboardController extends Controller
             'admin'                             => $this->adminPayload(),
             default                             => $this->buyerPayload($companyId),
         };
+
+        // Sprint B.6 — onboarding checklist. Same widget across every
+        // role; the service derives the per-role steps internally so
+        // the controller stays role-agnostic. The view hides itself
+        // when every required step is done.
+        $payload['onboarding'] = $this->onboarding->for($authUser);
 
         return view('dashboard.shell', array_merge(['user' => $user], $payload));
     }

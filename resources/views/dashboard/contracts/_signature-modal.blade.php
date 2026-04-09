@@ -146,6 +146,7 @@
                                 <p class="text-[11px] text-muted dark:text-[#b4b6c0]">{{ __('contracts.signature_draw_hint') }}</p>
                                 <button type="button" @click="clearSignaturePad()" class="text-[11px] font-semibold text-[#ef4444] hover:underline">{{ __('contracts.signature_clear') }}</button>
                             </div>
+                            <p x-show="sigPadError" x-cloak class="text-[11px] text-[#ef4444] mt-1" x-text="sigPadError"></p>
                         </div>
                     </div>
                 </div>
@@ -222,6 +223,13 @@ document.addEventListener('alpine:init', () => {
         padCtx: null,
         padDrawing: false,
         padHasInk: false,
+        // Bounding box of the drawn ink — collapsed to track the
+        // smallest rectangle that contains every stroke. Used at
+        // submit time to verify the user actually drew a signature
+        // (rather than tapping a single dot).
+        padBounds: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+        padStrokeCount: 0,
+        sigPadError: '',
 
         // ---- File input handlers --------------------------------------
         async onSignatureFile(event) {
@@ -293,11 +301,20 @@ document.addEventListener('alpine:init', () => {
             this.padCtx = ctx;
             this.padHasInk = false;
 
+            const trackPoint = (p) => {
+                if (p.x < this.padBounds.minX) this.padBounds.minX = p.x;
+                if (p.y < this.padBounds.minY) this.padBounds.minY = p.y;
+                if (p.x > this.padBounds.maxX) this.padBounds.maxX = p.x;
+                if (p.y > this.padBounds.maxY) this.padBounds.maxY = p.y;
+            };
+
             const startDraw = (e) => {
                 this.padDrawing = true;
+                this.padStrokeCount++;
                 const p = this.pointFor(e, canvas);
                 ctx.beginPath();
                 ctx.moveTo(p.x, p.y);
+                trackPoint(p);
             };
             const moveDraw = (e) => {
                 if (!this.padDrawing) return;
@@ -305,6 +322,7 @@ document.addEventListener('alpine:init', () => {
                 const p = this.pointFor(e, canvas);
                 ctx.lineTo(p.x, p.y);
                 ctx.stroke();
+                trackPoint(p);
                 this.padHasInk = true;
             };
             const endDraw = () => { this.padDrawing = false; };
@@ -334,6 +352,37 @@ document.addEventListener('alpine:init', () => {
             const c = this.$refs.sigCanvas;
             this.padCtx.clearRect(0, 0, c.width, c.height);
             this.padHasInk = false;
+            this.padStrokeCount = 0;
+            this.padBounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+            this.sigPadError = '';
+        },
+
+        // Validate the drawn signature meets the minimum legal bar:
+        //   1. At least 3 separate strokes (a single tap is not a signature)
+        //   2. Bounding box covers >= 20% of canvas width AND >= 30% of height
+        // Without this guard a user could "sign" with one dot and the
+        // resulting PNG would render as a smudge in the PDF, breaking
+        // the legal validity of the e-signature under Federal Decree-Law
+        // 46/2021 Article 18 (signature must be uniquely linked to
+        // signatory and identify them).
+        validateSignaturePad() {
+            this.sigPadError = '';
+            if (!this.padHasInk || this.padStrokeCount < 3) {
+                this.sigPadError = '{{ __('contracts.signature_pad_too_few_strokes') }}';
+                return false;
+            }
+            const canvas = this.$refs.sigCanvas;
+            if (!canvas) return false;
+            const rect = canvas.getBoundingClientRect();
+            const width  = this.padBounds.maxX - this.padBounds.minX;
+            const height = this.padBounds.maxY - this.padBounds.minY;
+            const minWidthPct  = 0.20;
+            const minHeightPct = 0.30;
+            if (width < rect.width * minWidthPct || height < rect.height * minHeightPct) {
+                this.sigPadError = '{{ __('contracts.signature_pad_too_small') }}';
+                return false;
+            }
+            return true;
         },
 
         // ---- Submit ---------------------------------------------------
@@ -345,6 +394,13 @@ document.addEventListener('alpine:init', () => {
         async onSubmit(event) {
             if (this.sigMode === 'draw' && this.padHasInk) {
                 event.preventDefault();
+                // Validate the bounding box / stroke count BEFORE
+                // serialising the canvas — a one-dot "signature"
+                // is rejected client-side instead of producing a
+                // smudge in the PDF.
+                if (!this.validateSignaturePad()) {
+                    return;
+                }
                 const canvas = this.$refs.sigCanvas;
                 const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
                 const file = new File([blob], 'drawn-signature.png', { type: 'image/png' });

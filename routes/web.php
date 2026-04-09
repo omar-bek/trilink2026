@@ -102,6 +102,15 @@ Route::get('/privacy', [PrivacyController::class, 'showPolicy'])->name('public.p
 Route::get('/data-processing-agreement', [PrivacyController::class, 'showDpa'])->name('public.dpa');
 Route::post('/privacy/cookies', [PrivacyController::class, 'recordCookieConsent'])->name('public.privacy.cookies');
 
+// Phase 6 (UAE Compliance Roadmap) — public signature verification.
+// Anyone holding the contract URL (an inspector, court clerk, opposing
+// counsel) can recompute the canonical hash and inspect the signature
+// audit trail WITHOUT authenticating. Federal Decree-Law 46/2021
+// Article 23 — independent verifiability of electronic signatures.
+Route::get('/contracts/{id}/verify', [\App\Http\Controllers\Public\SignatureVerifyController::class, 'show'])
+    ->name('public.contracts.verify')
+    ->where('id', '[0-9]+');
+
 // Password reset (Laravel default broker uses these route names)
 Route::middleware('guest')->group(function () {
     Route::get('/forgot-password',          [PasswordResetController::class, 'showForgot'])->name('password.request');
@@ -124,6 +133,7 @@ Route::middleware(['auth', 'company.approved'])->group(function () {
     Route::patch('/profile',          [ProfileController::class, 'update'])->name('profile.update');
     Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
     Route::post('/profile/company-logo', [ProfileController::class, 'updateCompanyLogo'])->name('profile.company-logo');
+    Route::patch('/profile/notifications', [ProfileController::class, 'updateNotificationPreferences'])->name('profile.notifications');
 
     // Tabbed Settings page (Company / Personal / Notifications / Security / Payment)
     Route::get('/settings',                       [SettingsController::class, 'index'])->name('settings.index');
@@ -514,12 +524,31 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
 
     // ---- Contracts -----------------------------------------------------------
     Route::get('/contracts',              [ContractController::class, 'index'])->name('dashboard.contracts');
+    // Spend analytics dashboard — declared BEFORE /{id} so the
+    // /analytics literal isn't captured as a contract id.
+    Route::get('/contracts/analytics',    [ContractController::class, 'analytics'])->name('dashboard.contracts.analytics');
     // Export must be declared before /{id} so "export" isn't captured as an id.
     Route::get('/contracts/export/csv',   [ContractController::class, 'exportCsv'])->name('dashboard.contracts.export-csv');
     Route::get('/contracts/{id}',         [ContractController::class, 'show'])->name('dashboard.contracts.show');
     Route::get('/contracts/{id}/pdf', [ContractController::class, 'pdf'])->name('dashboard.contracts.pdf');
-    // Signing is open to any party of the contract — verified inside the controller.
-    Route::post('/contracts/{id}/sign', [ContractController::class, 'sign'])->name('dashboard.contracts.sign');
+    // Signing is open to any party of the contract — verified inside
+    // the controller. Rate-limited to 5 attempts/minute per
+    // (user, contract) pair so a leaked password can't be brute-forced
+    // through the step-up auth check.
+    Route::post('/contracts/{id}/sign', [ContractController::class, 'sign'])
+        ->middleware('throttle:contract.sign')
+        ->name('dashboard.contracts.sign');
+
+    // Phase 6 (UAE Compliance Roadmap) — UAE Pass OAuth flow.
+    // Redirect: kicks off the authorization code flow with a fresh
+    // CSRF state stamped in the session.
+    // Callback: validates state, exchanges the code, calls
+    // ContractService::sign with signature_grade=advanced.
+    // Both routes are under the same auth middleware as the regular
+    // sign endpoint — UAE Pass is a stronger authentication, not a
+    // bypass for the contract-party check.
+    Route::get('/contracts/{id}/sign/uae-pass',          [ContractController::class, 'uaePassRedirect'])->name('dashboard.contracts.sign.uae-pass');
+    Route::get('/contracts/{id}/sign/uae-pass/callback', [ContractController::class, 'uaePassCallback'])->name('dashboard.contracts.sign.uae-pass.callback');
     // Bilateral amendment of contract terms — either party proposes, the
     // other party approves or rejects. All three handlers re-authorise the
     // caller as a contract party and enforce the cross-company rule.
@@ -547,10 +576,27 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     // escrow workflow downstream.
     Route::post('/contracts/{id}/decline',   [ContractController::class, 'decline'])->name('dashboard.contracts.decline');
     Route::post('/contracts/{id}/terminate', [ContractController::class, 'terminate'])->name('dashboard.contracts.terminate');
+    // Internal approval action — buyer-side gate when the contract
+    // value exceeds the buyer company's approval_threshold_aed.
+    // Decision = approved | rejected; routes to the same endpoint.
+    Route::post('/contracts/{id}/approval', [ContractController::class, 'decideApproval'])->name('dashboard.contracts.approval');
+    // Renew an existing contract — clones it into a fresh draft with
+    // new start/end dates. Buyer-side only; supplier renews via the
+    // standard RFQ → bid flow on their side.
+    Route::post('/contracts/{id}/renew',    [ContractController::class, 'renew'])->name('dashboard.contracts.renew');
     // Track-changes view: shows the contract terms across two
     // ContractVersion snapshots side-by-side and highlights every
     // line that was added / removed / modified between them.
     Route::get('/contracts/{id}/diff', [ContractController::class, 'diffVersions'])->name('dashboard.contracts.diff');
+    // e-Signature audit certificate — separate PDF that lists every
+    // signature with IP, device, terms hash and consent timestamp.
+    // Used as legal evidence under Federal Decree-Law 46/2021.
+    Route::get('/contracts/{id}/audit-certificate', [ContractController::class, 'auditCertificate'])->name('dashboard.contracts.audit-certificate');
+    // Internal team notes — visible only to users from the SAME
+    // company as the author. Strict tenant scoping enforced inside
+    // the controller.
+    Route::post('/contracts/{id}/internal-notes',                 [ContractController::class, 'postInternalNote'])->name('dashboard.contracts.internal-notes.store');
+    Route::delete('/contracts/{id}/internal-notes/{noteId}',      [ContractController::class, 'deleteInternalNote'])->name('dashboard.contracts.internal-notes.destroy');
     // Supplier-side actions on a contract: progress updates, doc uploads, shipment scheduling.
     // Each method authorizes the user is on the supplier side via authorizeSupplierParty().
     Route::post('/contracts/{id}/progress',  [ContractController::class, 'updateProgress'])->name('dashboard.contracts.progress');

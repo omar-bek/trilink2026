@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,6 +17,7 @@ use Illuminate\Notifications\Notification;
 class EscrowEventNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         public readonly int $contractId,
@@ -30,25 +32,22 @@ class EscrowEventNotification extends Notification implements ShouldQueue
     {
         return \App\Support\NotificationPreferences::channels(
             $notifiable instanceof \App\Models\User ? $notifiable : null,
-            'contract_milestones',
+            'payment_updates',
             ['database', 'mail']
         );
     }
 
     public function toMail(object $notifiable): MailMessage
     {
-        $line = match ($this->action) {
-            'activated' => 'An escrow account has been activated for your contract.',
-            'deposit'   => "A deposit of {$this->currency} " . number_format((float) $this->amount, 2) . ' has been received in escrow.',
-            'release'   => "An escrow release of {$this->currency} " . number_format((float) $this->amount, 2) . ' has been wired to the supplier.',
-            'refund'    => "An escrow refund of {$this->currency} " . number_format((float) $this->amount, 2) . ' has been returned to the buyer.',
-            default     => 'Your contract escrow status has changed.',
-        };
+        $event = $this->localisedEvent($notifiable);
 
-        return (new MailMessage)
-            ->subject('Escrow ' . ucfirst($this->action))
-            ->line($line)
-            ->action('View Contract', config('app.frontend_url') . "/contracts/{$this->contractId}");
+        return $this->baseMail($notifiable, 'notifications.escrow.event.subject', ['event' => $event])
+            ->line($this->t($notifiable, 'notifications.escrow.event.line1'))
+            ->line($event . ($this->amount ? ' — ' . $this->currency . ' ' . number_format((float) $this->amount, 2) : ''))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_view_contract'),
+                route('dashboard.contracts.show', ['id' => $this->contractId])
+            );
     }
 
     public function toArray(object $notifiable): array
@@ -61,16 +60,19 @@ class EscrowEventNotification extends Notification implements ShouldQueue
 
         return [
             'type'        => $type,
-            'title'       => 'Escrow ' . ucfirst($this->action),
-            'message'     => match ($this->action) {
-                'activated' => 'Escrow account activated for your contract',
-                'deposit'   => "Deposit received: {$this->currency} " . number_format((float) $this->amount, 2),
-                'release'   => "Funds released: {$this->currency} " . number_format((float) $this->amount, 2),
-                'refund'    => "Funds refunded: {$this->currency} " . number_format((float) $this->amount, 2),
-                default     => 'Escrow status updated',
-            },
+            'title'       => $this->t($notifiable, 'notifications.escrow.event.title'),
+            'message'     => $this->t($notifiable, 'notifications.escrow.event.message', [
+                'event' => $this->localisedEvent($notifiable),
+            ]),
             'entity_type' => 'contract',
             'entity_id'   => $this->contractId,
         ];
+    }
+
+    private function localisedEvent(object $notifiable): string
+    {
+        $key = 'notifications.escrow.events.' . $this->action;
+        $value = trans($key, [], $this->localeFor($notifiable));
+        return $value === $key ? $this->action : $value;
     }
 }

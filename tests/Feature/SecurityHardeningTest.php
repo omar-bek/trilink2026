@@ -6,6 +6,7 @@ use App\Enums\BidStatus;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
 use App\Enums\ContractStatus;
+use App\Enums\DocumentType;
 use App\Enums\PaymentStatus;
 use App\Enums\RfqStatus;
 use App\Enums\RfqType;
@@ -14,6 +15,7 @@ use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Models\Bid;
 use App\Models\Company;
+use App\Models\CompanyDocument;
 use App\Models\Contract;
 use App\Models\Payment;
 use App\Models\Rfq;
@@ -60,6 +62,8 @@ class SecurityHardeningTest extends TestCase
             'country'             => 'UAE',
         ]);
 
+        $this->attachValidTradeLicense($company);
+
         return User::create([
             'first_name' => 'Buyer',
             'last_name'  => 'User',
@@ -83,6 +87,8 @@ class SecurityHardeningTest extends TestCase
             'country'             => 'UAE',
         ]);
 
+        $this->attachValidTradeLicense($company);
+
         return User::create([
             'first_name' => 'Supplier',
             'last_name'  => 'User',
@@ -91,6 +97,27 @@ class SecurityHardeningTest extends TestCase
             'role'       => UserRole::SUPPLIER,
             'status'     => UserStatus::ACTIVE,
             'company_id' => $company->id,
+        ]);
+    }
+
+    /**
+     * Sprint A.5 — every test company needs a valid trade license
+     * because ContractService::createFromBid() and PaymentService /
+     * EscrowService all re-check at action time. In production the
+     * license is always present (the registration flow gates on it);
+     * the fixtures have to mirror that invariant or the entire bid
+     * → contract → payment flow blocks.
+     */
+    private function attachValidTradeLicense(Company $company): void
+    {
+        CompanyDocument::create([
+            'company_id' => $company->id,
+            'type'       => DocumentType::TRADE_LICENSE,
+            'label'      => 'Trade License',
+            'file_path'  => 'test/trade-license.pdf',
+            'status'     => CompanyDocument::STATUS_VERIFIED,
+            'issued_at'  => now()->subYear(),
+            'expires_at' => now()->addYear(),
         ]);
     }
 

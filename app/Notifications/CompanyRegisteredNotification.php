@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Company;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,6 +17,7 @@ use Illuminate\Notifications\Notification;
 class CompanyRegisteredNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly Company $company,
@@ -30,24 +32,20 @@ class CompanyRegisteredNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
-            ->subject('New company awaiting approval — ' . $this->company->name)
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'Admin') . ',')
-            ->line("A new company has just registered on the platform and is waiting for your review.")
-            ->line("**Company:** {$this->company->name}")
-            ->line("**Type:** " . ($this->company->type?->value ?? '—'))
-            ->line("**Country:** " . ($this->company->country ?? '—'))
-            ->line("**Trade License:** {$this->company->registration_number}")
-            ->action('Review Company', route('admin.companies.show', $this->company->id))
-            ->line('Please verify the submitted documents before approving.');
+        return $this->baseMail($notifiable, 'notifications.company.registered.subject', ['name' => $this->company->name])
+            ->line($this->t($notifiable, 'notifications.company.registered.message', ['name' => $this->company->name]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_review'),
+                route('admin.companies.show', $this->company->id)
+            );
     }
 
     public function toArray(object $notifiable): array
     {
         return [
             'type'          => 'company_registered',
-            'title'         => 'New company awaiting approval',
-            'message'       => "{$this->company->name} just registered and needs review.",
+            'title'         => $this->t($notifiable, 'notifications.company.registered.title'),
+            'message'       => $this->t($notifiable, 'notifications.company.registered.message', ['name' => $this->company->name]),
             'entity_type'   => 'company',
             'entity_id'     => $this->company->id,
             'company_name'  => $this->company->name,

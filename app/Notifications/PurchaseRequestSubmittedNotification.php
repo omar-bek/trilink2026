@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\PurchaseRequest;
+use App\Notifications\Concerns\LocalizesNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,6 +17,7 @@ use Illuminate\Notifications\Notification;
 class PurchaseRequestSubmittedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+    use LocalizesNotification;
 
     public function __construct(
         private readonly PurchaseRequest $pr,
@@ -34,27 +36,24 @@ class PurchaseRequestSubmittedNotification extends Notification implements Shoul
 
     public function toMail(object $notifiable): MailMessage
     {
-        $buyer = trim(($this->pr->buyer?->first_name ?? '') . ' ' . ($this->pr->buyer?->last_name ?? '')) ?: 'A buyer';
-        $url   = route('dashboard.purchase-requests.show', ['id' => $this->pr->id]);
+        $ref = (string) $this->pr->title;
 
-        return (new MailMessage)
-            ->subject("New purchase request awaiting your approval — {$this->pr->title}")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'there') . ',')
-            ->line("{$buyer} just submitted a new purchase request and it's waiting for your approval.")
-            ->line("**Title:** {$this->pr->title}")
-            ->line('**Budget:** ' . number_format((float) $this->pr->budget, 2) . ' ' . ($this->pr->currency ?? 'AED'))
-            ->action('Review request', $url)
-            ->line('Approve or reject it from the Pending Requests inbox in your dashboard.');
+        return $this->baseMail($notifiable, 'notifications.purchase_request.submitted.subject')
+            ->line($this->t($notifiable, 'notifications.purchase_request.submitted.message', ['ref' => $ref]))
+            ->action(
+                $this->t($notifiable, 'notifications.common.action_review'),
+                route('dashboard.purchase-requests.show', ['id' => $this->pr->id])
+            );
     }
 
     public function toArray(object $notifiable): array
     {
-        $buyer = trim(($this->pr->buyer?->first_name ?? '') . ' ' . ($this->pr->buyer?->last_name ?? '')) ?: 'A buyer';
-
         return [
             'type'        => 'info',
-            'title'       => 'New purchase request awaiting approval',
-            'message'     => "{$buyer} submitted: {$this->pr->title}",
+            'title'       => $this->t($notifiable, 'notifications.purchase_request.submitted.title'),
+            'message'     => $this->t($notifiable, 'notifications.purchase_request.submitted.message', [
+                'ref' => (string) $this->pr->title,
+            ]),
             'entity_type' => 'purchase_request',
             'entity_id'   => $this->pr->id,
         ];
