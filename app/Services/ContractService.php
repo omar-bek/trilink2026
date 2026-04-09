@@ -8,12 +8,14 @@ use App\Enums\RfqType;
 use App\Events\ContractSigned;
 use App\Models\Bid;
 use App\Models\Cart;
+use App\Models\Company;
 use App\Models\Product;
 use App\Models\Contract;
 use App\Models\ContractAmendment;
 use App\Models\ContractVersion;
 use App\Models\TaxRate;
 use App\Models\User;
+use App\Notifications\ContractCreatedNotification;
 use App\Notifications\ContractSignedNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -76,7 +78,7 @@ class ContractService
         return $contract ? $contract->delete() : false;
     }
 
-    public function sign(int $id, int $userId, int $companyId, ?string $signature = null): Contract|string
+    public function sign(int $id, int $userId, int $companyId, ?string $signature = null, array $auditContext = []): Contract|string
     {
         $contract = Contract::find($id);
         if (!$contract) return 'Contract not found';
@@ -107,11 +109,33 @@ class ContractService
             return 'This party has already signed';
         }
 
+        // UAE Federal Decree-Law 46/2021 (Electronic Transactions Law)
+        // Article 18 requires that an electronic signature be uniquely
+        // linked to the signatory and reliably identify them. We capture
+        // every piece of context the controller can give us — IP, UA,
+        // a SHA-256 hash of the contract terms at the moment of signing,
+        // and the explicit consent text the user acknowledged — and
+        // store it in the signature row so the audit trail can survive
+        // any later challenge in court.
+        $contractHash = hash('sha256', json_encode([
+            'contract_number' => $contract->contract_number,
+            'version'         => $contract->version,
+            'terms'           => $contract->terms,
+            'amounts'         => $contract->amounts,
+            'parties'         => $contract->parties,
+        ], JSON_UNESCAPED_UNICODE));
+
         $signatures[] = [
-            'user_id' => $userId,
-            'company_id' => $companyId,
-            'signature' => $signature,
-            'signed_at' => now()->toISOString(),
+            'user_id'        => $userId,
+            'company_id'     => $companyId,
+            'signature'      => $signature,
+            'signed_at'      => now()->toIso8601String(),
+            'ip_address'     => $auditContext['ip_address']     ?? null,
+            'user_agent'     => $auditContext['user_agent']     ?? null,
+            'consent_text'   => $auditContext['consent_text']   ?? null,
+            'consent_at'     => $auditContext['consent_at']     ?? now()->toIso8601String(),
+            'contract_hash'  => $contractHash,
+            'contract_version' => $contract->version,
         ];
 
         $contract->update([
@@ -190,6 +214,22 @@ class ContractService
 
             $buyerCompanyId    = $isSalesOffer ? $bid->company_id : $rfq->company_id;
             $supplierCompanyId = $isSalesOffer ? $rfq->company_id : $bid->company_id;
+
+            // Phase 3.5 (UAE Compliance Roadmap — post-implementation
+            // hardening). A company without a valid trade license is not
+            // a legal entity capable of binding itself to a contract
+            // under Federal Decree-Law 50/2022 Article 5. Refusing to
+            // build the contract is the safer default — the alternative
+            // is creating an unenforceable contract that exposes the
+            // platform to liability if either party later contests it.
+            //
+            // The check runs AFTER the role swap so the error message
+            // points at the correct party. We don't enforce on existing
+            // contracts (the idempotency check below) because the
+            // license may have been valid at the original sign and
+            // expired since — that's a renewal problem, not a creation
+            // problem, and is handled by the documents:expire job.
+            $this->assertTradeLicensesValid($buyerCompanyId, $supplierCompanyId);
 
             // Idempotency check: if this RFQ already has a contract for the
             // winning supplier, return it instead of double-creating.
@@ -287,6 +327,12 @@ class ContractService
                 'created_by'  => auth()->id() ?? $bid->provider_id,
             ]);
 
+            // ContractCreatedNotification fan-out is handled by
+            // {@see \App\Observers\ContractObserver} so every contract
+            // creation path (RFQ accept, Buy-Now, cart checkout) gets
+            // the same notification without each entry point having to
+            // remember to call it.
+
             return $contract->load('buyerCompany');
         });
     }
@@ -353,7 +399,7 @@ class ContractService
                 'payment_schedule' => $this->buildBuyNowSchedule($subtotal, $currency, $startDate, $endDate, $taxRate),
                 'signatures'       => [],
                 'terms'            => json_encode(
-                    $this->buildUaeContractTerms(
+                    $this->buildBilingualUaeContractTerms(
                         scopeTitle:       __('catalog.term_buy_now_scope', [
                             'qty'     => $quantity,
                             'unit'    => $product->unit,
@@ -505,7 +551,7 @@ class ContractService
             'payment_schedule' => $this->buildBuyNowSchedule($subtotal, $currency, $startDate, $endDate, $taxRate),
             'signatures'       => [],
             'terms'            => json_encode(
-                $this->buildUaeContractTerms(
+                $this->buildBilingualUaeContractTerms(
                     scopeTitle:       collect($lineSnapshots)
                         ->map(fn ($l) => sprintf('%d × %s', $l['quantity'], $l['name']))
                         ->implode(' • '),
@@ -680,12 +726,205 @@ class ContractService
         $currency = $bid->currency ?? 'AED';
         $totalRef = $currency . ' ' . $price;
 
-        return $this->buildUaeContractTerms(
+        // Phase 3 (UAE Compliance Roadmap) — pull the buyer + supplier
+        // companies so the bilingual builder can pick the right
+        // jurisdiction (federal / DIFC / ADGM) and the right VAT clause
+        // (mainland / designated-zone supply / cross-zone reverse charge).
+        $rfq->loadMissing('company');
+        $bid->loadMissing('company');
+        $buyerCompany    = $rfq->company;
+        $supplierCompany = $bid->company;
+
+        return $this->buildBilingualUaeContractTerms(
             scopeTitle:       (string) $rfq->title,
             totalValueLabel:  $totalRef,
             paymentBreakdown: (string) ($bid->payment_terms ?? '—'),
             deliveryDays:     $deliveryDays,
+            buyerCompany:     $buyerCompany,
+            supplierCompany:  $supplierCompany,
         );
+    }
+
+    /**
+     * Bilingual companion for buildUaeContractTerms() — returns both the
+     * Arabic and English clause sets in a single envelope so a contract
+     * persists with both language versions and the PDF download can pick
+     * the right one without re-running translations or losing user
+     * amendments. New contracts ALWAYS go through this so the bilingual
+     * shape is enforced at creation time.
+     *
+     * Phase 3 — accepts optional buyer/supplier companies so the clause
+     * generator can pick the right jurisdiction (federal / DIFC / ADGM)
+     * and the right VAT treatment (designated-zone supply / mainland /
+     * cross-zone reverse charge). When the parties are not provided,
+     * federal-mainland defaults are used so legacy callers (Buy-Now,
+     * tests) keep working without changes.
+     *
+     * @return array{en: array, ar: array}
+     */
+    public function buildBilingualUaeContractTerms(
+        string $scopeTitle,
+        string $totalValueLabel,
+        string $paymentBreakdown,
+        int $deliveryDays,
+        ?Company $buyerCompany = null,
+        ?Company $supplierCompany = null,
+    ): array {
+        $jurisdiction = \App\Enums\LegalJurisdiction::resolveForPair(
+            $buyerCompany?->jurisdiction(),
+            $supplierCompany?->jurisdiction()
+        );
+
+        $vatCase = $this->resolveVatCase($buyerCompany, $supplierCompany);
+
+        return [
+            'en' => $this->withLocale('en', fn () => $this->buildUaeContractTerms(
+                $scopeTitle, $totalValueLabel, $paymentBreakdown, $deliveryDays, $jurisdiction, $vatCase
+            )),
+            'ar' => $this->withLocale('ar', fn () => $this->buildUaeContractTerms(
+                $scopeTitle, $totalValueLabel, $paymentBreakdown, $deliveryDays, $jurisdiction, $vatCase
+            )),
+            // Phase 3 metadata — surface the resolved jurisdiction +
+            // VAT case as part of the contract envelope so audit, the
+            // PDF, and admin reviews can read it without re-running
+            // the resolution logic.
+            'jurisdiction' => $jurisdiction->value,
+            'vat_case'     => $vatCase,
+        ];
+    }
+
+    /**
+     * Determine which VAT clause set applies to a contract under
+     * Cabinet Decision 59/2017. Returns one of:
+     *
+     *   - 'designated_zone_internal' — both parties in Designated Zones
+     *     (e.g. DAFZA-DAFZA, JAFZA-KIZAD). Goods supplied between two
+     *     Designated Zones are outside the scope of UAE VAT.
+     *   - 'reverse_charge' — only the buyer is in a Designated Zone and
+     *     the supplier is mainland (or vice versa). Reverse-charge
+     *     mechanism applies — the recipient self-accounts.
+     *   - 'standard' — everything else. Standard 5% VAT.
+     *
+     * Returns 'standard' when either company is null so legacy callers
+     * keep getting the safe default.
+     */
+    private function resolveVatCase(?Company $buyer, ?Company $supplier): string
+    {
+        if (!$buyer || !$supplier) {
+            return 'standard';
+        }
+
+        $buyerDz    = $buyer->isInDesignatedZone();
+        $supplierDz = $supplier->isInDesignatedZone();
+
+        if ($buyerDz && $supplierDz) {
+            return 'designated_zone_internal';
+        }
+
+        if ($buyerDz xor $supplierDz) {
+            return 'reverse_charge';
+        }
+
+        return 'standard';
+    }
+
+    /**
+     * Phase 3.5 (UAE Compliance Roadmap — post-implementation hardening) —
+     * refuse to build the contract when either party's trade license is
+     * missing, expired, or unverified. See createFromBid() for the
+     * legal background. Caller passes the resolved buyer + supplier
+     * company ids (already swapped for sales-side RFQs).
+     *
+     * Throws RuntimeException with a clear, user-facing message that
+     * names the offending party. The exception bubbles up to the
+     * BidController accept flow, which Laravel converts to a flash
+     * error on the bid show page.
+     */
+    private function assertTradeLicensesValid(int $buyerCompanyId, int $supplierCompanyId): void
+    {
+        $companies = Company::query()
+            ->whereIn('id', [$buyerCompanyId, $supplierCompanyId])
+            ->get()
+            ->keyBy('id');
+
+        $buyer    = $companies->get($buyerCompanyId);
+        $supplier = $companies->get($supplierCompanyId);
+
+        $missing = [];
+        if ($buyer && !$buyer->hasValidTradeLicense()) {
+            $missing[] = $buyer->name . ' (buyer)';
+        }
+        if ($supplier && !$supplier->hasValidTradeLicense()) {
+            $missing[] = $supplier->name . ' (supplier)';
+        }
+
+        if ($missing !== []) {
+            throw new \RuntimeException(
+                'Cannot create contract — trade license missing, expired or unverified for: '
+                . implode(', ', $missing)
+                . '. Renew the trade license document in the company profile before retrying.'
+            );
+        }
+    }
+
+    /**
+     * Run a callback with a temporary application locale, restoring the
+     * previous locale before returning. Used by buildBilingualUaeContractTerms()
+     * to render the same clause set twice — once per language.
+     */
+    private function withLocale(string $locale, callable $fn)
+    {
+        $previous = \Illuminate\Support\Facades\App::getLocale();
+        try {
+            \Illuminate\Support\Facades\App::setLocale($locale);
+            return $fn();
+        } finally {
+            \Illuminate\Support\Facades\App::setLocale($previous);
+        }
+    }
+
+    /**
+     * Regenerate the standard clause set for a given contract in the
+     * requested locale, using whatever scope / value / delivery data the
+     * contract row already carries. This is the legacy-contract fallback
+     * for the PDF download when `contract->terms` was baked in a single
+     * language at creation time (pre-bilingual migration). It produces a
+     * fresh single-locale array of `{title, items}` sections — never
+     * bilingual.
+     *
+     * @return array<int, array{title: string, items: array<int, string>}>
+     */
+    public function regenerateTermsForLocale(Contract $contract, string $locale): array
+    {
+        $deliveryDays = $contract->start_date && $contract->end_date
+            ? max(1, (int) $contract->start_date->diffInDays($contract->end_date))
+            : 30;
+
+        $currency = $contract->currency ?? 'AED';
+        $totalLabel = $currency . ' ' . number_format((float) $contract->total_amount, 2);
+
+        // Best-effort payment breakdown reconstructed from the schedule.
+        $breakdown = '—';
+        if (!empty($contract->payment_schedule)) {
+            $parts = [];
+            foreach ((array) $contract->payment_schedule as $row) {
+                $pct = $row['percentage'] ?? null;
+                $milestone = $row['milestone'] ?? null;
+                if ($pct !== null && $milestone) {
+                    $parts[] = ((int) $pct) . '% ' . $milestone;
+                }
+            }
+            if ($parts) {
+                $breakdown = implode(' · ', $parts);
+            }
+        }
+
+        return $this->withLocale($locale, fn () => $this->buildUaeContractTerms(
+            $contract->title ?: '—',
+            $totalLabel,
+            $breakdown,
+            $deliveryDays,
+        ));
     }
 
     /**
@@ -695,13 +934,22 @@ class ContractService
      * spawned. Returned as an array of {title, items} sections — each
      * value is a translation key so the contract show + PDF render in
      * the user's current locale.
+     *
+     * Phase 3 — accepts an optional jurisdiction + vat case so the
+     * VAT, governing-law and dispute-resolution sections can swap
+     * between the federal civil-law clauses (default) and the DIFC /
+     * ADGM common-law clauses. Mainland-vs-designated-zone VAT logic
+     * is also dispatched here.
      */
     private function buildUaeContractTerms(
         string $scopeTitle,
         string $totalValueLabel,
         string $paymentBreakdown,
         int $deliveryDays,
+        ?\App\Enums\LegalJurisdiction $jurisdiction = null,
+        string $vatCase = 'standard',
     ): array {
+        $jurisdiction = $jurisdiction ?? \App\Enums\LegalJurisdiction::FEDERAL;
         return [
             [
                 'title' => __('contracts.scope_of_work'),
@@ -720,10 +968,24 @@ class ContractService
             ],
             [
                 'title' => __('contracts.tax_vat'),
-                'items' => [
-                    __('contracts.term_vat_1'),
-                    __('contracts.term_vat_2'),
-                ],
+                'items' => match ($vatCase) {
+                    // Cabinet Decision 59/2017 — supplies of goods between
+                    // two Designated Zones are outside the scope of UAE VAT.
+                    'designated_zone_internal' => [
+                        __('contracts.term_vat_designated_zone_1'),
+                        __('contracts.term_vat_designated_zone_2'),
+                    ],
+                    // Cross-zone supply (DZ ↔ mainland) — recipient
+                    // self-accounts via reverse charge per Article 48.
+                    'reverse_charge' => [
+                        __('contracts.term_vat_reverse_charge_1'),
+                        __('contracts.term_vat_reverse_charge_2'),
+                    ],
+                    default => [
+                        __('contracts.term_vat_1'),
+                        __('contracts.term_vat_2'),
+                    ],
+                },
             ],
             [
                 'title' => __('contracts.delivery_terms'),
@@ -803,17 +1065,43 @@ class ContractService
             ],
             [
                 'title' => __('contracts.governing_law'),
-                'items' => [
-                    __('contracts.term_governing_law_1'),
-                    __('contracts.term_governing_law_2'),
-                ],
+                'items' => match ($jurisdiction) {
+                    // DIFC operates under its own English-style common law
+                    // (DIFC Contract Law No. 6 of 2004 + DIFC Law No. 7
+                    // of 2005). Disputes go to DIFC Courts.
+                    \App\Enums\LegalJurisdiction::DIFC => [
+                        __('contracts.term_governing_law_difc_1'),
+                        __('contracts.term_governing_law_difc_2'),
+                    ],
+                    // ADGM Application Regulations 2015 incorporate
+                    // English common law and equity directly. Disputes
+                    // go to ADGM Courts.
+                    \App\Enums\LegalJurisdiction::ADGM => [
+                        __('contracts.term_governing_law_adgm_1'),
+                        __('contracts.term_governing_law_adgm_2'),
+                    ],
+                    default => [
+                        __('contracts.term_governing_law_1'),
+                        __('contracts.term_governing_law_2'),
+                    ],
+                },
             ],
             [
                 'title' => __('contracts.dispute_resolution'),
-                'items' => [
-                    __('contracts.term_disputes_negotiation'),
-                    __('contracts.term_disputes_jurisdiction'),
-                ],
+                'items' => match ($jurisdiction) {
+                    \App\Enums\LegalJurisdiction::DIFC => [
+                        __('contracts.term_disputes_negotiation'),
+                        __('contracts.term_disputes_difc_courts'),
+                    ],
+                    \App\Enums\LegalJurisdiction::ADGM => [
+                        __('contracts.term_disputes_negotiation'),
+                        __('contracts.term_disputes_adgm_courts'),
+                    ],
+                    default => [
+                        __('contracts.term_disputes_negotiation'),
+                        __('contracts.term_disputes_jurisdiction'),
+                    ],
+                },
             ],
             [
                 'title' => __('contracts.language_clause'),

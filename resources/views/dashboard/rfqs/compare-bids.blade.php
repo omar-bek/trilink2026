@@ -222,6 +222,46 @@ $riskPill = [
                     @endforeach
                 </tr>
 
+                {{-- Phase 4 (UAE Compliance Roadmap) — ICV Score --}}
+                <tr class="hover:bg-page/40 transition-colors">
+                    <td class="p-5 text-[13px] font-semibold text-primary">{{ __('icv.score_label') }}</td>
+                    @foreach($bidColumns as $col)
+                    <td class="p-5 border-s border-th-border">
+                        @if(($col['icv_score'] ?? 0) > 0)
+                            <p class="text-center text-[13px] font-semibold text-primary mb-1.5">{{ rtrim(rtrim(number_format((float) $col['icv_score'], 2), '0'), '.') }}%</p>
+                            <div class="w-full h-1.5 rounded-full bg-page overflow-hidden">
+                                <div class="h-full bg-accent rounded-full" style="width: {{ min(100, (float) $col['icv_score']) }}%"></div>
+                            </div>
+                        @else
+                            <p class="text-center text-[12px] text-muted">{{ __('icv.no_certificate') }}</p>
+                        @endif
+                    </td>
+                    @endforeach
+                </tr>
+
+                {{-- Phase 4 — Composite Score (only useful when ICV weight > 0) --}}
+                @if(($rfq['icv_weight_percentage'] ?? 0) > 0)
+                <tr class="bg-accent/5 hover:bg-accent/10 transition-colors">
+                    <td class="p-5 text-[13px] font-bold text-accent">
+                        {{ __('icv.composite_label') }}
+                        <span class="block text-[10px] text-muted mt-0.5">{{ __('icv.weight_label', ['n' => $rfq['icv_weight_percentage']]) }}</span>
+                    </td>
+                    @foreach($bidColumns as $col)
+                    <td class="p-5 border-s border-th-border text-center">
+                        <p class="text-[20px] font-bold text-accent">{{ rtrim(rtrim(number_format((float) ($col['composite'] ?? 0), 2), '0'), '.') }}</p>
+                        @if(!empty($col['rank']))
+                            <p class="text-[10px] font-mono text-muted mt-0.5">#{{ $col['rank'] }}</p>
+                        @endif
+                        @if(!empty($col['disqualified']))
+                            <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-[#ff4d7f]/10 border border-[#ff4d7f]/30 text-[#ff4d7f]">
+                                {{ __('icv.disqualified_below_min') }}
+                            </span>
+                        @endif
+                    </td>
+                    @endforeach
+                </tr>
+                @endif
+
                 {{-- Certifications --}}
                 <tr class="hover:bg-page/40 transition-colors">
                     <td class="p-5 text-[13px] font-semibold text-primary">{{ __('bids.certifications') }}</td>

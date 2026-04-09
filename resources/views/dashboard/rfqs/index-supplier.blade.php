@@ -22,6 +22,31 @@ $filters = [
     <p class="text-[16px] text-[#b4b6c0] mt-1">{{ __('rfq.available_subtitle') ?? 'Browse and bid on procurement opportunities' }}</p>
 </div>
 
+{{-- =====================================================================
+     Company-centric view switcher (mirrors the buyer-side index).
+     Hidden for pure supplier roles that don't have visibility into
+     "Our Company's RFQs" (controller passes tab_counts === null in
+     that case so the user lands on the original supplier-only UI).
+     ===================================================================== --}}
+@if(!empty($tab_counts))
+<div class="bg-[#1a1d29] border border-[rgba(255,255,255,0.1)] rounded-2xl p-1.5 mb-6 inline-flex gap-1">
+    @php
+        $switcherTabs = [
+            ['key' => 'mine',        'label' => __('rfq.tab_mine'),        'count' => $tab_counts['mine']],
+            ['key' => 'marketplace', 'label' => __('rfq.tab_marketplace'), 'count' => $tab_counts['marketplace']],
+        ];
+    @endphp
+    @foreach($switcherTabs as $tab)
+    @php $isActive = ($active_tab ?? 'marketplace') === $tab['key']; @endphp
+    <a href="{{ route('dashboard.rfqs', ['tab' => $tab['key']]) }}"
+       class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors {{ $isActive ? 'bg-[#4f7cff] text-white shadow-[0_4px_14px_rgba(79,124,255,0.25)]' : 'text-[#b4b6c0] hover:text-white hover:bg-[#0f1117]' }}">
+        {{ $tab['label'] }}
+        <span class="inline-flex items-center justify-center min-w-[22px] h-[20px] px-1.5 rounded-full text-[11px] font-bold {{ $isActive ? 'bg-white/20 text-white' : 'bg-[#0f1117] text-[#b4b6c0]' }}">{{ $tab['count'] }}</span>
+    </a>
+    @endforeach
+</div>
+@endif
+
 {{-- Search + quick filter pills --}}
 <form method="GET" action="{{ route('dashboard.rfqs') }}"
       class="bg-[#1a1d29] border border-[rgba(255,255,255,0.1)] rounded-[16px] p-5 mb-6">

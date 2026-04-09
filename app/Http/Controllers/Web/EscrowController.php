@@ -194,7 +194,8 @@ class EscrowController extends Controller
         abort_unless($user?->hasPermission('escrow.view'), 403);
 
         $companyId  = $this->currentCompanyId();
-        $isSupplier = in_array($user?->role?->value, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
+        // role + company-type aware — see FormatsForViews::isSupplierSideUser()
+        $isSupplier = $this->isSupplierSideUser();
 
         // Pull every escrow account whose contract has the current company
         // as a party — buyer side OR supplier side. Eager-load the contract

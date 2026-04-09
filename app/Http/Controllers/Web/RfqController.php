@@ -21,24 +21,59 @@ class RfqController extends Controller
 {
     use FormatsForViews, ExportsCsv;
 
+    public function __construct(
+        private readonly \App\Services\Procurement\IcvScoringService $icvScoring,
+    ) {
+    }
+
     public function index(Request $request): View|StreamedResponse
     {
         abort_unless(auth()->user()?->hasPermission('rfq.view'), 403);
 
         $user      = auth()->user();
-        $role      = $user?->role?->value ?? 'buyer';
         $companyId = $this->currentCompanyId();
 
-        // Suppliers see a BROWSE view of RFQs posted by OTHER companies — "Available RFQs".
-        // Buyers see their own company's published RFQs by default, but can opt
-        // into the same browse view via ?marketplace=1 to discover other
-        // companies' SALES_OFFER RFQs they may want to bid on.
-        if (in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true)) {
-            return $this->supplierIndex($request, $user, $companyId);
+        // Company-centric routing. The platform treats the COMPANY as the
+        // primary actor — a single company can both publish RFQs (buyer-side)
+        // and bid on other companies' RFQs (supplier-side). So managers,
+        // admins, and any company-attached user can pivot between two views:
+        //   - tab=mine        → RFQs OUR company published
+        //   - tab=marketplace → RFQs from OTHER companies we can bid on
+        //
+        // Default tab is driven by isSupplierSideUser() which combines the
+        // user's role AND their company type — pure supplier-side roles
+        // land on the marketplace, AND so does any cross-cutting role
+        // (company_manager, finance, sales, …) attached to a supplier
+        // company. Both tabs are always reachable via the explicit ?tab=
+        // query string regardless, and the buyer-side index renders both
+        // counts so the user always sees the alternative pivot.
+        $tab = $request->query('tab');
+        if (! in_array($tab, ['mine', 'marketplace'], true)) {
+            // Backwards compatibility: ?marketplace=1 still routes to marketplace.
+            if ($request->boolean('marketplace')) {
+                $tab = 'marketplace';
+            } else {
+                $tab = $this->isSupplierSideUser() ? 'marketplace' : 'mine';
+            }
         }
 
-        if ($request->boolean('marketplace')) {
-            return $this->supplierIndex($request, $user, $companyId);
+        // Headline counts for the view-switcher tabs. Computed once here so
+        // both branches can pass them to their respective views without
+        // duplicating the SQL.
+        $tabCounts = [
+            'mine'        => $companyId
+                ? Rfq::query()->where('company_id', $companyId)->count()
+                : Rfq::query()->count(),
+            'marketplace' => $companyId
+                ? Rfq::query()
+                    ->where('status', RfqStatus::OPEN->value)
+                    ->where('company_id', '!=', $companyId)
+                    ->count()
+                : Rfq::query()->where('status', RfqStatus::OPEN->value)->count(),
+        ];
+
+        if ($tab === 'marketplace') {
+            return $this->supplierIndex($request, $user, $companyId, $tabCounts);
         }
 
         $base = Rfq::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId));
@@ -163,9 +198,11 @@ class RfqController extends Controller
             ->all();
 
         $resultCount = count($rfqs);
+        $activeTab   = 'mine';
 
         return view('dashboard.rfqs.index', compact(
-            'stats', 'rfqs', 'statusFilter', 'search', 'category', 'sort', 'categoryOptions', 'resultCount'
+            'stats', 'rfqs', 'statusFilter', 'search', 'category', 'sort',
+            'categoryOptions', 'resultCount', 'tabCounts', 'activeTab'
         ));
     }
 
@@ -177,8 +214,12 @@ class RfqController extends Controller
      * percentage is a deterministic heuristic derived from the RFQ id so the
      * order is stable between refreshes — we don't have a real matching engine
      * yet, but the UI reads the same as if we did.
+     *
+     * @param  array{mine:int,marketplace:int}|null  $tabCounts  Headline counts for the
+     *         view-switcher tabs at the top of the page. Computed in index() so the
+     *         counts stay consistent across both branches.
      */
-    private function supplierIndex(Request $request, $user, ?int $companyId): View
+    private function supplierIndex(Request $request, $user, ?int $companyId, ?array $tabCounts = null): View
     {
         $filter = $request->query('filter', 'all');
         $query  = $request->query('q');
@@ -277,6 +318,12 @@ class RfqController extends Controller
             'filter'      => $filter,
             'query'       => $query,
             'new_this_week' => $newThisWeek,
+            // Headline counts for the view-switcher tabs at the top of the
+            // page. When supplierIndex() is reached without going through
+            // index() (legacy callers), tabCounts is null and the view hides
+            // the switcher, falling back to the original supplier-only UI.
+            'tab_counts'  => $tabCounts,
+            'active_tab'  => 'marketplace',
         ]);
     }
 
@@ -285,10 +332,12 @@ class RfqController extends Controller
         abort_unless(auth()->user()?->hasPermission('rfq.view'), 403);
 
         $user = auth()->user();
-        $role = $user?->role?->value ?? 'buyer';
 
-        // Suppliers see a bid-preparation view, not the buyer's manage-bids panel.
-        if (in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true)) {
+        // Suppliers see a bid-preparation view, not the buyer's manage-bids
+        // panel. The supplier-side check covers both pure supplier roles
+        // and cross-cutting roles (company_manager, finance, …) attached to
+        // a supplier company.
+        if ($this->isSupplierSideUser()) {
             return $this->supplierShow($id, $user);
         }
 
@@ -589,11 +638,46 @@ class RfqController extends Controller
             : null;
         $supplierTrn = $supplierCompany?->tax_number;
 
+        // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
+        // Compute the buyer/supplier zone classification so the bid form
+        // can warn about three things at submit time:
+        //
+        //   - Designated-zone internal supply (VAT 0% on goods)
+        //   - Cross-zone supply (reverse charge applies)
+        //   - DIFC/ADGM mismatched jurisdiction (contract will fall back
+        //     to federal law because the parties don't share a
+        //     common-law jurisdiction)
+        //
+        // The hint is informational only — the bid form does not block.
+        $buyerCompany   = $rfq->company;
+        $jurisdictionHint = null;
+        $vatHint        = null;
+        if ($buyerCompany && $supplierCompany) {
+            $vatCase = match (true) {
+                $buyerCompany->isInDesignatedZone() && $supplierCompany->isInDesignatedZone()
+                    => 'designated_zone_internal',
+                $buyerCompany->isInDesignatedZone() xor $supplierCompany->isInDesignatedZone()
+                    => 'reverse_charge',
+                default => 'standard',
+            };
+            $vatHint = $vatCase !== 'standard' ? $vatCase : null;
+
+            $buyerJ    = $buyerCompany->jurisdiction();
+            $supplierJ = $supplierCompany->jurisdiction();
+            if ($buyerJ !== $supplierJ && ($buyerJ->value !== 'federal' || $supplierJ->value !== 'federal')) {
+                $jurisdictionHint = 'mismatch';
+            } elseif ($buyerJ === $supplierJ && $buyerJ->value !== 'federal') {
+                $jurisdictionHint = $buyerJ->value;
+            }
+        }
+
         return view('dashboard.rfqs.submit-bid', [
             'rfq'         => $data,
             'incoterms'   => \App\Http\Requests\Bid\StoreBidRequest::INCOTERMS,
             'countries'   => config('countries.list'),
             'supplier_trn' => $supplierTrn,
+            'jurisdiction_hint' => $jurisdictionHint,
+            'vat_hint'          => $vatHint,
         ]);
     }
 
@@ -659,15 +743,39 @@ class RfqController extends Controller
             'low_risk'           => ($bestBid->ai_score['overall'] ?? 0) >= 60,
         ] : null;
 
-        $bidColumns = $bids->map(function ($bid, $idx) use ($rfq, $bestBid) {
-            return $this->buildBidColumn($bid, $idx, $rfq, $bestBid);
+        // Phase 4 (UAE Compliance Roadmap) — composite ICV scoring.
+        // Build the score map BEFORE the column loop so each column can
+        // pluck its score by bid id without re-running the formula.
+        // When the RFQ has icv_weight_percentage = 0 the composite
+        // collapses to pure price scoring (legacy behaviour).
+        $icvScoring = $this->icvScoring->rankBids($bids, $rfq);
+        $icvByBid = collect($icvScoring)->keyBy('bid_id')->all();
+
+        $bidColumns = $bids->map(function ($bid, $idx) use ($rfq, $bestBid, $icvByBid) {
+            $col = $this->buildBidColumn($bid, $idx, $rfq, $bestBid);
+            $score = $icvByBid[$bid->id] ?? null;
+            $col['icv_score']     = $score['icv_score'] ?? 0;
+            $col['composite']     = $score['composite'] ?? $col['price_value'];
+            $col['rank']          = $score['rank'] ?? null;
+            $col['disqualified']  = $score['disqualified'] ?? false;
+            return $col;
         })->all();
 
+        // Re-sort columns by ICV rank when an ICV weight is set so the
+        // visual order on the page matches the numerical ranking. When
+        // the weight is 0 we leave the original chronological order
+        // alone — that's what existing views expect.
+        if ((int) ($rfq->icv_weight_percentage ?? 0) > 0) {
+            usort($bidColumns, fn ($a, $b) => ($a['rank'] ?? 999) <=> ($b['rank'] ?? 999));
+        }
+
         $rfqData = [
-            'id'           => $rfq->rfq_number,
-            'numeric_id'   => $rfq->id,
-            'is_anonymous' => (bool) $rfq->is_anonymous,
-            'currency'     => $currency,
+            'id'                    => $rfq->rfq_number,
+            'numeric_id'            => $rfq->id,
+            'is_anonymous'          => (bool) $rfq->is_anonymous,
+            'currency'              => $currency,
+            'icv_weight_percentage' => (int) ($rfq->icv_weight_percentage ?? 0),
+            'icv_minimum_score'     => $rfq->icv_minimum_score !== null ? (float) $rfq->icv_minimum_score : null,
         ];
 
         return view('dashboard.rfqs.compare-bids', [

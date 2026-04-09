@@ -29,6 +29,29 @@ $statColors = [
     <div>
         <h1 class="text-[28px] sm:text-[32px] font-bold text-primary leading-tight tracking-[-0.02em]">{{ __('bids.title') }}</h1>
         <p class="text-[16px] text-muted mt-1">{{ __('bids.subtitle') }}</p>
+
+        {{-- Company-centric view switcher: received vs submitted bids.
+             Hidden when the controller didn't compute tab counts (legacy
+             callers / users with no company_id), in which case the page
+             behaves exactly as it did before. --}}
+        @if(!empty($tabCounts))
+        <div class="mt-4 bg-surface border border-th-border rounded-2xl p-1.5 inline-flex gap-1">
+            @php
+                $bidTabs = [
+                    ['key' => 'received',  'label' => __('bids.tab_received'),  'count' => $tabCounts['received']],
+                    ['key' => 'submitted', 'label' => __('bids.tab_submitted'), 'count' => $tabCounts['submitted']],
+                ];
+            @endphp
+            @foreach($bidTabs as $tab)
+            @php $isActive = ($activeTab ?? 'received') === $tab['key']; @endphp
+            <a href="{{ route('dashboard.bids', ['tab' => $tab['key']]) }}"
+               class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors {{ $isActive ? 'bg-accent text-white shadow-[0_4px_14px_rgba(79,124,255,0.25)]' : 'text-muted hover:text-primary hover:bg-surface-2' }}">
+                {{ $tab['label'] }}
+                <span class="inline-flex items-center justify-center min-w-[22px] h-[20px] px-1.5 rounded-full text-[11px] font-bold {{ $isActive ? 'bg-white/20 text-white' : 'bg-page text-muted' }}">{{ $tab['count'] }}</span>
+            </a>
+            @endforeach
+        </div>
+        @endif
     </div>
     <div class="flex items-center gap-2">
         <x-dashboard.export-csv-button :url="route('dashboard.bids') . '?' . http_build_query(array_merge(request()->query(), ['export' => 'csv']))" />

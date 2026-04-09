@@ -1,0 +1,122 @@
+<?php
+
+namespace App\Http\Controllers\Web\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\IcvCertificate;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+/**
+ * Phase 4 (UAE Compliance Roadmap) — admin-side verification queue for
+ * supplier-uploaded ICV certificates. The admin opens a row, downloads
+ * and visually inspects the PDF against the issuer's published score
+ * for that certificate number, then approves or rejects with a reason.
+ *
+ * Verified certificates immediately become eligible for bid scoring;
+ * the {@see \App\Services\Procurement\IcvScoringService} picks them up
+ * on the next compare-bids load (no caching, no migration delay).
+ */
+class IcvCertificateAdminController extends Controller
+{
+    public function index(Request $request): View
+    {
+        abort_unless($request->user()?->hasPermission('company.verify'), 403);
+
+        $query = IcvCertificate::with(['company:id,name,registration_number', 'uploader', 'verifier'])
+            ->orderBy('status')
+            ->latest('id');
+
+        if ($status = $request->query('status')) {
+            $query->where('status', $status);
+        }
+
+        if ($q = $request->query('q')) {
+            $query->where(function ($w) use ($q) {
+                $w->where('certificate_number', 'like', "%{$q}%")
+                  ->orWhereHas('company', fn ($c) => $c->where('name', 'like', "%{$q}%"));
+            });
+        }
+
+        $certificates = $query->paginate(20)->withQueryString();
+
+        $stats = [
+            'pending'  => IcvCertificate::where('status', IcvCertificate::STATUS_PENDING)->count(),
+            'verified' => IcvCertificate::where('status', IcvCertificate::STATUS_VERIFIED)->count(),
+            'rejected' => IcvCertificate::where('status', IcvCertificate::STATUS_REJECTED)->count(),
+            'expired'  => IcvCertificate::where('status', IcvCertificate::STATUS_EXPIRED)->count(),
+        ];
+
+        return view('dashboard.admin.icv-certificates.index', [
+            'certificates' => $certificates,
+            'stats'        => $stats,
+            'filters'      => [
+                'q'      => $request->query('q'),
+                'status' => $request->query('status'),
+            ],
+        ]);
+    }
+
+    public function approve(Request $request, int $id): RedirectResponse
+    {
+        abort_unless($request->user()?->hasPermission('company.verify'), 403);
+
+        $cert = IcvCertificate::findOrFail($id);
+
+        if ($cert->status !== IcvCertificate::STATUS_PENDING) {
+            return back()->withErrors(['status' => __('icv.only_pending_can_be_reviewed')]);
+        }
+
+        $cert->update([
+            'status'           => IcvCertificate::STATUS_VERIFIED,
+            'verified_by'      => $request->user()->id,
+            'verified_at'      => now(),
+            'rejection_reason' => null,
+        ]);
+
+        return back()->with('status', __('icv.verified_successfully'));
+    }
+
+    public function reject(Request $request, int $id): RedirectResponse
+    {
+        abort_unless($request->user()?->hasPermission('company.verify'), 403);
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $cert = IcvCertificate::findOrFail($id);
+
+        if ($cert->status !== IcvCertificate::STATUS_PENDING) {
+            return back()->withErrors(['status' => __('icv.only_pending_can_be_reviewed')]);
+        }
+
+        $cert->update([
+            'status'           => IcvCertificate::STATUS_REJECTED,
+            'verified_by'      => $request->user()->id,
+            'verified_at'      => now(),
+            'rejection_reason' => $data['reason'],
+        ]);
+
+        return back()->with('status', __('icv.rejected_successfully'));
+    }
+
+    public function download(Request $request, int $id): StreamedResponse|RedirectResponse
+    {
+        abort_unless($request->user()?->hasPermission('company.verify'), 403);
+
+        $cert = IcvCertificate::findOrFail($id);
+
+        if (!$cert->file_path || !Storage::disk('local')->exists($cert->file_path)) {
+            return back()->withErrors(['file' => __('icv.file_missing')]);
+        }
+
+        return Storage::disk('local')->download(
+            $cert->file_path,
+            ($cert->original_filename ?: ('icv-' . $cert->id . '.pdf'))
+        );
+    }
+}

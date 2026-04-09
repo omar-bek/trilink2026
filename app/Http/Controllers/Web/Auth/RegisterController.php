@@ -48,7 +48,17 @@ class RegisterController extends Controller
             CompanyType::SERVICE_PROVIDER->value => __('register.type_service_provider'),
         ];
 
-        return view('auth.register', compact('countries', 'companyTypes'));
+        // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction
+        // Awareness. Build the dropdown of free-zone authorities from
+        // the enum so adding a new zone is one-line in the enum and
+        // the form picks it up automatically. The label() method on
+        // each case provides the human-readable name.
+        $freeZoneAuthorities = [];
+        foreach (\App\Enums\FreeZoneAuthority::cases() as $authority) {
+            $freeZoneAuthorities[$authority->value] = $authority->label();
+        }
+
+        return view('auth.register', compact('countries', 'companyTypes', 'freeZoneAuthorities'));
     }
 
     public function showSuccess(): View
@@ -197,6 +207,12 @@ class RegisterController extends Controller
             'email'           => ['required', 'email', 'max:255'],
             'website'         => ['nullable', 'url', 'max:255'],
             'description'     => ['nullable', 'string', 'max:2000'],
+            // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
+            // The form sends `establishment_type` = mainland|free_zone.
+            // When free_zone is chosen, `free_zone_authority` is required
+            // and is validated against the FreeZoneAuthority enum.
+            'establishment_type'  => ['required', 'in:mainland,free_zone'],
+            'free_zone_authority' => ['required_if:establishment_type,free_zone', 'nullable', 'string', \Illuminate\Validation\Rule::in(array_map(fn ($c) => $c->value, \App\Enums\FreeZoneAuthority::cases()))],
 
             'trade_license_file'    => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
             'tax_certificate_file'  => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
@@ -221,6 +237,23 @@ class RegisterController extends Controller
             }
         }
 
+        // Phase 3 — derive the FZ flags + jurisdiction from the form
+        // selection. Mainland → all flags false, jurisdiction federal.
+        // Free zone → look up the authority and derive its designated /
+        // jurisdiction attributes from the enum so the registration
+        // form doesn't have to know the legal classification.
+        $isFreeZone        = ($data['establishment_type'] ?? 'mainland') === 'free_zone';
+        $freeZoneAuthority = $isFreeZone ? ($data['free_zone_authority'] ?? null) : null;
+        $isDesignatedZone  = false;
+        $jurisdiction      = \App\Enums\LegalJurisdiction::FEDERAL;
+        if ($freeZoneAuthority) {
+            $authority = \App\Enums\FreeZoneAuthority::tryFrom($freeZoneAuthority);
+            if ($authority) {
+                $isDesignatedZone = $authority->isDesignated();
+                $jurisdiction     = $authority->jurisdiction();
+            }
+        }
+
         $result = $this->authService->registerCompany([
             'company_name'        => $data['company_name_en'],
             'company_name_ar'     => $data['company_name_ar'] ?? null,
@@ -234,6 +267,12 @@ class RegisterController extends Controller
             'city'                => $data['city'],
             'country'             => $data['country'],
             'description'         => $data['description'] ?? null,
+
+            // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
+            'is_free_zone'        => $isFreeZone,
+            'free_zone_authority' => $freeZoneAuthority,
+            'is_designated_zone'  => $isDesignatedZone,
+            'legal_jurisdiction'  => $jurisdiction->value,
 
             'first_name' => $firstName,
             'last_name'  => $lastName,

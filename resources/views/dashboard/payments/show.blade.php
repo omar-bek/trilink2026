@@ -108,6 +108,70 @@
 
     {{-- Sidebar --}}
     <div class="space-y-6">
+        {{-- Tax invoice card (Phase 1 — UAE Compliance Roadmap) --}}
+        @if($taxInvoiceView)
+            <div class="bg-surface border border-th-border rounded-2xl p-6">
+                <div class="flex items-start justify-between gap-3 mb-4">
+                    <div>
+                        <h3 class="text-[15px] font-bold text-primary">{{ __('tax_invoices.card_title') }}</h3>
+                        <p class="text-[11px] text-muted mt-0.5">{{ __('tax_invoices.card_subtitle') }}</p>
+                    </div>
+                    <span class="inline-flex items-center gap-1.5 h-[22px] px-2 rounded-full bg-[#00d9b5]/10 border border-[#00d9b5]/20 text-[#00d9b5] text-[10px] font-semibold">
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#00d9b5]"></span>
+                        {{ __('tax_invoices.status_issued') }}
+                    </span>
+                </div>
+                <dl class="space-y-3 text-[13px]">
+                    <div>
+                        <dt class="text-[11px] text-muted uppercase tracking-wider">{{ __('tax_invoices.col_number') }}</dt>
+                        <dd class="font-mono font-semibold text-accent break-all">{{ $taxInvoiceView['invoice_number'] }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-[11px] text-muted uppercase tracking-wider">{{ __('tax_invoices.col_issue_date') }}</dt>
+                        <dd class="font-semibold text-primary">{{ $taxInvoiceView['issue_date'] }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-[11px] text-muted uppercase tracking-wider">{{ __('tax_invoices.vat_short') }}</dt>
+                        <dd class="font-semibold text-primary">{{ $taxInvoiceView['vat'] }}</dd>
+                    </div>
+                    <div class="pt-3 border-t border-th-border">
+                        <dt class="text-[11px] text-muted uppercase tracking-wider">{{ __('common.total') }}</dt>
+                        <dd class="text-[18px] font-bold text-[#00d9b5]">{{ $taxInvoiceView['total'] }}</dd>
+                    </div>
+                </dl>
+                @if($taxInvoiceView['has_pdf'])
+                    <a href="{{ $taxInvoiceView['download_url'] }}"
+                       class="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+                        {{ __('tax_invoices.download_pdf') }}
+                    </a>
+                @else
+                    <p class="mt-4 text-[12px] text-muted text-center">{{ __('tax_invoices.pdf_rendering') }}</p>
+                @endif
+            </div>
+        @elseif($payment['paid'])
+            {{-- Payment is completed but invoice hasn't been issued yet —
+                 either the job is still pending or it failed. Only the
+                 buyer (or an admin) can force-retry. --}}
+            <div class="bg-surface border border-[#ffb020]/30 rounded-2xl p-6">
+                <div class="flex items-start gap-3 mb-3">
+                    <svg class="w-5 h-5 text-[#ffb020] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                    <div>
+                        <h3 class="text-[14px] font-bold text-primary">{{ __('tax_invoices.not_yet_issued') }}</h3>
+                        <p class="text-[12px] text-muted mt-1">{{ __('tax_invoices.not_yet_issued_hint') }}</p>
+                    </div>
+                </div>
+                @can('payment.process')
+                    <form method="POST" action="{{ route('dashboard.payments.invoice.issue', ['id' => $payment['db_id']]) }}" class="mt-3">
+                        @csrf
+                        <button type="submit" class="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl text-[12px] font-semibold text-[#ffb020] bg-[#ffb020]/10 border border-[#ffb020]/30 hover:bg-[#ffb020]/15 transition-colors">
+                            {{ __('tax_invoices.retry_issue') }}
+                        </button>
+                    </form>
+                @endcan
+            </div>
+        @endif
+
         <div class="bg-surface border border-th-border rounded-2xl p-6">
             <h3 class="text-[15px] font-bold text-primary mb-4">{{ __('payments.parties') }}</h3>
             <dl class="space-y-3 text-[13px]">

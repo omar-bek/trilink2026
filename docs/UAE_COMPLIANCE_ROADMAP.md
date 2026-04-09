@@ -1101,4 +1101,451 @@ public function analyzeRfq(Rfq $rfq): Collection {
 
 ---
 
-**نهاية المستند.** للمراجعات والتعديلات، استخدم Git history على الـ ملف ده + comments في PRs المتعلقة.
+**نهاية النسخة الأصلية.** للمراجعات والتعديلات، استخدم Git history على الـ ملف ده + comments في PRs المتعلقة.
+
+---
+---
+
+# الملحق أ — مراجعة خبير 30 سنة (post-implementation)
+
+> **التاريخ**: 2026-04-08
+> **السياق**: بعد تنفيذ Phases 1-5، تمت مراجعة الكود بعين خبير إماراتي في الـ B2B procurement platforms. هذا الملحق يوثّق الفجوات اللي ما تـ catch-ش في الـ roadmap الأصلي والتي يجب التعامل معها قبل أي **production go-live للقطاع الحكومي أو enterprise audit**.
+
+## أ.1 — التقييم العام بعد Phases 1-5
+
+| المحور | قبل المراجعة | بعد المراجعة | السبب |
+|---|---|---|---|
+| Phase 1 — Tax Invoice | 🟢 | 🟡 | 9 ثغرات: reverse-charge marking، self-billing، simplified invoice، multi-currency display، corrections، gap analysis، QR format، TRN validation، exempt vs zero-rated |
+| Phase 2 — PDPL | 🟢 | 🟡 | 7 ثغرات: audit_logs غير مشفّرة، DSAR ما بيشملش الـ files، erasure ما بـ anonymize IPs، policy versioning، right-to-restriction، granular cookies، sub-processors hardcoded |
+| Phase 3 — Free Zone | 🟢 | 🟡 | 6 ثغرات حرجة: trade license expiry غير enforced، DIFC-LCIA migration، GCC handling، cross-zone restrictions، services VAT، QFZP test |
+| Phase 4 — ICV | 🟢 | 🟡 | 6 ثغرات: issuer interchangeability، expiry notifications، pass-through declaration، component breakdown، ICV Plus، gov buyer flag |
+| Phase 5 — e-Invoicing | 🟢 | 🟡 | 8 ثغرات: credit notes غير مُرسَلة، mapper جزئي، Schematron، PID، reception side، XML-DSig، retention lock، EmaraTax |
+
+**الخلاصة**: الـ implementation الحالي = production-ready للـ B2B الخاص العادي. **مش كافي** للـ:
+- القطاع الحكومي (يفشل ICV-issuer test، ICV-issuer mismatch، self-billing absence)
+- FTA Phase 1 e-invoicing audit (credit notes، PID، reception، Schematron)
+- PDPL formal audit (audit_logs unencrypted، DSAR incomplete)
+- Enterprise compliance review (trade license enforcement، QFZP misclassification)
+
+---
+
+## أ.2 — Phase 1.5: Tax Invoice Hardening (M)
+
+### الهدف
+سد الـ 9 ثغرات اللي اتكشفت في الـ Phase 1 review قبل ما تتعرّض المنصة لأي FTA inspection.
+
+### في النطاق
+
+1. **Reverse-charge marking على الـ PDF** — لما `vat_case = reverse_charge`، الـ PDF يعرض "Reverse Charge Mechanism Applies — Article 48 LFD 8/2017" بشكل بارز فوق الـ totals. الـ contract clauses بقى موجود، الناقص هو الـ invoice document نفسه.
+
+2. **Tax category snapshot على line items** — حقل جديد `tax_category` على الـ JSON line item (`S` = Standard 5%، `Z` = Zero-rated، `E` = Exempt، `O` = Out of scope، `RC` = Reverse Charge). PDF + UBL XML يعرضوا كل واحدة صح.
+
+3. **Self-billing support**:
+   - حقل `is_self_billed` على `tax_invoices`
+   - لما `true`: الـ buyer هو اللي بيـ trigger الـ issuance، invoice number sequence من الـ buyer مش من الـ supplier
+   - PDF يقول "Self-Billed Tax Invoice — issued by [buyer] on behalf of [supplier]"
+   - يحتاج agreement موقّع مسبقاً (نخزّنه كـ `self_billing_agreement_path`)
+
+4. **Simplified Tax Invoice (Article 60)**:
+   - لما `total_inclusive < 10000` AED **و** `buyer_trn = NULL`، نستخدم `simplified` template
+   - مفيهاش buyer name/address tax fields، بس supplier + amounts
+
+5. **Multi-currency AED display**:
+   - حقل `aed_exchange_rate` على tax_invoices
+   - PDF يعرض الـ base currency (USD/EUR/...) **و** AED equivalent جنبه
+   - الـ rate snapshot من FTA-published daily rate (config أو manual override)
+
+6. **Tax Invoice Corrections workflow**:
+   - حقل `corrected_invoice_id` (nullable, FK على tax_invoices)
+   - الـ admin يقدر يطلع "correction" بنفس الـ invoice number لكن `version` يزيد
+   - الـ PDF يقول "Correction — supersedes version X"
+   - الـ original سيلبقى readable لكن المُعتمَد هو الأحدث
+
+7. **Sequential gap analysis**:
+   - Migration: `invoice_number_sequences` يضيف column `last_used_value`
+   - Service جديد `InvoiceSequenceAuditor::detectGaps(int $companyId, int $year): array`
+   - Admin command `invoices:audit-gaps` يطلع report بـ كل invoice number missing مع الـ reason المسجّل (void، rollback، failed render)
+   - كل gap لازم تكون مع `gap_reason` recorded في جدول `invoice_number_gaps`
+
+8. **QR code FTA-spec migration**:
+   - الـ TLV ZATCA-style الحالي يبقى behind feature flag `EINVOICE_QR_FORMAT=zatca`
+   - الـ FTA-spec الجديد يُبنى لما يُنشر، behind flag `EINVOICE_QR_FORMAT=fta`
+   - الـ test suite يغطي الاتنين
+
+9. **Buyer TRN validation**:
+   - Service جديد `FtaTrnValidator::isValid(string $trn): bool`
+   - في الـ early phase: regex validation (15 رقم، يبدأ بـ 100، checksum صحيح)
+   - في الـ Phase 8: تكامل مع FTA TRN registry API لما يصبح متاح للـ third parties
+   - الـ TaxInvoiceService::issueFor يـ throw لو الـ TRN غلط
+
+### المخرجات
+| النوع | الملف |
+|---|---|
+| Migration | `2026_04_18_100000_extend_tax_invoices_for_corrections.php` |
+| Migration | `2026_04_18_100100_create_invoice_number_gaps_table.php` |
+| Edit | `app/Models/TaxInvoice.php` (new fields) |
+| Edit | `app/Services/Tax/TaxInvoiceService.php` (correction flow + simplified + self-billing) |
+| New | `app/Services/Tax/InvoiceSequenceAuditor.php` |
+| New | `app/Services/Tax/FtaTrnValidator.php` |
+| New Command | `app/Console/Commands/AuditInvoiceGapsCommand.php` |
+| Edit | `resources/views/dashboard/admin/tax-invoices/pdf.blade.php` (RC banner، AED equivalent، simplified mode) |
+| Edit | `resources/views/dashboard/admin/tax-invoices/index.blade.php` (correction button) |
+
+### الحجم: **M**
+
+---
+
+## أ.3 — Phase 2.5: PDPL Hardening (M)
+
+### الهدف
+سد الـ 7 ثغرات في الـ PDPL implementation قبل أي formal audit من UAE Data Office.
+
+### في النطاق
+
+1. **Encrypt audit_logs**:
+   - Migration: widen `ip_address`, `user_agent`, `before`, `after` إلى TEXT
+   - In-place encryption للـ existing rows باستخدام Laravel's `Crypt::encryptString`
+   - Add encrypted casts على `AuditLog` model
+   - **هام**: لازم نتأكد إن الـ audit verification chain لسه بتشتغل بعد التشفير — الـ hash يُحسب على الـ plaintext القيم، مش على الـ ciphertext
+
+2. **DSAR yields the actual files**:
+   - `DataExportService::buildArchive` يضيف `/files/` directory في الـ ZIP
+   - يجمع كل CompanyDocument + IcvCertificate + كل tax_invoices PDFs + bank details الخاصة بالـ user's company
+   - الـ ZIP بقى يحتوي على JSON metadata **و** الـ original files
+
+3. **Erasure deep anonymization**:
+   - `DataErasureService::executeErasure` يضيف:
+     - `audit_logs.ip_address` → `0.0.0.0` لكل rows authored by this user
+     - `audit_logs.user_agent` → `anonymised`
+     - `consents.ip_address` → `0.0.0.0`
+     - `privacy_requests.fulfillment_metadata` → strip user-specific paths
+   - كل ده داخل الـ same DB transaction
+
+4. **Privacy policy text snapshotting**:
+   - Migration: جدول جديد `privacy_policy_versions` يخزن `version`، `effective_from`، `body_en`، `body_ar`، `sha256`
+   - Settings page للـ admin يقدر يـ publish version جديد
+   - الـ ConsentLedger::grant بيخزن `privacy_policy_version_id` بدل ما يخزن version string فقط
+   - الـ DSAR archive بيشمل الـ exact policy text اللي وافق عليه المستخدم
+
+5. **Right to Restriction implementation**:
+   - حقل جديد `users.processing_restricted_at`
+   - Middleware `EnforcePdplRestriction` بيـ block أي write operation على الـ resources اللي تخص الـ user اللي عنده restriction active
+   - الـ user يقدر يرفع restriction أو الـ admin يقدر بقرار
+
+6. **Granular cookie management**:
+   - Cookie banner بقى يعرض list per cookie type: essential (mandatory)، analytics، marketing، third-party-share
+   - كل واحدة toggle مستقل
+   - الـ ConsentLedger::grant بيتنده مرة لكل toggled type
+
+7. **Dynamic sub-processors**:
+   - `config/data_residency.php` بقى يقرا من DB table `sub_processors` instead of static array
+   - الـ admin يقدر يـ enable/disable per tenant
+   - الـ privacy policy + DPA blade يعكسوا الـ enabled set فقط
+
+### المخرجات
+| النوع | الملف |
+|---|---|
+| Migration | `2026_04_19_100000_widen_and_encrypt_audit_logs.php` |
+| Migration | `2026_04_19_100100_create_privacy_policy_versions_table.php` |
+| Migration | `2026_04_19_100200_create_sub_processors_table.php` |
+| Migration | `2026_04_19_100300_add_processing_restricted_to_users.php` |
+| Edit | `app/Models/AuditLog.php` (encrypted casts) |
+| Edit | `app/Services/Privacy/DataExportService.php` (files) |
+| Edit | `app/Services/Privacy/DataErasureService.php` (deep anonymize) |
+| New Model | `app/Models/PrivacyPolicyVersion.php`, `SubProcessor.php` |
+| New Middleware | `app/Http/Middleware/EnforcePdplRestriction.php` |
+| Edit | `app/Services/Privacy/ConsentLedger.php` (FK to policy version) |
+| Edit | `resources/views/components/privacy/cookie-banner.blade.php` (granular) |
+| Edit | `resources/views/public/privacy-policy.blade.php` (dynamic sub-processors) |
+
+### الحجم: **M**
+
+---
+
+## أ.4 — Phase 3.5: Free Zone Enforcement Hardening (S)
+
+### الهدف
+الـ Phase 3 ضافت الـ flags بس مفيش enforcement. ده الـ phase اللي بيغلق الـ liability holes.
+
+### في النطاق
+
+1. **Trade license expiry gate**:
+   - `ContractService::createFromBid()` و `ContractService::createBuyNow()` يضيفوا check قبل الـ insert
+   - لو buyer أو supplier عنده trade license document بـ `expires_at < today`، throw exception
+   - الـ user message: "[Company X] trade license expired on [date]. Renewal required before signing."
+   - الـ Bid acceptance flow كمان
+
+2. **DIFC-LCIA explicit citation in clauses**:
+   - تعديل `contracts.term_disputes_difc_courts` نص ليتضمن: "(formerly DIFC-LCIA, now DIAC pursuant to Decree No. 34 of 2021)"
+   - الـ Arabic كذلك
+
+3. **GCC company jurisdiction**:
+   - Enum جديد `LegalJurisdiction::GCC` للشركات اللي country in `[SA, KW, BH, QA, OM]`
+   - `LegalJurisdiction::resolveForPair` يضيف case للـ GCC: لو buyer UAE و supplier GCC، الـ default هو UAE federal لكن مع GCC trade agreement clauses
+   - clauses جديدة `term_gcc_trade_agreement_*` بيشيروا للـ Unified Customs Law
+
+4. **Cross-zone restrictions warning**:
+   - في `BidService::create()` و `ContractService::createFromBid()`: لو الـ supplier DIFC و الـ buyer mainland (أو العكس) **و** الـ contract نوعه `goods` (مش services)، warning بيتعرض في الـ form قبل الـ submit
+   - النص: "DIFC-licensed companies cannot supply goods directly to the UAE mainland under Federal Law 17/1981. A Local Service Agent agreement may be required."
+   - مش blocking — الـ buyer يقدر يقول "I have a Local Service Agent" + يكتب الـ name
+   - الـ contract بيخزن الـ acknowledgment في `metadata.lsa_acknowledgment`
+
+5. **Services-vs-goods VAT distinction in designated zones**:
+   - حقل جديد `contract_type` على contracts: `goods | services | mixed`
+   - في `resolveVatCase`: لو الاتنين designated zone **و** contract_type = goods، use `designated_zone_internal`. لو services، use `standard` (5%)
+
+6. **QFZP qualification test**:
+   - `Company` model يضيف method `isQualifyingFreeZonePerson(): bool`
+   - منطق: company `is_free_zone = true` **و** registered للـ corporate tax **و** flag `is_qfzp = true` (set by admin after manual review)
+   - الـ contract clauses يستخدموا الـ method بدل ما يفترضوا free_zone = 0% CT
+
+### المخرجات
+| النوع | الملف |
+|---|---|
+| Migration | `2026_04_20_100000_add_qfzp_to_companies.php` |
+| Migration | `2026_04_20_100100_add_contract_type_to_contracts.php` |
+| Edit | `app/Enums/LegalJurisdiction.php` (add GCC) |
+| Edit | `app/Services/ContractService.php` (gates + GCC routing + services VAT) |
+| Edit | `app/Services/BidService.php` (cross-zone warning) |
+| Edit | `lang/{en,ar}.json` (DIFC-LCIA citation update، GCC clauses، LSA warning) |
+| Edit | `resources/views/dashboard/rfqs/submit-bid.blade.php` (LSA acknowledgment field) |
+
+### الحجم: **S**
+
+---
+
+## أ.5 — Phase 4.5: ICV Hardening (S)
+
+### الهدف
+سد الـ 6 ICV gaps قبل أي ADNOC/Mubadala/EGA tender.
+
+### في النطاق
+
+1. **Issuer-specific scoring**:
+   - `Rfq` يضيف حقل `icv_required_issuers` JSON array
+   - `IcvScoringService::scoreBid` يفلتر certificates by `whereIn('issuer', $rfq->icv_required_issuers)` لو not empty
+   - لو الـ supplier عنده cert من issuer مختلف، score = 0 على الـ ICV axis
+
+2. **Expiry notifications**:
+   - Command `php artisan icv:notify-expiring` يجري daily من الـ scheduler
+   - لكل cert فيها `verified` و `expires_date` between today+1 و today+60، يبعت notification
+   - 3 thresholds: 60 يوم، 30 يوم، 7 أيام
+   - حقل `last_notified_at_threshold` على الـ cert لمنع spam
+
+3. **Pass-through declaration**:
+   - upload form يضيف checkbox required: "I declare that the score does not include pass-through markup as per MoIAT 2024 guideline"
+   - Stored في `metadata.no_pass_through_declared_at`
+
+4. **Component breakdown** (optional, للـ buyers اللي يحتاجوا):
+   - حقول إضافية على الـ cert: `local_supply_score`, `local_salary_score`, `local_investment_score`, `local_rd_score`
+   - الكل nullable — الـ supplier يقدر يدخلهم لو certificate بيوضحهم
+   - Sum لازم يساوي الـ total `score` (validation)
+
+5. **ICV Plus support**:
+   - Score column constraint يتعدّل من DECIMAL(5,2) check 0..100 لـ check 0..150
+   - الـ scoring formula clamps بـ 100 max لكن الـ supplier يقدر يخزن الـ real value
+
+6. **Government buyer flag**:
+   - حقل `companies.is_government` (boolean)
+   - الـ Rfq creation form: لو الـ buyer government، auto-set `icv_minimum_score = 30` (default للـ public sector)
+   - الـ Bid evaluation يـ enforce الـ minimum
+
+### المخرجات
+| النوع | الملف |
+|---|---|
+| Migration | `2026_04_21_100000_extend_icv_certificates_and_rfqs.php` |
+| Migration | `2026_04_21_100100_add_government_flag_to_companies.php` |
+| Edit | `app/Models/IcvCertificate.php` |
+| Edit | `app/Models/Rfq.php` |
+| Edit | `app/Services/Procurement/IcvScoringService.php` (issuer filter) |
+| New Command | `app/Console/Commands/NotifyExpiringIcvCertificatesCommand.php` |
+| New Notification | `app/Notifications/IcvCertificateExpiringNotification.php` |
+| Edit | `resources/views/dashboard/icv-certificates/upload.blade.php` (declaration + components) |
+
+### الحجم: **S**
+
+---
+
+## أ.6 — Phase 5.5: e-Invoicing Production Readiness (L)
+
+### الهدف
+نقل e-invoicing من "skeleton" إلى **production-ready لـ FTA Phase 1**. الـ Phase 5 الأصلي بنى الـ pipeline؛ ده الـ phase اللي بيخلّيه يعدّي real ASP validation.
+
+### في النطاق
+
+1. **Credit notes في الـ pipeline**:
+   - `EInvoiceSubmission` يضيف column `document_type` (`invoice` | `credit_note`)
+   - `PintAeMapper::toCreditNoteUbl(TaxCreditNote)` method جديد
+   - `EInvoiceDispatcher::dispatchForCreditNote` method
+   - `TaxInvoiceService::issueCreditNote` يـ dispatch الـ job بعد commit
+   - InvoiceTypeCode 381 (credit note) في الـ XML
+
+2. **PINT-AE mapper completeness**:
+   - `AdditionalDocumentReference` للـ PO number و contract number
+   - `PaymentMeans` (bank IBAN، payment gateway info)
+   - `PaymentTerms` (due date، payment method description)
+   - `AllowanceCharge` (line + invoice level discounts)
+   - `Note` (free-text disclaimers — RC notice، self-billing notice)
+   - `BuyerReference` (PO number)
+
+3. **Schematron validation**:
+   - الـ official PINT-AE Schematron rules (يـ download من Peppol GitHub أو via composer)
+   - `PintAeValidator::validate(string $xml): array` بيرجع violations
+   - الـ dispatcher بيـ run validation قبل الـ submit
+   - violations → submission status = rejected مع clear error_message
+
+4. **PEPPOL Participant Identifier (PID)**:
+   - Migration: `companies.peppol_participant_id` (string، format `iso6523:value` e.g. `0235:100200300400500`)
+   - Validation regex
+   - الـ mapper بيشمله في `EndpointID` element على الـ AccountingSupplierParty + Customer
+
+5. **Reception side**:
+   - Endpoint جديد `POST /api/peppol/inbox/{participant_id}` بيستقبل inbound UBL XML من الـ ASP
+   - Service `IncomingInvoiceProcessor::ingest(string $xml): IncomingInvoice`
+   - جدول جديد `incoming_invoices` يخزن الـ XML + الـ parsed metadata + match against companies (by PID)
+   - الـ buyer يقدر يشوف inbox في dashboard
+   - الـ unmatched invoices تذهب لـ admin queue
+
+6. **XML-DSig**:
+   - Service `UblSigner::sign(string $xml, string $privateKeyPath): string`
+   - بيستخدم openssl_pkcs7_sign أو library خارجي لـ XML enveloped signature
+   - الـ ASP key/cert محفوظ في `storage/keys/asp/` (gitignored)
+
+7. **Retention lock**:
+   - Migration: `e_invoice_submissions` يضيف `retention_locked_until` و `is_canonical` flag
+   - بعد الـ acceptance، الـ row بقى immutable على الـ application layer
+   - DB-level enforcement: revoke UPDATE على بعض الـ columns للـ application user
+   - Archive command بـ`einvoice:archive --before=date` ينقل الـ canonical xml لـ S3 Object Lock
+
+8. **EmaraTax linkage** (skeleton):
+   - حقل `emaratax_return_id` على tax_invoices (nullable)
+   - Service `EmaraTaxReporter::aggregateForPeriod(Carbon $from, Carbon $to)` يحضّر بيانات الـ VAT return من المنصة
+   - مش بيـ submit فعلاً (manual) لكن يصدر CSV/JSON جاهز للـ EmaraTax upload
+
+### المخرجات (~ 16 ملف)
+| النوع | الملف |
+|---|---|
+| Migration | `2026_04_22_100000_extend_e_invoice_submissions.php` |
+| Migration | `2026_04_22_100100_add_peppol_pid_to_companies.php` |
+| Migration | `2026_04_22_100200_create_incoming_invoices_table.php` |
+| Edit | `app/Services/EInvoice/PintAeMapper.php` (full coverage) |
+| New | `app/Services/EInvoice/PintAeValidator.php` (Schematron) |
+| New | `app/Services/EInvoice/UblSigner.php` |
+| New | `app/Services/EInvoice/IncomingInvoiceProcessor.php` |
+| New Model | `app/Models/IncomingInvoice.php` |
+| New Controller | `app/Http/Controllers/Api/PeppolInboxController.php` |
+| Edit | `app/Services/EInvoice/EInvoiceDispatcher.php` (CN + validation) |
+| Edit | `app/Services/Tax/TaxInvoiceService.php` (issueCreditNote dispatches job) |
+| New Command | `app/Console/Commands/ArchiveEInvoiceSubmissionsCommand.php` |
+| New Service | `app/Services/Tax/EmaraTaxReporter.php` |
+| Edit | `routes/api.php` (peppol inbox route) |
+| New Blade | `resources/views/dashboard/incoming-invoices/index.blade.php` |
+
+### الحجم: **L**
+
+---
+
+## أ.7 — Phase 9: Cross-cutting Hardening (M)
+
+### الهدف
+الإصلاحات اللي مش متعلقة بـ phase معيّن لكن بتـ cut across الـ system كله. كل واحدة قابلة للتنفيذ بشكل مستقل.
+
+### في النطاق
+
+1. **External audit chain anchoring**:
+   - Daily command `audit:anchor-chain` يحسب Merkle root من آخر 24 ساعة
+   - يكتبه في S3 Object Lock مع 7-year retention
+   - **و** ينشره على OpenTimestamps free service (Bitcoin blockchain)
+   - يخزّن الـ proof في جدول جديد `audit_chain_anchors`
+
+2. **Sanctions weekly re-screening**:
+   - Command `sanctions:rescreen-all` يجري weekly عبر الـ scheduler
+   - يـ re-fetch results للشركات النشطة
+   - أي hit جديد → demote verification level + notification
+
+3. **UAE Local Terrorist List**:
+   - Provider جديد `UaeLocalListProvider implements SanctionsProviderInterface`
+   - يـ fetch من XML feed على موقع وزارة العدل (manual download to fixture حالياً)
+   - الـ SanctionsScreeningService يـ aggregate results من الـ 2 providers (OpenSanctions + UAE Local)
+
+4. **APP_KEY rotation**:
+   - Command `keys:rotate` يولّد new APP_KEY، يـ re-encrypt كل encrypted columns بالـ new key، يحدّث الـ .env عبر prompt للـ admin
+   - Documentation للـ DR scenario لو الـ key اتسرّب
+
+5. **Security headers middleware**:
+   - `SecurityHeaders` middleware يضيف HSTS، CSP، X-Frame-Options، X-Content-Type-Options، Referrer-Policy
+   - مسجّل على web group كله
+
+6. **Trade Residency Certificate (TRC) tracking**:
+   - حقل `companies.trc_path` و `trc_expires_at`
+   - Cross-border zero-rated supplies يتطلّب TRC من الـ buyer
+
+7. **Backup encryption**:
+   - Documentation: AWS RDS automated backup encryption مع KMS
+   - Storage بـ S3 server-side encryption AES-256
+
+### المخرجات
+| النوع | الملف |
+|---|---|
+| Migration | `2026_04_23_100000_create_audit_chain_anchors_table.php` |
+| Migration | `2026_04_23_100100_add_trc_to_companies.php` |
+| New Service | `app/Services/Sanctions/UaeLocalListProvider.php` |
+| New Command | `app/Console/Commands/AnchorAuditChainCommand.php` |
+| New Command | `app/Console/Commands/RescreenAllCompaniesCommand.php` |
+| New Command | `app/Console/Commands/RotateAppKeyCommand.php` |
+| New Middleware | `app/Http/Middleware/SecurityHeaders.php` |
+| Edit | `bootstrap/app.php` (register middleware + commands) |
+| Edit | `app/Services/Sanctions/SanctionsScreeningService.php` (aggregate providers) |
+
+### الحجم: **M**
+
+---
+
+## أ.8 — الجدول الزمني المُقترَح بعد المراجعة
+
+| الأسبوع | الـ Phases المقترحة بالتوازي |
+|---|---|
+| 1 | Phase 1.5 (Tax Invoice Hardening) — هام للـ FTA audit |
+| 2 | Phase 2.5 (PDPL Hardening) — هام للـ PDPL audit + audit_logs encryption |
+| 3 | Phase 3.5 (Free Zone Enforcement) — هام للـ liability |
+| 4 | Phase 4.5 (ICV Hardening) — قبل أي gov tender |
+| 5-6 | Phase 5.5 (e-Invoicing Production) — قبل يوليو 2026 |
+| 7 | Phase 9 (Cross-cutting Hardening) — تشغيل وقت monitoring |
+| 8+ | Phases 6, 7, 8 من الـ original roadmap (Qualified e-Sig، Corporate Tax + Anti-Collusion، Tier 3 Polish) |
+
+---
+
+## أ.9 — مصفوفة المخاطر المُحدَّثة
+
+| الفجوة | الاحتمالية | الأثر | الأولوية |
+|---|---|---|---|
+| audit_logs غير مشفّرة | عالية (PDPL audit حتمي) | حرج (5M AED غرامة) | **P0** |
+| Trade license expiry غير enforced | متوسطة | حرج (unenforceable contracts) | **P0** |
+| Credit notes ما بتدخلش e-invoice pipeline | عالية بعد يوليو 2026 | حرج (FTA failure) | **P0** |
+| PEPPOL PID مفقود | حتمية بعد يوليو 2026 | حرج | **P0** |
+| Reverse charge marking مفقود من PDF | عالية | عالي | P1 |
+| DSAR ما بيشملش files | متوسطة | عالي | P1 |
+| Privacy policy versioning | متوسطة | عالي | P1 |
+| ICV issuer interchangeability | عالية للقطاع الحكومي | عالي | P1 |
+| Sanctions re-screening | منخفضة | عالي | P1 |
+| Audit chain external anchoring | منخفضة | عالي | P2 |
+| QFZP misclassification | متوسطة | متوسط | P2 |
+| GCC company handling | منخفضة | متوسط | P3 |
+
+---
+
+## أ.10 — الخاتمة بعد المراجعة
+
+ال 5 phases الأولى أعطت المنصة **أساس مكتمل بشكل رسمي** لكنه **ضحل في الأماكن اللي audit بيدوّر فيها**. الـ post-implementation review بيكشف نمط متكرر:
+
+> الـ schema موجود لكن الـ enforcement غايب.
+> الـ feature مذكور في الـ comments لكن مش في الـ runtime.
+> الـ legal text صحيح بس الـ data flow بيخالفه.
+
+الـ Phases 1.5 إلى 5.5 + Phase 9 دي **مش features جديدة**. دي إغلاق الـ gaps اللي بدونها أي إعلان "production-ready لـ government / enterprise UAE" يبقى ادعاء غير دقيق.
+
+**التوصية النهائية بعد المراجعة**: نفّذ Phases 1.5 → 5.5 قبل أي "go-live للقطاع الحكومي" announcement. الـ effort مع بعضه = ~M+M+S+S+L+M = ما يقارب 5-6 phases كلهم Small/Medium، أي **shorter than the original Phase 5 alone**.
+
+---
+
+**نهاية الملحق أ.** المراجعة دي يفترض تتم مرة كل 6 شهور أو بعد أي تغيّر لائحي كبير من FTA / UAE Data Office / TDRA.

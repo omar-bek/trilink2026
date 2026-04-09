@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Concerns\Searchable;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
+use App\Enums\FreeZoneAuthority;
+use App\Enums\LegalJurisdiction;
 use App\Enums\VerificationLevel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -39,9 +41,20 @@ class Company extends Model
         'city',
         'country',
         'logo',
+        // Authorised signature image + company stamp/seal image. Both
+        // are uploaded once on the company profile page and reused on
+        // every contract this company signs — the contract sign flow
+        // refuses to proceed until both files exist.
+        'signature_path',
+        'stamp_path',
         'documents',
         'certifications',
         'description',
+        // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
+        'is_free_zone',
+        'free_zone_authority',
+        'is_designated_zone',
+        'legal_jurisdiction',
     ];
 
     protected function casts(): array
@@ -54,7 +67,68 @@ class Company extends Model
             'sanctions_screened_at' => 'datetime',
             'documents' => 'array',
             'certifications' => 'array',
+            // Phase 2 (UAE Compliance Roadmap) — PDPL Article 20:
+            // tax number (TRN) is a fiscal identifier and personal data
+            // when the company is a sole proprietorship. Encrypted at
+            // rest via Laravel's AES-256-CBC cast. Plaintext is only
+            // available in-process after the cast unwraps it.
+            'tax_number' => 'encrypted',
+            // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
+            // Casts to enums so callers can === compare against the
+            // canonical values without dealing with raw strings.
+            'is_free_zone'        => 'boolean',
+            'is_designated_zone'  => 'boolean',
+            'free_zone_authority' => FreeZoneAuthority::class,
+            'legal_jurisdiction'  => LegalJurisdiction::class,
         ];
+    }
+
+    /**
+     * Phase 3 (UAE Compliance Roadmap) — convenience helper used by
+     * ContractService and the supplier directory: returns the legal
+     * jurisdiction the company operates under, falling back to federal
+     * for legacy rows where the column is null.
+     */
+    public function jurisdiction(): LegalJurisdiction
+    {
+        return $this->legal_jurisdiction ?? LegalJurisdiction::FEDERAL;
+    }
+
+    /**
+     * Phase 4 (UAE Compliance Roadmap) — In-Country Value certificates.
+     * The relationship is loaded by the {@see \App\Services\Procurement\IcvScoringService}
+     * during bid evaluation.
+     */
+    public function icvCertificates(): HasMany
+    {
+        return $this->hasMany(IcvCertificate::class);
+    }
+
+    /**
+     * Convenience: pick the supplier's currently usable ICV score for
+     * scoring. Returns the highest score among all verified, non-expired
+     * certificates so a company holding both a MoIAT cert and an ADNOC
+     * cert can put its best foot forward. Null when no usable cert
+     * exists — the scoring service treats this as a 0 score.
+     */
+    public function latestActiveIcvScore(): ?float
+    {
+        $cert = $this->icvCertificates()
+            ->where('status', IcvCertificate::STATUS_VERIFIED)
+            ->where('expires_date', '>=', now()->toDateString())
+            ->orderByDesc('score')
+            ->first();
+
+        return $cert ? (float) $cert->score : null;
+    }
+
+    /**
+     * True when this company is in a VAT Designated Zone (Cabinet
+     * Decision 59/2017). Drives VAT clause selection on the contract.
+     */
+    public function isInDesignatedZone(): bool
+    {
+        return (bool) $this->is_designated_zone;
     }
 
     /**
@@ -131,6 +205,47 @@ class Company extends Model
     public function companyDocuments(): HasMany
     {
         return $this->hasMany(CompanyDocument::class);
+    }
+
+    /**
+     * Phase 3.5 (UAE Compliance Roadmap — post-implementation hardening) —
+     * trade license validity check used as a gate by ContractService and
+     * BidService. A company without a valid (verified, non-expired)
+     * trade license is not a legal entity capable of binding itself to
+     * a contract under Federal Decree-Law 50/2022 Article 5, and any
+     * contract it signs is voidable on application of the counterparty.
+     *
+     * Returns true when the company holds at least one CompanyDocument
+     * of type TRADE_LICENSE that is verified and either has no expiry
+     * or has an expiry strictly in the future.
+     *
+     * Returns false in two cases the gate cares about:
+     *   - the company has never uploaded a trade license
+     *   - the most recent trade license has been verified but is past
+     *     its expires_at date
+     *
+     * Pending / rejected / expired status rows do NOT count.
+     */
+    public function hasValidTradeLicense(): bool
+    {
+        $latest = $this->companyDocuments()
+            ->where('type', \App\Enums\DocumentType::TRADE_LICENSE)
+            ->where('status', CompanyDocument::STATUS_VERIFIED)
+            ->latest('id')
+            ->first();
+
+        if (!$latest) {
+            return false;
+        }
+
+        if ($latest->expires_at === null) {
+            // Some jurisdictions issue licenses without an expiry — DIFC
+            // perpetual licences, for example. The verified row stands
+            // until it's superseded.
+            return true;
+        }
+
+        return $latest->expires_at->isFuture();
     }
 
     public function sanctionsScreenings(): HasMany
@@ -211,6 +326,40 @@ class Company extends Model
     public function isActive(): bool
     {
         return $this->status === CompanyStatus::ACTIVE;
+    }
+
+    /**
+     * True iff the company has uploaded BOTH the authorised signature
+     * image AND the company stamp/seal. The contract sign flow uses
+     * this to decide whether to show the inline upload modal before
+     * routing the user to the actual sign action — see
+     * ContractController::show().
+     */
+    public function hasSignatureAssets(): bool
+    {
+        return !empty($this->signature_path) && !empty($this->stamp_path);
+    }
+
+    /**
+     * Public asset URL for the authorised signature image. Returns
+     * null when nothing has been uploaded yet so the view can render
+     * an empty-state placeholder instead of a broken <img>.
+     */
+    public function signatureUrl(): ?string
+    {
+        return $this->signature_path
+            ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->signature_path)
+            : null;
+    }
+
+    /**
+     * Public asset URL for the company stamp/seal image.
+     */
+    public function stampUrl(): ?string
+    {
+        return $this->stamp_path
+            ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->stamp_path)
+            : null;
     }
 
     /**

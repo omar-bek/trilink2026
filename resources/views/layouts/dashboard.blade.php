@@ -84,6 +84,10 @@
         </svg>
     </a>
 
+    {{-- Phase 2 (UAE Compliance Roadmap) — PDPL cookie banner. Visible
+         globally until the user records consent (or essential-only). --}}
+    <x-privacy.cookie-banner />
+
     @stack('scripts')
     @livewireScripts
 </body>

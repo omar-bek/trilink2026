@@ -16,6 +16,7 @@ use App\Listeners\ReleaseEscrowOnSignature;
 use App\Models\Shipment;
 use App\Models\User;
 use App\Observers\AuditLogObserver;
+use App\Observers\ContractObserver;
 use App\Observers\SidebarBadgeInvalidator;
 use App\Services\AI\AnthropicClient;
 use App\Services\Credit\CreditScoringProviderInterface;
@@ -117,10 +118,22 @@ class AppServiceProvider extends ServiceProvider
         Payment::observe(AuditLogObserver::class);
         Shipment::observe(AuditLogObserver::class);
 
+        // Phase 1 (UAE Compliance Roadmap) — auto-issue tax invoices when
+        // a Payment row transitions into COMPLETED. The observer dispatches
+        // IssueTaxInvoiceJob (ShouldBeUnique on payment_id) so duplicate
+        // status flips from concurrent webhooks don't double-issue.
+        Payment::observe(\App\Observers\PaymentInvoiceObserver::class);
+
         // Sidebar badge cache invalidation. Every entity that contributes
         // to a sidebar count clears the per-company cache the moment its
         // row changes, so freshly-created RFQs / bids / contracts appear
         // in the sidebar instantly instead of waiting for the 60s TTL.
+        // Single fan-out point for "contract was just created" — covers
+        // every entry path (RFQ → bid accept, Buy-Now, cart checkout)
+        // so the supplier never finds a contract on their dashboard
+        // without having been notified about it.
+        Contract::observe(ContractObserver::class);
+
         Contract::observe(SidebarBadgeInvalidator::class);
         Bid::observe(SidebarBadgeInvalidator::class);
         Rfq::observe(SidebarBadgeInvalidator::class);

@@ -29,13 +29,12 @@ class PerformanceController extends Controller
     {
         abort_unless(auth()->user()?->hasPermission('reports.view'), 403);
 
-        $user = auth()->user();
-        $role = $user?->role?->value ?? 'buyer';
         $companyId = $this->currentCompanyId();
 
-        $isSupplier = in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
-
-        return $isSupplier
+        // Routes by role + company type so a company_manager (or any other
+        // cross-cutting role) attached to a supplier company sees the
+        // supplier KPIs instead of the empty buyer dashboard.
+        return $this->isSupplierSideUser()
             ? $this->supplierPerformance($companyId)
             : $this->buyerPerformance($companyId);
     }

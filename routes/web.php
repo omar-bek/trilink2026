@@ -1,10 +1,13 @@
 <?php
 
 use App\Http\Controllers\Web\Admin\AuditLogController as AdminAuditLogController;
+use App\Http\Controllers\Web\Admin\EInvoiceController as AdminEInvoiceController;
+use App\Http\Controllers\Web\Admin\IcvCertificateAdminController as AdminIcvCertificateController;
 use App\Http\Controllers\Web\Admin\CategoryController as AdminCategoryController;
 use App\Http\Controllers\Web\Admin\CompanyController as AdminCompanyController;
 use App\Http\Controllers\Web\Admin\OversightController as AdminOversightController;
 use App\Http\Controllers\Web\Admin\SettingController as AdminSettingController;
+use App\Http\Controllers\Web\Admin\TaxInvoiceController as AdminTaxInvoiceController;
 use App\Http\Controllers\Web\Admin\TaxRateController as AdminTaxRateController;
 use App\Http\Controllers\Web\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Web\Admin\VerificationQueueController as AdminVerificationQueueController;
@@ -37,7 +40,9 @@ use App\Http\Controllers\Web\LocaleController;
 use App\Http\Controllers\Web\NegotiationController;
 use App\Http\Controllers\Web\NegotiationRoundController;
 use App\Http\Controllers\Web\NotificationController;
+use App\Http\Controllers\Web\IcvCertificateController;
 use App\Http\Controllers\Web\PaymentController;
+use App\Http\Controllers\Web\PrivacyController;
 use App\Http\Controllers\Web\ProductController;
 use App\Http\Controllers\Web\PerformanceController;
 use App\Http\Controllers\Web\ProfileController;
@@ -88,6 +93,15 @@ Route::post('/register/info', [RegisterController::class, 'submitInfo'])->middle
 Route::post('/logout', [WebAuthController::class, 'logout'])->middleware('auth')->name('logout');
 Route::post('/locale/switch', [LocaleController::class, 'switch'])->name('locale.switch');
 
+// ──── Phase 2 (UAE Compliance Roadmap) — public PDPL pages ────────────
+// Privacy policy + DPA + cookie consent endpoint. Open to everyone
+// (logged-in or not) so the cookie banner can record consent before
+// the visitor signs up. PDPL Article 6 — consent must be obtainable
+// without forcing the data subject to authenticate first.
+Route::get('/privacy', [PrivacyController::class, 'showPolicy'])->name('public.privacy');
+Route::get('/data-processing-agreement', [PrivacyController::class, 'showDpa'])->name('public.dpa');
+Route::post('/privacy/cookies', [PrivacyController::class, 'recordCookieConsent'])->name('public.privacy.cookies');
+
 // Password reset (Laravel default broker uses these route names)
 Route::middleware('guest')->group(function () {
     Route::get('/forgot-password',          [PasswordResetController::class, 'showForgot'])->name('password.request');
@@ -118,6 +132,27 @@ Route::middleware(['auth', 'company.approved'])->group(function () {
     Route::patch('/settings/notifications',       [SettingsController::class, 'updateNotifications'])->name('settings.notifications.update');
     Route::patch('/settings/security',            [SettingsController::class, 'updateSecurity'])->name('settings.security.update');
     Route::patch('/settings/payment',              [SettingsController::class, 'updatePayment'])->name('settings.payment.update');
+
+    // ──── Phase 4 (UAE Compliance Roadmap) — ICV certificates ─────
+    // Supplier-side self-service: list, upload, delete (pending only),
+    // and download own certificates. Verification is admin-only.
+    Route::get('/dashboard/icv-certificates',           [IcvCertificateController::class, 'index'])->name('dashboard.icv-certificates.index');
+    Route::get('/dashboard/icv-certificates/create',    [IcvCertificateController::class, 'create'])->name('dashboard.icv-certificates.create');
+    Route::post('/dashboard/icv-certificates',          [IcvCertificateController::class, 'store'])->name('dashboard.icv-certificates.store');
+    Route::get('/dashboard/icv-certificates/{id}/download', [IcvCertificateController::class, 'download'])->name('dashboard.icv-certificates.download');
+    Route::delete('/dashboard/icv-certificates/{id}',   [IcvCertificateController::class, 'destroy'])->name('dashboard.icv-certificates.destroy');
+
+    // ──── Phase 2 (UAE Compliance Roadmap) — PDPL dashboard ────────
+    // Self-service privacy hub: consent log, DSAR (data export), and
+    // erasure scheduling. Auth-only because everything here is the
+    // user acting on their own personal data record.
+    Route::get('/dashboard/privacy', [PrivacyController::class, 'dashboard'])->name('dashboard.privacy.index');
+    Route::post('/dashboard/privacy/export', [PrivacyController::class, 'requestExport'])->name('dashboard.privacy.export');
+    Route::get('/dashboard/privacy/export/{id}/download', [PrivacyController::class, 'downloadExport'])->name('dashboard.privacy.export.download');
+    Route::post('/dashboard/privacy/erasure', [PrivacyController::class, 'requestErasure'])->name('dashboard.privacy.erasure');
+    Route::post('/dashboard/privacy/erasure/{id}/cancel', [PrivacyController::class, 'cancelErasure'])->name('dashboard.privacy.erasure.cancel');
+    Route::post('/dashboard/privacy/consents/{type}/grant', [PrivacyController::class, 'grantConsent'])->name('dashboard.privacy.consents.grant');
+    Route::post('/dashboard/privacy/consents/{type}/withdraw', [PrivacyController::class, 'withdrawConsent'])->name('dashboard.privacy.consents.withdraw');
 
     // Two-Factor Authentication (TOTP) — self-service enable/disable.
     Route::get('/two-factor',              [TwoFactorController::class, 'setup'])->name('dashboard.two-factor.setup');
@@ -156,6 +191,18 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         Route::delete('/company/users/{id}',          [CompanyUserController::class, 'destroy'])->name('company.users.destroy');
     });
 
+    // ---- Company Profile ------------------------------------------------------
+    // The unified company profile page — every company-attached user
+    // can view it (gated by team.view inside the controller); editing
+    // is gated by team.manage so only company managers can save.
+    Route::get('/company/profile',                [\App\Http\Controllers\Web\CompanyProfileController::class, 'show'])->name('dashboard.company.profile');
+    Route::patch('/company/profile',              [\App\Http\Controllers\Web\CompanyProfileController::class, 'update'])->name('dashboard.company.profile.update');
+    Route::post('/company/profile/logo',          [\App\Http\Controllers\Web\CompanyProfileController::class, 'uploadLogo'])->name('dashboard.company.profile.logo');
+    // Authorised signature image + company stamp/seal upload. Both
+    // assets gate the contract sign action — the contract show page
+    // pushes users here via an inline modal when either is missing.
+    Route::post('/company/profile/signature',     [\App\Http\Controllers\Web\CompanyProfileController::class, 'uploadSignature'])->name('dashboard.company.profile.signature');
+
     // ---- Admin ---------------------------------------------------------------
     Route::middleware('web.role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('/', [AdminController::class, 'index'])->name('index');
@@ -175,6 +222,10 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         // Bulk routes must be declared before /{id} so literal segments are
         // not captured as an id.
         Route::post('/companies/bulk/rescreen',   [AdminCompanyController::class, 'bulkRescreen'])->name('companies.bulk-rescreen');
+        // Admin company detail — renders the unified Company Profile
+        // blade in admin mode (verify/reject + verification-level
+        // selector enabled). The legacy /companies/{id}/profile alias
+        // was removed; show() is the single entry point now.
         Route::get('/companies/{id}',             [AdminCompanyController::class, 'show'])->name('companies.show');
         Route::get('/companies/{id}/edit',        [AdminCompanyController::class, 'edit'])->name('companies.edit');
         Route::patch('/companies/{id}',           [AdminCompanyController::class, 'update'])->name('companies.update');
@@ -224,6 +275,34 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         // Export must come before /{id} so "export" isn't captured as an id.
         Route::get('/audit/export',  [AdminAuditLogController::class, 'export'])->name('audit.export');
         Route::get('/audit/{id}',    [AdminAuditLogController::class, 'show'])->name('audit.show');
+
+        // Phase 1 (UAE Compliance Roadmap) — Tax Invoices.
+        // Auto-issued by PaymentInvoiceObserver when a payment becomes
+        // completed; this admin section is for finance to monitor, void
+        // erroneous invoices, and manually re-issue when an auto job
+        // failed. Hard delete is not exposed — voiding is the only legal
+        // way to invalidate a tax invoice.
+        Route::get('/tax-invoices',                          [AdminTaxInvoiceController::class, 'index'])->name('tax-invoices.index');
+        Route::get('/tax-invoices/{id}',                     [AdminTaxInvoiceController::class, 'show'])->name('tax-invoices.show');
+        Route::get('/tax-invoices/{id}/download',            [AdminTaxInvoiceController::class, 'download'])->name('tax-invoices.download');
+        Route::post('/tax-invoices/from-payment/{paymentId}',[AdminTaxInvoiceController::class, 'issueForPayment'])->name('tax-invoices.issue-for-payment');
+        Route::post('/tax-invoices/{id}/void',               [AdminTaxInvoiceController::class, 'void'])->name('tax-invoices.void');
+
+        // Phase 4 (UAE Compliance Roadmap) — ICV verification queue.
+        // Admin reviews supplier-uploaded MoIAT/ADNOC certificates and
+        // either approves (so the score becomes eligible for bid
+        // evaluation) or rejects with a reason.
+        Route::get('/icv-certificates',                     [AdminIcvCertificateController::class, 'index'])->name('icv-certificates.index');
+        Route::get('/icv-certificates/{id}/download',       [AdminIcvCertificateController::class, 'download'])->name('icv-certificates.download');
+        Route::post('/icv-certificates/{id}/approve',       [AdminIcvCertificateController::class, 'approve'])->name('icv-certificates.approve');
+        Route::post('/icv-certificates/{id}/reject',        [AdminIcvCertificateController::class, 'reject'])->name('icv-certificates.reject');
+
+        // Phase 5 (UAE Compliance Roadmap) — e-invoice transmission queue.
+        // Read-only listing of every Peppol PINT-AE submission with a
+        // retry button for failed/rejected rows. Mocked locally until
+        // a real ASP contract is signed (config('einvoice.enabled')).
+        Route::get('/e-invoice',                  [AdminEInvoiceController::class, 'index'])->name('e-invoice.index');
+        Route::post('/e-invoice/{id}/retry',      [AdminEInvoiceController::class, 'retry'])->name('e-invoice.retry');
 
         // Oversight — read-only system-wide pivot across PRs / RFQs / Bids /
         // Contracts / Payments / Shipments / Disputes. The view is a tabbed
@@ -441,6 +520,37 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     Route::get('/contracts/{id}/pdf', [ContractController::class, 'pdf'])->name('dashboard.contracts.pdf');
     // Signing is open to any party of the contract — verified inside the controller.
     Route::post('/contracts/{id}/sign', [ContractController::class, 'sign'])->name('dashboard.contracts.sign');
+    // Bilateral amendment of contract terms — either party proposes, the
+    // other party approves or rejects. All three handlers re-authorise the
+    // caller as a contract party and enforce the cross-company rule.
+    Route::post('/contracts/{id}/amendments',                          [ContractController::class, 'proposeAmendment'])->name('dashboard.contracts.amendments.propose');
+    Route::post('/contracts/{id}/amendments/{amendmentId}/approve',    [ContractController::class, 'approveAmendment'])->name('dashboard.contracts.amendments.approve');
+    Route::post('/contracts/{id}/amendments/{amendmentId}/reject',     [ContractController::class, 'rejectAmendment'])->name('dashboard.contracts.amendments.reject');
+    // Proposer can withdraw their own pending amendment before the
+    // counter-party decides on it. Strict ownership check inside the
+    // controller — only the user who proposed it (not just any user
+    // from the same company) can cancel.
+    Route::post('/contracts/{id}/amendments/{amendmentId}/cancel',     [ContractController::class, 'cancelAmendment'])->name('dashboard.contracts.amendments.cancel');
+    // Per-amendment discussion thread — append-only conversation that
+    // either party can post into to negotiate the wording before the
+    // formal approve/reject decision is made.
+    Route::post('/contracts/{id}/amendments/{amendmentId}/messages',   [ContractController::class, 'postAmendmentMessage'])->name('dashboard.contracts.amendments.messages.store');
+    // Polling endpoint for the negotiation thread — returns JSON for
+    // the messages created STRICTLY AFTER the ?since= timestamp so the
+    // blade view can refresh in near real-time without reloading the
+    // whole contract page.
+    Route::get('/contracts/{id}/amendments/{amendmentId}/messages',    [ContractController::class, 'pollAmendmentMessages'])->name('dashboard.contracts.amendments.messages.poll');
+    // Pre-signature decline: either party can refuse the contract
+    // before any signature is collected. Post-signature termination:
+    // either active party may end the contract early by mutual
+    // agreement; settlement of held escrow is handled by the existing
+    // escrow workflow downstream.
+    Route::post('/contracts/{id}/decline',   [ContractController::class, 'decline'])->name('dashboard.contracts.decline');
+    Route::post('/contracts/{id}/terminate', [ContractController::class, 'terminate'])->name('dashboard.contracts.terminate');
+    // Track-changes view: shows the contract terms across two
+    // ContractVersion snapshots side-by-side and highlights every
+    // line that was added / removed / modified between them.
+    Route::get('/contracts/{id}/diff', [ContractController::class, 'diffVersions'])->name('dashboard.contracts.diff');
     // Supplier-side actions on a contract: progress updates, doc uploads, shipment scheduling.
     // Each method authorizes the user is on the supplier side via authorizeSupplierParty().
     Route::post('/contracts/{id}/progress',  [ContractController::class, 'updateProgress'])->name('dashboard.contracts.progress');
@@ -464,6 +574,12 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     // ---- Payments ------------------------------------------------------------
     Route::get('/payments',      [PaymentController::class, 'index'])->name('dashboard.payments');
     Route::get('/payments/{id}', [PaymentController::class, 'show'])->name('dashboard.payments.show');
+    // Phase 1 (UAE Compliance Roadmap) — user-facing tax invoice routes.
+    // Either party to the payment can download its attached invoice;
+    // only the buyer (or an admin) can force-issue when auto-issuance
+    // failed.
+    Route::get('/payments/{id}/tax-invoice',  [PaymentController::class, 'downloadInvoice'])->name('dashboard.payments.invoice.download');
+    Route::post('/payments/{id}/tax-invoice', [PaymentController::class, 'issueInvoice'])->name('dashboard.payments.invoice.issue');
     // Only buyers approve/process payments.
     Route::middleware('web.role:buyer,company_manager')->group(function () {
         Route::post('/payments/{id}/approve', [PaymentController::class, 'approve'])->name('dashboard.payments.approve');

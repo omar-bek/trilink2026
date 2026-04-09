@@ -105,15 +105,40 @@ class BidController extends Controller
     {
         abort_unless(auth()->user()?->hasPermission('bid.view'), 403);
 
-        $user      = auth()->user();
-        $role      = $user?->role?->value ?? 'buyer';
         $companyId = $this->currentCompanyId();
         $query     = trim((string) $request->query('q', ''));
         $statusFilter = $request->query('status');
 
-        // Supplier-side "My Bids": shows bids the supplier's company submitted.
-        if (in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true)) {
-            return $this->supplierIndex($companyId, $query, $statusFilter, $request);
+        // Company-centric routing. The same company can have bids it RECEIVED
+        // (other companies bidding on its RFQs) and bids it SUBMITTED (its
+        // own employees bidding on other companies' RFQs). Managers, admins,
+        // and any company-attached user can pivot between the two views:
+        //   - tab=received  → bids on OUR company's RFQs (buyer-side index)
+        //   - tab=submitted → bids OUR company's employees submitted (supplier-side)
+        //
+        // Default tab is driven by isSupplierSideUser() which combines role
+        // AND company type — pure supplier-side roles land on "submitted"
+        // (their own bids), AND so does any cross-cutting role
+        // (company_manager, finance, sales, …) attached to a supplier
+        // company. Buyer-side users land on "received".
+        $tab = $request->query('tab');
+        if (! in_array($tab, ['received', 'submitted'], true)) {
+            $tab = $this->isSupplierSideUser() ? 'submitted' : 'received';
+        }
+
+        // Headline counts for the view-switcher tabs. Computed once here so
+        // both branches pass identical numbers to their views.
+        $tabCounts = [
+            'received'  => $companyId
+                ? Bid::query()->whereHas('rfq', fn ($q) => $q->where('company_id', $companyId))->count()
+                : Bid::query()->count(),
+            'submitted' => $companyId
+                ? Bid::query()->where('company_id', $companyId)->count()
+                : 0,
+        ];
+
+        if ($tab === 'submitted') {
+            return $this->supplierIndex($companyId, $query, $statusFilter, $request, $tabCounts);
         }
 
         // Bids that belong to the current company's RFQs (buyer view)
@@ -197,7 +222,9 @@ class BidController extends Controller
             })
             ->toArray();
 
-        return view('dashboard.bids.index', compact('stats', 'bids'));
+        $activeTab = 'received';
+
+        return view('dashboard.bids.index', compact('stats', 'bids', 'tabCounts', 'activeTab'));
     }
 
     /**
@@ -205,8 +232,12 @@ class BidController extends Controller
      * tabs (Active / Won / Lost) so the supplier can quickly scan status,
      * and surfaces the 5 KPIs the Figma shows (active count, won, lost,
      * total value, win rate).
+     *
+     * @param  array{received:int,submitted:int}|null  $tabCounts  Headline counts
+     *         for the company-centric view-switcher tabs at the top of the page.
+     *         Computed in index() so both branches stay consistent.
      */
-    private function supplierIndex(?int $companyId, string $query = '', ?string $statusFilter = null, ?\Illuminate\Http\Request $request = null): View|StreamedResponse
+    private function supplierIndex(?int $companyId, string $query = '', ?string $statusFilter = null, ?\Illuminate\Http\Request $request = null, ?array $tabCounts = null): View|StreamedResponse
     {
         $base = Bid::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId));
 
@@ -245,6 +276,15 @@ class BidController extends Controller
         $activeCount   = (clone $base)->whereIn('status', [
             BidStatus::SUBMITTED->value,
             BidStatus::UNDER_REVIEW->value,
+        ])->count();
+        // Drafts + withdrawn live in their own tab so the supplier can find
+        // and either resume them or accept that they're parked. Without a
+        // dedicated bucket these rows used to vanish from the page entirely
+        // — the badge said "2 bids" and the page only showed 1, which was
+        // exactly the "things missing from the index" complaint.
+        $draftCount = (clone $base)->whereIn('status', [
+            BidStatus::DRAFT->value,
+            BidStatus::WITHDRAWN->value,
         ])->count();
 
         $totalValue = (float) (clone $base)->sum('price');
@@ -292,17 +332,33 @@ class BidController extends Controller
             ->map($map)
             ->all();
 
+        // Drafts + withdrawn bids — surfaced in their own tab so they
+        // don't disappear from the page. The supplier can resume a
+        // draft from here or accept the withdrawal as final.
+        $draftBids = (clone $base)
+            ->whereIn('status', [BidStatus::DRAFT->value, BidStatus::WITHDRAWN->value])
+            ->with(['rfq.company'])
+            ->latest()
+            ->get()
+            ->map($map)
+            ->all();
+
         return view('dashboard.bids.index-supplier', [
             'stats' => [
                 'active'      => $activeCount,
                 'won'         => $wonCount,
                 'lost'        => $lostCount,
+                'draft'       => $draftCount,
+                'total'       => $totalCount,
                 'total_value' => $this->money($totalValue, 'AED'),
                 'win_rate'    => $winRate,
             ],
             'active_bids' => $activeBids,
             'won_bids'    => $wonBids,
             'lost_bids'   => $lostBids,
+            'draft_bids'  => $draftBids,
+            'tab_counts'  => $tabCounts,
+            'active_tab'  => 'submitted',
         ]);
     }
 
@@ -417,14 +473,13 @@ class BidController extends Controller
     {
         abort_unless(auth()->user()?->hasPermission('bid.view'), 403);
 
-        $user = auth()->user();
-        $role = $user?->role?->value ?? 'buyer';
-
         $bid = $this->findOrFail($id)->load(['rfq.category', 'rfq.company', 'company', 'provider']);
 
         // Supplier viewing their own bid gets the "my submitted bid" layout
-        // (Bid Status timeline, Buyer Information on the right, no supplier card).
-        if (in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true)) {
+        // (Bid Status timeline, Buyer Information on the right, no supplier
+        // card). Routed via the role + company-type helper so a company
+        // manager / finance user of a supplier company also gets it.
+        if ($this->isSupplierSideUser()) {
             return $this->supplierShow($bid);
         }
         $rfqBudget = (float) ($bid->rfq?->budget ?? $bid->price);

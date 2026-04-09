@@ -68,6 +68,12 @@
         </div>
     </form>
 
+    @if(isset($paginator) && $paginator->total() > 0)
+    <p class="text-[12px] text-muted mb-3">
+        {{ __('common.showing_results', ['from' => $paginator->firstItem(), 'to' => $paginator->lastItem(), 'total' => $paginator->total()]) }}
+    </p>
+    @endif
+
     <div class="space-y-4">
         @forelse($contracts as $c)
         <a href="{{ route('dashboard.contracts.show', ['id' => $c['numeric_id']]) }}" class="block bg-page border border-th-border rounded-xl p-5 hover:border-accent/30 hover:shadow-lg transition-all">
@@ -115,6 +121,12 @@
         @endif
         @endforelse
     </div>
+
+    @if(isset($paginator) && $paginator->hasPages())
+    <div class="mt-6">
+        {{ $paginator->onEachSide(1)->links() }}
+    </div>
+    @endif
 </div>
 
 @endsection

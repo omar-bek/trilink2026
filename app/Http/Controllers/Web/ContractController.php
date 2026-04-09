@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Web;
 
+use App\Enums\AmendmentStatus;
 use App\Enums\ContractStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\ShipmentStatus;
@@ -9,12 +10,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Models\Company;
 use App\Models\Contract;
+use App\Models\ContractAmendment;
+use App\Models\ContractAmendmentMessage;
+use App\Models\ContractVersion;
 use App\Models\Shipment;
+use App\Models\User;
+use App\Notifications\ContractAmendmentDecidedNotification;
+use App\Notifications\ContractAmendmentMessageNotification;
+use App\Notifications\ContractAmendmentProposedNotification;
 use App\Services\ContractService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -37,10 +48,11 @@ class ContractController extends Controller
     {
         abort_unless(auth()->user()?->hasPermission('contract.view'), 403);
 
-        $user      = auth()->user();
-        $role      = $user?->role?->value ?? 'buyer';
-        $companyId = $this->currentCompanyId();
-        $isSupplier = in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
+        $companyId  = $this->currentCompanyId();
+        // Drives the buyer-vs-supplier query branch — see
+        // FormatsForViews::isSupplierSideUser() for the role + company-type
+        // dispatch rules.
+        $isSupplier = $this->isSupplierSideUser();
 
         $base = Contract::query();
         if ($companyId) {
@@ -130,8 +142,6 @@ class ContractController extends Controller
     {
         abort_unless(auth()->user()?->hasPermission('contract.view'), 403);
 
-        $user      = auth()->user();
-        $role      = $user?->role?->value ?? 'buyer';
         $companyId = $this->currentCompanyId();
         $query     = trim((string) $request->query('q', ''));
 
@@ -148,7 +158,11 @@ class ContractController extends Controller
 
         // Suppliers see contracts where THEIR company is a party (via parties JSON)
         // plus ones where the buyer_company_id matches them (legacy / fallback).
-        $isSupplier = in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
+        // The helper checks both the user's role AND the company TYPE so a
+        // company_manager / finance / sales of a supplier company is correctly
+        // routed to the supplier branch — the previous role-only check left
+        // those users on an empty buyer index.
+        $isSupplier = $this->isSupplierSideUser();
 
         $base = Contract::query();
         if ($companyId) {
@@ -194,7 +208,13 @@ class ContractController extends Controller
         // Pre-load all supplier names referenced in `parties` JSON to avoid N+1.
         // Payments are eager-loaded so the supplier card's "Received / Pending"
         // numbers are computed from real data instead of a progress estimate.
-        $contractRows = (clone $base)->with('payments')->get();
+        // Paginate so a tenant with 500+ contracts doesn't blow the
+        // request memory cap on a single GET — the previous ->get()
+        // path materialised every contract on every page load.
+        $perPage = 15;
+        $paginator    = (clone $base)->with('payments')->paginate($perPage)->withQueryString();
+        $contractRows = $paginator->getCollection();
+
         $partyCompanyIds = $contractRows
             ->flatMap(fn (Contract $c) => collect($c->parties ?? [])->pluck('company_id'))
             ->push(...$contractRows->pluck('buyer_company_id'))
@@ -205,7 +225,7 @@ class ContractController extends Controller
         $companyNames = Company::whereIn('id', $partyCompanyIds)->pluck('name', 'id');
 
         if ($isSupplier) {
-            return $this->supplierIndex($contractRows, $companyNames, $stats, $totalValue);
+            return $this->supplierIndex($contractRows, $companyNames, $stats, $totalValue, $paginator);
         }
 
         $contracts = $contractRows->map(function (Contract $c) use ($companyNames) {
@@ -227,7 +247,7 @@ class ContractController extends Controller
             ];
         })->toArray();
 
-        return view('dashboard.contracts.index', compact('stats', 'contracts', 'statusFilter', 'sort'));
+        return view('dashboard.contracts.index', compact('stats', 'contracts', 'statusFilter', 'sort', 'paginator'));
     }
 
     /**
@@ -236,7 +256,7 @@ class ContractController extends Controller
      * progress KPI, and shows buyer names + pending payments instead of a
      * supplier column.
      */
-    private function supplierIndex($contractRows, $companyNames, array $stats, float $totalValue): View
+    private function supplierIndex($contractRows, $companyNames, array $stats, float $totalValue, $paginator = null): View
     {
         $activeContracts   = collect();
         $completedContracts = collect();
@@ -336,15 +356,23 @@ class ContractController extends Controller
             }))
             : 0;
 
+        // The "active" stat card on the supplier index has historically
+        // been fed from the parent stats array, which counts only rows
+        // with status === ACTIVE. That number disagreed with the active
+        // TAB on the same page (which buckets every non-completed
+        // contract — draft, pending, signed, active — as "active"). The
+        // KPI now counts the actual content of the active bucket so
+        // the card and the tab agree.
         return view('dashboard.contracts.index-supplier', [
             'stats' => [
-                'active'       => $stats['active'],
-                'completed'    => $stats['completed'],
+                'active'       => $activeContracts->count(),
+                'completed'    => $completedContracts->count(),
                 'total_value'  => $this->money($totalValue, 'AED'),
                 'avg_progress' => $avgProgress,
             ],
             'active_contracts'    => $activeContracts->all(),
             'completed_contracts' => $completedContracts->all(),
+            'paginator'           => $paginator,
         ]);
     }
 
@@ -393,14 +421,44 @@ class ContractController extends Controller
 
             $signature = $cid ? $signaturesByCompany->get($cid) : null;
 
+            // Resolve jurisdiction label from the company's enum
+            // (FEDERAL / DIFC / ADGM) so the signature block makes the
+            // legal seat of the party crystal clear at a glance — UAE
+            // contracts in DIFC vs Federal vs ADGM apply different
+            // enforcement and conflict-of-laws rules.
+            $jurisdiction = null;
+            if ($company?->legal_jurisdiction instanceof \BackedEnum) {
+                $jurisdiction = strtoupper($company->legal_jurisdiction->value);
+            }
+
             return [
-                'code'      => $this->initials($name),
-                'color'     => $role === 'buyer' ? 'bg-accent' : 'bg-[#10B981]',
-                'name'      => $name,
-                'type'      => $role === 'buyer' ? __('contracts.buyer') : __('contracts.supplier'),
-                'contact'   => implode(' · ', $contactParts),
-                'signed'    => (bool) $signature,
-                'signed_on' => $signature ? $this->longDate($signature['signed_at'] ?? null) : null,
+                'code'           => $this->initials($name),
+                'color'          => $role === 'buyer' ? 'bg-accent' : 'bg-[#10B981]',
+                'name'           => $name,
+                'type'           => $role === 'buyer' ? __('contracts.buyer') : __('contracts.supplier'),
+                'contact'        => implode(' · ', $contactParts),
+                'signed'         => (bool) $signature,
+                'signed_on'      => $signature ? $this->longDate($signature['signed_at'] ?? null) : null,
+                // Phase 4 / Sprint 18 — surface the legal identity of
+                // the party so a reviewer doesn't need to drill into
+                // the company profile to confirm TRN, registration #,
+                // address, and jurisdiction. Each is null-safe so
+                // legacy or partially-filled companies still render.
+                'trn'            => $company?->tax_number ?: null,
+                'registration'   => $company?->registration_number ?: null,
+                'jurisdiction'   => $jurisdiction,
+                'address'        => $company?->address ?: null,
+                'country'        => $company?->country ?: null,
+                // Audit metadata captured at sign time. The view
+                // displays IP/device/hash inside an expandable details
+                // strip so the reader can verify the e-signature meets
+                // Federal Decree-Law 46/2021 evidentiary standards.
+                'sig_audit'      => $signature ? [
+                    'ip'         => $signature['ip_address']  ?? null,
+                    'user_agent' => $signature['user_agent']  ?? null,
+                    'hash'       => $signature['contract_hash'] ?? null,
+                    'consent_at' => $signature['consent_at']  ?? null,
+                ] : null,
             ];
         })->all();
 
@@ -430,8 +488,15 @@ class ContractController extends Controller
             ];
         })->all();
 
-        // Terms: support a JSON-structured terms field, or fall back to plain text split into bullets.
-        $termsSections = $this->parseTermsSections($contract->terms);
+        // Terms: bilingual contracts pull the current-locale slice straight
+        // out of the stored envelope; legacy single-locale contracts get a
+        // fresh regeneration via the service so the dashboard view always
+        // matches the user's UI language. Same logic the PDF download uses.
+        if ($this->termsAreBilingual($contract->terms)) {
+            $termsSections = $this->parseTermsSections($contract->terms, app()->getLocale());
+        } else {
+            $termsSections = $this->service->regenerateTermsForLocale($contract, app()->getLocale());
+        }
 
         // Timeline derived from real contract events.
         $timeline = $this->buildTimeline($contract, $payments);
@@ -458,9 +523,10 @@ class ContractController extends Controller
 
         // Supplier-side detail view renders a different action panel
         // (Update Progress / Upload Documents / Schedule Shipment) while
-        // the buyer gets the sign-and-review layout.
-        $role = $user?->role?->value ?? 'buyer';
-        $isSupplier = in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
+        // the buyer gets the sign-and-review layout. The helper looks at
+        // both role AND company type so cross-cutting roles attached to a
+        // supplier company also land on the supplier-side panel.
+        $isSupplier = $this->isSupplierSideUser();
 
         // Buyer card for the supplier-side sidebar.
         $buyerCompanyId = $contract->buyer_company_id;
@@ -542,6 +608,169 @@ class ContractController extends Controller
         // `escrow.activated` before rendering the panel.
         $escrowPanel = $this->buildEscrowPanel($contract, $user);
 
+        // Bilateral clause amendments — proposals to modify or add a clause
+        // to the contract terms. Each amendment carries a `requested_by`
+        // user; the OTHER party can approve or reject. Amendments are
+        // STRICTLY pre-signature: once both parties have signed and the
+        // contract becomes ACTIVE, the terms are locked. The business rule
+        // is that any change to the wording must be agreed in writing
+        // BEFORE the e-signature is collected — afterwards, the only path
+        // to amend a contract is to terminate and re-issue.
+        $amendmentRecords = ContractAmendment::where('contract_id', $contract->id)
+            ->with(['requestedBy', 'messages.user'])
+            ->latest()
+            ->get();
+
+        $partyCompanyIdsAll = collect($contract->parties ?? [])
+            ->pluck('company_id')
+            ->push($contract->buyer_company_id)
+            ->filter()
+            ->unique()
+            ->all();
+        $userIsParty = $user && in_array($user->company_id, $partyCompanyIdsAll, true);
+
+        // Pre-signature window only: DRAFT or PENDING_SIGNATURES, AND no
+        // single party has fully signed yet. allPartiesHaveSigned() should
+        // never return true here in practice (the service flips status to
+        // ACTIVE the moment that happens), but we double-check defensively.
+        $preSignature = in_array(
+            $this->statusValue($contract->status),
+            [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value],
+            true
+        ) && !$contract->allPartiesHaveSigned();
+
+        $canAmend = $user
+            && $user->hasPermission('contract.view')
+            && $userIsParty
+            && $preSignature;
+
+        $amendments = $amendmentRecords->map(function (ContractAmendment $a) use ($user) {
+            $changes      = $a->changes ?? [];
+            $proposerUser = $a->requestedBy;
+            $proposerCo   = $proposerUser?->company_id;
+            $isMine       = $user && $proposerCo === $user->company_id;
+            $statusValue  = $a->status instanceof \BackedEnum ? $a->status->value : (string) $a->status;
+
+            // Negotiation thread bubbles. Each message is grouped to
+            // either 'mine' (current user's company) or 'theirs' so the
+            // view can render left/right bubbles without re-resolving
+            // the user → company link on every render.
+            $messages = $a->messages->map(function (ContractAmendmentMessage $m) use ($user) {
+                return [
+                    'id'        => $m->id,
+                    'body'      => $m->body,
+                    'author'    => $m->user?->name ?? '—',
+                    'when'      => $m->created_at?->diffForHumans() ?? '—',
+                    'is_mine'   => $user && (int) $m->company_id === (int) $user->company_id,
+                ];
+            })->all();
+
+            return [
+                'id'             => $a->id,
+                'kind'           => $changes['kind'] ?? 'modify',
+                'section_index'  => (int) ($changes['section_index'] ?? 0),
+                'section_title'  => (string) ($changes['section_title'] ?? ''),
+                'item_index'     => $changes['item_index'] ?? null,
+                'old_text'       => $changes['old_text'] ?? null,
+                'new_text'       => (string) ($changes['new_text'] ?? ''),
+                'reason'         => $a->reason,
+                'status'         => $statusValue,
+                'is_pending'     => $statusValue === AmendmentStatus::PENDING_APPROVAL->value,
+                'proposed_by'    => $proposerUser?->name ?? '—',
+                'proposed_by_me' => $isMine,
+                'proposed_at'    => $a->created_at?->diffForHumans() ?? '—',
+                // Counter-party can only approve / reject if pending AND not the proposer's company.
+                'can_decide'     => $statusValue === AmendmentStatus::PENDING_APPROVAL->value
+                    && $user
+                    && $proposerCo
+                    && $proposerCo !== $user->company_id,
+                // Discussion thread for this clause amendment.
+                'messages'       => $messages,
+                'message_count'  => count($messages),
+                // Either party can post a message any time before the
+                // contract is fully signed (so the conversation can
+                // continue right up until the moment of signature).
+                'can_message'    => $user && $userIsParty,
+            ];
+        })->all();
+
+        // Line items for the supplier "Items" tab. The contract may
+        // carry them in `amounts.line_items` (cart-sourced contracts)
+        // or be a single line whose unit_price + quantity live at the
+        // top level of the amounts JSON (Buy-Now contracts). Bid-driven
+        // contracts have neither — they get a synthetic single line
+        // built from the contract title + total so the tab still
+        // renders something useful instead of an empty stub.
+        $lineItems = collect($contract->amounts['line_items'] ?? [])
+            ->map(function ($item) use ($currency) {
+                $qty       = (float) ($item['quantity']  ?? 1);
+                $unit      = (float) ($item['unit_price'] ?? 0);
+                $lineTotal = (float) ($item['total']     ?? round($qty * $unit, 2));
+                return [
+                    'name'       => (string) ($item['name'] ?? '—'),
+                    'sku'        => (string) ($item['sku']  ?? ''),
+                    'qty'        => $qty,
+                    'unit'       => (string) ($item['unit_of_measure'] ?? ''),
+                    'unit_price' => $this->money($unit, $currency),
+                    'total'      => $this->money($lineTotal, $currency),
+                ];
+            })
+            ->all();
+        if (empty($lineItems)) {
+            // Buy-Now or single-line contract — synthesise one row.
+            $unit = (float) ($contract->amounts['unit_price'] ?? $contract->amounts['subtotal'] ?? $contract->total_amount);
+            $qty  = (float) ($contract->amounts['quantity']   ?? 1);
+            $lineItems = [[
+                'name'       => $contract->title,
+                'sku'        => '',
+                'qty'        => $qty,
+                'unit'       => '',
+                'unit_price' => $this->money($qty > 0 ? $unit / $qty : $unit, $currency),
+                'total'      => $this->money((float) $contract->total_amount, $currency),
+            ]];
+        }
+
+        // Payment history for the "Payments" tab — every Payment row
+        // attached to the contract with its status, amount, milestone,
+        // and the date it was paid (or pending due date). The supplier
+        // tab renders this as a chronological table; the buyer tab
+        // shows it inside the existing Milestones card.
+        $paymentsHistory = $payments
+            ->sortBy(fn ($p) => $p->approved_at ?? $p->created_at)
+            ->values()
+            ->map(function ($p) use ($currency) {
+                $statusValue = $this->statusValue($p->status);
+                return [
+                    'id'         => $p->id,
+                    'milestone'  => $p->milestone ?: __('contracts.milestone'),
+                    'amount'     => $this->money((float) $p->total_amount, $p->currency ?: $currency),
+                    'status'     => $statusValue,
+                    'is_paid'    => in_array($statusValue, ['completed', 'paid'], true),
+                    'date'       => $this->longDate($p->approved_at ?? $p->updated_at ?? $p->created_at),
+                    'invoice_url'=> route('dashboard.payments.show', ['id' => $p->id]),
+                ];
+            })
+            ->all();
+
+        // Signature/stamp gating for the sign button. The buyer's own
+        // company must have uploaded both an authorised signature image
+        // AND a company stamp before the e-signature can be collected.
+        // The view uses these flags to swap the "Sign" button for an
+        // "Upload signature & stamp" CTA when the assets are missing.
+        $userCompany = $user?->company_id ? Company::find($user->company_id) : null;
+        $signatureAssets = [
+            'has_signature' => (bool) $userCompany?->signature_path,
+            'has_stamp'     => (bool) $userCompany?->stamp_path,
+            'has_both'      => (bool) $userCompany?->hasSignatureAssets(),
+            'signature_url' => $userCompany?->signatureUrl(),
+            'stamp_url'     => $userCompany?->stampUrl(),
+        ];
+        // The "ready to sign" flag combines the existing signable check
+        // with the new asset gate so the button is only enabled when
+        // BOTH conditions are true. The view still falls back to the
+        // upload modal CTA when can_sign is true but assets are missing.
+        $needsSignatureAssets = $canSign && !$signatureAssets['has_both'];
+
         $data = [
             'id'              => $contract->contract_number,
             'numeric_id'      => $contract->id,
@@ -559,14 +788,39 @@ class ContractController extends Controller
             'milestones'      => $milestones,
             'payment_schedule'=> $paymentSchedule,
             'terms_sections'  => $termsSections,
+            'amendments'      => $amendments,
+            'can_amend'       => $canAmend,
             'timeline'        => $timeline,
             'documents'       => $documents,
             'supplier_documents' => $supplierDocs,
             'progress_log'    => $progressLog,
             'has_shipment'    => $contract->shipments->isNotEmpty(),
             'shipment_id'     => $contract->shipments->first()?->tracking_number,
-            'can_sign'        => $canSign,
-            'can_review'      => $canReview,
+            'can_sign'              => $canSign,
+            'needs_signature_assets'=> $needsSignatureAssets,
+            'signature_assets'      => $signatureAssets,
+            // Decline / terminate gating. Pre-signature with no party
+            // signed yet → decline; ACTIVE / SIGNED → terminate. Both
+            // surfaced as separate flags so the view can render two
+            // distinct buttons (decline is destructive but reversible
+            // by re-issuing; terminate is destructive and final).
+            'can_decline'           => $userIsParty
+                && in_array($this->statusValue($contract->status), [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value], true)
+                && empty($contract->signatures),
+            'can_terminate'         => $userIsParty
+                && in_array($this->statusValue($contract->status), [ContractStatus::ACTIVE->value, ContractStatus::SIGNED->value], true),
+            // Line items + payments history surface in the supplier
+            // Items / Payments tabs (which were stub placeholders
+            // before this commit).
+            'line_items'            => $lineItems,
+            'payments_history'      => $paymentsHistory,
+            'amounts_meta'          => [
+                'tax_treatment'     => $contract->amounts['tax_treatment']     ?? null,
+                'incoterm'          => $contract->amounts['incoterm']          ?? null,
+                'country_of_origin' => $contract->amounts['country_of_origin'] ?? null,
+                'hs_code'           => $contract->amounts['hs_code']           ?? null,
+            ],
+            'can_review'            => $canReview,
             'existing_review' => $existingReview ? [
                 'rating'  => $existingReview->rating,
                 'comment' => $existingReview->comment,
@@ -594,7 +848,7 @@ class ContractController extends Controller
         return view('dashboard.contracts.show', ['contract' => $data]);
     }
 
-    public function pdf(string $id): Response
+    public function pdf(string $id, Request $request): Response
     {
         abort_unless(auth()->user()?->hasPermission('contract.pdf'), 403);
 
@@ -614,16 +868,51 @@ class ContractController extends Controller
             ->firstWhere('role', 'supplier')['company_id'] ?? null;
         $supplierCompany = $supplierCompanyId ? Company::find($supplierCompanyId) : null;
 
-        $pdf = Pdf::loadView('contracts.pdf', [
-            'contract'        => $contract,
-            'buyerCompany'    => $contract->buyerCompany,
-            'supplierCompany' => $supplierCompany,
-        ]);
+        // Force the locale for the PDF render so the user can pick which
+        // language they want regardless of their UI locale. Per UAE Federal
+        // Law 26/1981 the Arabic version is the prevailing legal text, so
+        // both versions must be available on demand.
+        $requestedLang = $request->query('lang');
+        $lang = in_array($requestedLang, ['ar', 'en'], true) ? $requestedLang : app()->getLocale();
+        $previousLocale = app()->getLocale();
 
-        return $pdf->download($contract->contract_number . '.pdf');
+        try {
+            App::setLocale($lang);
+
+            // Resolve clause sections in the requested locale.
+            //   - Bilingual contract: pull `terms[$lang]` directly so user
+            //     amendments are preserved across both languages.
+            //   - Legacy single-locale contract: regenerate the standard
+            //     clause set fresh in the requested locale via the service.
+            //     We don't have user amendments to merge for legacy rows
+            //     because the amendment system itself was added in the same
+            //     phase as the bilingual storage.
+            if ($this->termsAreBilingual($contract->terms)) {
+                $sections = $this->parseTermsSections($contract->terms, $lang);
+            } else {
+                $sections = $this->service->regenerateTermsForLocale($contract, $lang);
+            }
+
+            $pdf = Pdf::loadView('contracts.pdf', [
+                'contract'        => $contract,
+                'buyerCompany'    => $contract->buyerCompany,
+                'supplierCompany' => $supplierCompany,
+                'pdfLocale'       => $lang,
+                'pdfSections'     => $sections,
+            ]);
+
+            // Filename includes a language suffix so the buyer can keep both
+            // versions on disk side by side without overwriting each other.
+            $filename = $contract->contract_number . '-' . $lang . '.pdf';
+            $output   = $pdf->download($filename);
+        } finally {
+            App::setLocale($previousLocale);
+        }
+
+        return $output;
     }
 
-    public function sign(string $id): RedirectResponse
+    public function sign(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
         $user     = auth()->user();
@@ -634,10 +923,67 @@ class ContractController extends Controller
         // reaches the service call.
         $this->authorizeContractParty($contract);
 
+        // Block signing while there are pending clause amendments. The
+        // business rule is that the wording must be settled — every
+        // proposed change either approved or rejected — BEFORE the
+        // electronic signature is collected, otherwise a party could sign
+        // a version they hadn't agreed to and then have a clause swapped
+        // under them.
+        $pendingCount = ContractAmendment::where('contract_id', $contract->id)
+            ->where('status', AmendmentStatus::PENDING_APPROVAL)
+            ->count();
+        if ($pendingCount > 0) {
+            return back()->withErrors([
+                'contract' => __('contracts.sign_blocked_pending_amendments', ['count' => $pendingCount]),
+            ]);
+        }
+
+        // Defence in depth: refuse to sign until the signing company
+        // has uploaded BOTH an authorised signature image AND a stamp.
+        // The view hides the sign button when these are missing, but a
+        // forged POST would otherwise still slip through. We send the
+        // user back to the contract page where the upload modal lives.
+        $signerCompany = Company::find($user->company_id);
+        if (!$signerCompany || !$signerCompany->hasSignatureAssets()) {
+            return back()->withErrors([
+                'contract' => __('contracts.sign_blocked_missing_signature_assets'),
+            ]);
+        }
+
+        // Step-up authentication. UAE Federal Decree-Law 46/2021 requires
+        // the signature be uniquely linked to the signatory; an active
+        // session alone is not enough — the user must explicitly
+        // re-authenticate AT THE MOMENT of signing AND tick a consent
+        // checkbox. Both are validated server-side here so a forged form
+        // can never slip through.
+        $validated = $request->validate([
+            'password'    => ['required', 'string'],
+            'consent'     => ['required', 'accepted'],
+        ], [
+            'password.required' => __('contracts.sign_password_required'),
+            'consent.accepted'  => __('contracts.sign_consent_required'),
+        ]);
+
+        if (!\Illuminate\Support\Facades\Hash::check($validated['password'], $user->password)) {
+            return back()->withErrors([
+                'password' => __('contracts.sign_password_incorrect'),
+            ]);
+        }
+
         $result = $this->service->sign(
             id: $contract->id,
             userId: $user->id,
             companyId: $user->company_id,
+            signature: null,
+            auditContext: [
+                'ip_address'  => $request->ip(),
+                'user_agent'  => substr((string) $request->userAgent(), 0, 500),
+                'consent_text' => __('contracts.sign_consent_text', [
+                    'number' => $contract->contract_number,
+                    'amount' => ($contract->currency ?: 'AED') . ' ' . number_format((float) $contract->total_amount, 2),
+                ]),
+                'consent_at'  => now()->toIso8601String(),
+            ],
         );
 
         if (is_string($result)) {
@@ -647,6 +993,783 @@ class ContractController extends Controller
         return redirect()
             ->route('dashboard.contracts.show', ['id' => $contract->id])
             ->with('status', __('contracts.signed_successfully'));
+    }
+
+    /**
+     * Either party proposes an amendment to the contract terms — modifying
+     * an existing clause or adding a new one. The amendment is stored as
+     * PENDING_APPROVAL until the OTHER party approves or rejects it.
+     *
+     * The contract's terms JSON is NOT touched until approval, so the
+     * counter-party can keep referencing the original wording while they
+     * decide. Once approved, terms are merged, the version increments, and
+     * a fresh ContractVersion snapshot is captured for the audit trail.
+     */
+    public function proposeAmendment(string $id, Request $request): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        // Pre-signature window only — once the contract is fully signed
+        // (status flips to ACTIVE/SIGNED) the wording is locked. Same gate
+        // the show() page uses to hide the propose buttons; enforced here
+        // server-side too so a stale page or hand-crafted POST cannot
+        // sneak past.
+        if (!$this->canAmendNow($contract)) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_window_closed')]);
+        }
+
+        $validated = $request->validate([
+            'kind'          => ['required', 'in:modify,add'],
+            'section_index' => ['required', 'integer', 'min:0'],
+            'item_index'    => ['nullable', 'integer', 'min:0'],
+            'new_text'      => ['required', 'string', 'max:2000'],
+            'reason'        => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $sections = $this->parseTermsSections($contract->terms);
+        $si = (int) $validated['section_index'];
+        if (!isset($sections[$si])) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_section_missing')]);
+        }
+
+        $oldText = null;
+        if ($validated['kind'] === 'modify') {
+            $ii = (int) ($validated['item_index'] ?? -1);
+            if ($ii < 0 || !isset($sections[$si]['items'][$ii])) {
+                return back()->withErrors(['amendment' => __('contracts.amendment_clause_missing')]);
+            }
+            $oldText = $sections[$si]['items'][$ii];
+        }
+
+        $amendment = ContractAmendment::create([
+            'contract_id'  => $contract->id,
+            'from_version' => $contract->version,
+            'changes'      => [
+                'kind'           => $validated['kind'],
+                'section_index'  => $si,
+                'section_title'  => $sections[$si]['title'] ?? '',
+                'item_index'     => $validated['kind'] === 'modify' ? (int) $validated['item_index'] : null,
+                'old_text'       => $oldText,
+                'new_text'       => $validated['new_text'],
+            ],
+            'reason'           => $validated['reason'] ?? null,
+            'status'           => AmendmentStatus::PENDING_APPROVAL,
+            'requested_by'     => $user->id,
+            'approval_history' => [[
+                'event'      => 'proposed',
+                'user_id'    => $user->id,
+                'company_id' => $user->company_id,
+                'at'         => now()->toIso8601String(),
+            ]],
+        ]);
+
+        // Notify the OTHER party that there is a pending amendment
+        // waiting for their decision. The proposer's own company is
+        // intentionally excluded — they already know they just typed it.
+        $this->notifyAmendment(
+            $contract,
+            $amendment,
+            new ContractAmendmentProposedNotification($contract, $amendment, $this->displayName($user)),
+            excludeCompanyId: $user->company_id,
+        );
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.amendment_proposed'));
+    }
+
+    /**
+     * Counter-party approves a pending amendment. Merges the change into
+     * the contract terms, bumps the version, snapshots a ContractVersion,
+     * and stamps the amendment's approval_history.
+     *
+     * Authorization: must be a party of the contract AND from a different
+     * company than the proposer (you can't approve your own amendment).
+     */
+    public function approveAmendment(string $id, int $amendmentId): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        if (!$this->canAmendNow($contract)) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_window_closed')]);
+        }
+
+        $amendment = ContractAmendment::where('contract_id', $contract->id)->findOrFail($amendmentId);
+
+        if ($amendment->status !== AmendmentStatus::PENDING_APPROVAL) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_not_pending')]);
+        }
+
+        $proposer = User::find($amendment->requested_by);
+        if ($proposer && $proposer->company_id === $user->company_id) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_self_approve_forbidden')]);
+        }
+
+        DB::transaction(function () use ($contract, $amendment, $user) {
+            $changes = $amendment->changes ?? [];
+            $si      = (int) ($changes['section_index'] ?? -1);
+            $ii      = (int) ($changes['item_index'] ?? -1);
+            $kind    = $changes['kind'] ?? '';
+            $newText = (string) ($changes['new_text'] ?? '');
+
+            // Decode the existing terms envelope. Two shapes possible:
+            //  - bilingual {en: [...], ar: [...]}
+            //  - legacy flat [sections...]
+            // We apply the amendment to BOTH locales (for bilingual) so the
+            // PDF download works in either language. The proposing user
+            // typed a single language, so the same text lands in both
+            // versions — they remain free to propose a translated version
+            // as a follow-up amendment if they care about parity.
+            $decoded = is_string($contract->terms) ? json_decode($contract->terms, true) : $contract->terms;
+            $isBilingual = is_array($decoded) && (isset($decoded['en']) || isset($decoded['ar']));
+
+            $applyToSections = function (array $sections) use ($si, $ii, $kind, $newText) {
+                if (!isset($sections[$si])) {
+                    abort(422, __('contracts.amendment_section_missing'));
+                }
+                if ($kind === 'modify') {
+                    if ($ii < 0 || !isset($sections[$si]['items'][$ii])) {
+                        abort(422, __('contracts.amendment_clause_missing'));
+                    }
+                    $sections[$si]['items'][$ii] = $newText;
+                } else {
+                    $sections[$si]['items'][] = $newText;
+                }
+                foreach ($sections as $idx => $sec) {
+                    $sections[$idx]['items'] = array_values($sec['items'] ?? []);
+                }
+                return array_values($sections);
+            };
+
+            if ($isBilingual) {
+                $newTerms = [
+                    'en' => $applyToSections($this->parseTermsSections($decoded, 'en')),
+                    'ar' => $applyToSections($this->parseTermsSections($decoded, 'ar')),
+                ];
+            } else {
+                // Lazy upgrade: a legacy single-locale contract that gets
+                // its first amendment is migrated to the bilingual envelope
+                // so that later PDF downloads in either language preserve
+                // the amendment. The "other" locale starts as a fresh
+                // regeneration of the standard clauses, then the amendment
+                // is applied to both sides (same text — the proposer typed
+                // a single language and we don't auto-translate).
+                $existing = $this->parseTermsSections($decoded);
+                $regenerated = $this->service->regenerateTermsForLocale($contract, app()->getLocale() === 'ar' ? 'en' : 'ar');
+                if (app()->getLocale() === 'ar') {
+                    $newTerms = [
+                        'en' => $applyToSections($regenerated),
+                        'ar' => $applyToSections($existing),
+                    ];
+                } else {
+                    $newTerms = [
+                        'en' => $applyToSections($existing),
+                        'ar' => $applyToSections($regenerated),
+                    ];
+                }
+            }
+
+            $contract->update([
+                'terms'   => json_encode($newTerms, JSON_UNESCAPED_UNICODE),
+                'version' => $contract->version + 1,
+            ]);
+
+            $history = $amendment->approval_history ?? [];
+            $history[] = [
+                'event'      => 'approved',
+                'user_id'    => $user->id,
+                'company_id' => $user->company_id,
+                'at'         => now()->toIso8601String(),
+            ];
+
+            $amendment->update([
+                'status'           => AmendmentStatus::APPROVED,
+                'approval_history' => $history,
+            ]);
+
+            ContractVersion::create([
+                'contract_id' => $contract->id,
+                'version'     => $contract->version,
+                'snapshot'    => $contract->fresh()->toArray(),
+                'created_by'  => $user->id,
+            ]);
+        });
+
+        // Notify the proposer's side (and any other parties that aren't
+        // the approver's company) that the amendment was approved so
+        // the team that proposed it doesn't have to keep refreshing.
+        $this->notifyAmendment(
+            $contract,
+            $amendment,
+            new ContractAmendmentDecidedNotification($contract, $amendment, 'approved', $this->displayName($user)),
+            excludeCompanyId: $user->company_id,
+        );
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.amendment_approved'));
+    }
+
+    /**
+     * Counter-party rejects a pending amendment. The contract terms stay
+     * untouched and the amendment status flips to REJECTED with the
+     * rejection event appended to approval_history.
+     */
+    public function rejectAmendment(string $id, int $amendmentId, Request $request): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        if (!$this->canAmendNow($contract)) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_window_closed')]);
+        }
+
+        $amendment = ContractAmendment::where('contract_id', $contract->id)->findOrFail($amendmentId);
+
+        if ($amendment->status !== AmendmentStatus::PENDING_APPROVAL) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_not_pending')]);
+        }
+
+        $proposer = User::find($amendment->requested_by);
+        if ($proposer && $proposer->company_id === $user->company_id) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_self_approve_forbidden')]);
+        }
+
+        $validated = $request->validate([
+            'rejection_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $history = $amendment->approval_history ?? [];
+        $history[] = [
+            'event'      => 'rejected',
+            'user_id'    => $user->id,
+            'company_id' => $user->company_id,
+            'reason'     => $validated['rejection_reason'] ?? null,
+            'at'         => now()->toIso8601String(),
+        ];
+
+        $amendment->update([
+            'status'           => AmendmentStatus::REJECTED,
+            'approval_history' => $history,
+        ]);
+
+        // Notify the proposer's side that the amendment was rejected.
+        $this->notifyAmendment(
+            $contract,
+            $amendment,
+            new ContractAmendmentDecidedNotification($contract, $amendment, 'rejected', $this->displayName($user)),
+            excludeCompanyId: $user->company_id,
+        );
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.amendment_rejected'));
+    }
+
+    /**
+     * Post a discussion message on a clause amendment thread. Either
+     * party of the contract can post; the other party gets a
+     * notification with the excerpt so they don't have to keep the
+     * contract page open to follow the conversation.
+     *
+     * Append-only — there is no edit/delete endpoint by design (the
+     * thread is part of the legal audit trail of the amendment).
+     */
+    public function postAmendmentMessage(string $id, int $amendmentId, Request $request): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        // Once the contract has moved out of the pre-signature window
+        // (DRAFT / PENDING_SIGNATURES with no party fully signed) the
+        // amendment thread is closed — the wording is locked and any
+        // further negotiation must move into a Change Order workflow.
+        // Without this guard a stale browser tab could continue posting
+        // messages forever after the contract was signed.
+        if (!$this->canAmendNow($contract)) {
+            return back()->withErrors([
+                'amendment' => __('contracts.amendment_window_closed'),
+            ]);
+        }
+
+        $amendment = ContractAmendment::where('contract_id', $contract->id)->findOrFail($amendmentId);
+
+        $validated = $request->validate([
+            'body' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $message = ContractAmendmentMessage::create([
+            'contract_amendment_id' => $amendment->id,
+            'user_id'               => $user->id,
+            'company_id'            => $user->company_id,
+            'body'                  => trim($validated['body']),
+        ]);
+
+        // Fan out the notification to every contract party EXCEPT the
+        // sender's own company so the supplier and the buyer can ping
+        // each other in real time without spamming themselves.
+        $this->notifyAmendment(
+            $contract,
+            $amendment,
+            new ContractAmendmentMessageNotification($contract, $amendment, $message, $this->displayName($user)),
+            excludeCompanyId: $user->company_id,
+        );
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->withFragment('amendment-' . $amendment->id);
+    }
+
+    /**
+     * Side-by-side track-changes view of two contract versions. The
+     * legacy implementation only exposed the diff via a JSON API
+     * (compareVersions); this endpoint renders a Word-style diff in
+     * the dashboard so legal reviewers can see what changed between
+     * any two snapshots without dropping into a JSON tool.
+     *
+     * Query string:
+     *   ?from=N (default: version - 1)
+     *   ?to=N   (default: current version)
+     */
+    public function versionsDiff(string $id, Request $request): View
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        $versions = ContractVersion::where('contract_id', $contract->id)
+            ->orderBy('version')
+            ->get();
+
+        if ($versions->count() < 2) {
+            return view('dashboard.contracts.versions-diff', [
+                'contract'   => $contract,
+                'versions'   => $versions,
+                'fromVer'    => null,
+                'toVer'      => null,
+                'sectionsA'  => [],
+                'sectionsB'  => [],
+                'has_diff'   => false,
+            ]);
+        }
+
+        $maxVersion  = (int) $versions->max('version');
+        $defaultFrom = max(1, $maxVersion - 1);
+        $fromVer     = (int) $request->query('from', $defaultFrom);
+        $toVer       = (int) $request->query('to',   $maxVersion);
+
+        $a = $versions->firstWhere('version', $fromVer);
+        $b = $versions->firstWhere('version', $toVer);
+
+        $extractSections = function ($snapshot) {
+            $terms = is_array($snapshot) ? ($snapshot['terms'] ?? null) : null;
+            if (is_string($terms)) {
+                $terms = json_decode($terms, true);
+            }
+            return $this->parseTermsSections($terms ?? []);
+        };
+
+        $sectionsA = $a ? $extractSections($a->snapshot) : [];
+        $sectionsB = $b ? $extractSections($b->snapshot) : [];
+
+        return view('dashboard.contracts.versions-diff', [
+            'contract'   => $contract,
+            'versions'   => $versions,
+            'fromVer'    => $fromVer,
+            'toVer'      => $toVer,
+            'sectionsA'  => $sectionsA,
+            'sectionsB'  => $sectionsB,
+            'has_diff'   => true,
+        ]);
+    }
+
+    /**
+     * JSON endpoint that returns the messages of a single amendment
+     * thread since a given timestamp. The blade view polls this every
+     * 10 seconds while the thread is open so the two parties see each
+     * other's replies in near real-time without a page refresh.
+     *
+     * Query string:
+     *   ?since=2026-04-09T12:34:56Z   ISO 8601 timestamp; only messages
+     *                                 created STRICTLY AFTER this are
+     *                                 returned. Omit on first poll to
+     *                                 receive every message.
+     */
+    public function pollAmendmentMessages(string $id, int $amendmentId, Request $request): \Illuminate\Http\JsonResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        $amendment = ContractAmendment::where('contract_id', $contract->id)->findOrFail($amendmentId);
+
+        $since = $request->query('since');
+        $sinceCarbon = null;
+        if (is_string($since) && $since !== '') {
+            try {
+                $sinceCarbon = \Carbon\Carbon::parse($since);
+            } catch (\Throwable) {
+                $sinceCarbon = null;
+            }
+        }
+
+        $query = ContractAmendmentMessage::where('contract_amendment_id', $amendment->id)
+            ->with('user:id,first_name,last_name,email,company_id')
+            ->orderBy('created_at');
+        if ($sinceCarbon) {
+            $query->where('created_at', '>', $sinceCarbon);
+        }
+        $messages = $query->get();
+
+        return response()->json([
+            'amendment_id' => $amendment->id,
+            'now'          => now()->toIso8601String(),
+            'messages'     => $messages->map(function (ContractAmendmentMessage $m) use ($user) {
+                $author = trim(($m->user?->first_name ?? '') . ' ' . ($m->user?->last_name ?? '')) ?: ($m->user?->email ?? '—');
+                return [
+                    'id'         => $m->id,
+                    'body'       => $m->body,
+                    'author'     => $author,
+                    'created_at' => $m->created_at?->toIso8601String(),
+                    'when'       => $m->created_at?->diffForHumans() ?? '—',
+                    'is_mine'    => $user && (int) $m->company_id === (int) $user->company_id,
+                ];
+            })->all(),
+        ]);
+    }
+
+    /**
+     * Track-changes view of the contract terms across two versions.
+     * Renders the bilingual sections side-by-side and highlights every
+     * line that was added, removed or modified between the two
+     * snapshots — the legal-grade equivalent of Word's "Compare
+     * Documents" feature. Reuses the existing ContractVersion table
+     * (already populated on every amendment approval) so there is no
+     * extra storage cost.
+     *
+     * Query string:
+     *   ?from=1   the older version (defaults to 1)
+     *   ?to=N     the newer version (defaults to current contract.version)
+     */
+    public function diffVersions(string $id, Request $request): View
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        $from = (int) $request->query('from', 1);
+        $to   = (int) $request->query('to', $contract->version);
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+
+        // Pull every version from disk so the dropdown can offer the
+        // full ladder, then resolve the two requested snapshots.
+        $allVersions = ContractVersion::where('contract_id', $contract->id)
+            ->orderBy('version')
+            ->get(['version', 'created_at', 'created_by']);
+
+        $fromVersion = $allVersions->firstWhere('version', $from);
+        $toVersion   = $allVersions->firstWhere('version', $to);
+
+        if (!$fromVersion || !$toVersion) {
+            abort(404);
+        }
+
+        // The snapshot column holds the full contract array. We only
+        // care about the terms slice for the diff.
+        $fromSnapshot = ContractVersion::where('contract_id', $contract->id)->where('version', $from)->value('snapshot');
+        $toSnapshot   = ContractVersion::where('contract_id', $contract->id)->where('version', $to)->value('snapshot');
+
+        $fromTerms = $this->parseTermsSections($fromSnapshot['terms'] ?? null);
+        $toTerms   = $this->parseTermsSections($toSnapshot['terms']   ?? null);
+
+        // Build a structured diff: for every section that exists in
+        // either version, line up the items and tag each as added /
+        // removed / modified / unchanged. Plain string comparison is
+        // sufficient because clauses are short and edits are typically
+        // whole-clause replacements (the amendment workflow is at the
+        // clause-item level, not character level).
+        $diff = $this->buildTermsDiff($fromTerms, $toTerms);
+
+        return view('dashboard.contracts.diff', [
+            'contract'    => $contract,
+            'from'        => $from,
+            'to'          => $to,
+            'all_versions'=> $allVersions->map(fn ($v) => [
+                'version' => $v->version,
+                'date'    => $this->longDate($v->created_at),
+            ])->values()->all(),
+            'diff'        => $diff,
+        ]);
+    }
+
+    /**
+     * Compare two parsed-terms structures and return a flat list of
+     * sections, each with its items annotated with a status. The
+     * matching is done by item index inside each section — when an
+     * item exists in both versions but the text differs it is tagged
+     * `modified`; otherwise `added` / `removed` / `unchanged`.
+     *
+     * @return array<int, array{title:string, status:string, items: array<int, array{status:string, from:?string, to:?string}>}>
+     */
+    private function buildTermsDiff(array $fromTerms, array $toTerms): array
+    {
+        $sections = [];
+        $maxSections = max(count($fromTerms), count($toTerms));
+        for ($s = 0; $s < $maxSections; $s++) {
+            $a = $fromTerms[$s] ?? null;
+            $b = $toTerms[$s]   ?? null;
+
+            if ($a && !$b) {
+                $sections[] = [
+                    'title'  => $a['title'],
+                    'status' => 'removed',
+                    'items'  => array_map(fn ($t) => ['status' => 'removed', 'from' => $t, 'to' => null], $a['items'] ?? []),
+                ];
+                continue;
+            }
+            if ($b && !$a) {
+                $sections[] = [
+                    'title'  => $b['title'],
+                    'status' => 'added',
+                    'items'  => array_map(fn ($t) => ['status' => 'added', 'from' => null, 'to' => $t], $b['items'] ?? []),
+                ];
+                continue;
+            }
+
+            $itemsA = $a['items'] ?? [];
+            $itemsB = $b['items'] ?? [];
+            $maxItems = max(count($itemsA), count($itemsB));
+            $items = [];
+            for ($i = 0; $i < $maxItems; $i++) {
+                $ta = $itemsA[$i] ?? null;
+                $tb = $itemsB[$i] ?? null;
+                if ($ta === null && $tb === null) {
+                    continue;
+                }
+                if ($ta === null) {
+                    $items[] = ['status' => 'added', 'from' => null, 'to' => $tb];
+                } elseif ($tb === null) {
+                    $items[] = ['status' => 'removed', 'from' => $ta, 'to' => null];
+                } elseif (trim($ta) !== trim($tb)) {
+                    $items[] = ['status' => 'modified', 'from' => $ta, 'to' => $tb];
+                } else {
+                    $items[] = ['status' => 'unchanged', 'from' => $ta, 'to' => $tb];
+                }
+            }
+
+            $sectionStatus = collect($items)->pluck('status')->unique()->values()->all();
+            $status = count($sectionStatus) === 1 ? $sectionStatus[0] : 'modified';
+
+            $sections[] = [
+                'title'  => $b['title'] ?? $a['title'] ?? '',
+                'status' => $status,
+                'items'  => $items,
+            ];
+        }
+        return $sections;
+    }
+
+    /**
+     * Cancel a pending amendment that the current user proposed.
+     * Only the proposing user (NOT just the same company) can cancel,
+     * and only while the amendment is still PENDING_APPROVAL — once
+     * the counter-party has approved or rejected, the decision sticks.
+     * The endpoint flips the status to REJECTED with a "cancelled by
+     * proposer" event in the approval_history so the audit log
+     * preserves both the original proposal and the cancel action.
+     */
+    public function cancelAmendment(string $id, int $amendmentId): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        $amendment = ContractAmendment::where('contract_id', $contract->id)->findOrFail($amendmentId);
+
+        if ($amendment->status !== AmendmentStatus::PENDING_APPROVAL) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_not_pending')]);
+        }
+
+        // Strict ownership: only the user who proposed the amendment
+        // (not just any user from the same company) may cancel it.
+        // This prevents one team member from undoing another's work
+        // without leaving an obvious accountability trail.
+        if ((int) $amendment->requested_by !== (int) $user->id) {
+            return back()->withErrors(['amendment' => __('contracts.amendment_cancel_forbidden')]);
+        }
+
+        $history = $amendment->approval_history ?? [];
+        $history[] = [
+            'event'      => 'cancelled',
+            'user_id'    => $user->id,
+            'company_id' => $user->company_id,
+            'at'         => now()->toIso8601String(),
+        ];
+
+        $amendment->update([
+            'status'           => AmendmentStatus::REJECTED,
+            'approval_history' => $history,
+        ]);
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.amendment_cancelled'));
+    }
+
+    /**
+     * Decline a contract before it has been signed by either party.
+     * Either side can decline — the contract flips to CANCELLED with a
+     * declination reason captured for the audit log. Once any party has
+     * applied a signature this path is closed (the contract is then in
+     * PENDING_SIGNATURES with at least one signer, and the only way
+     * out is the formal terminate flow).
+     */
+    public function decline(string $id, Request $request): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        $statusValue = $this->statusValue($contract->status);
+        $hasAnySignature = !empty($contract->signatures);
+
+        if (!in_array($statusValue, [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value], true) || $hasAnySignature) {
+            return back()->withErrors([
+                'contract' => __('contracts.decline_window_closed'),
+            ]);
+        }
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+
+        $contract->update([
+            'status'      => ContractStatus::CANCELLED,
+            'description' => trim(($contract->description ?? '') . "\n\n[DECLINED " . now()->toDateString() . "] " . $validated['reason']),
+        ]);
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.declined_successfully'));
+    }
+
+    /**
+     * Terminate an active contract by mutual agreement. Either party
+     * may initiate termination, but the contract status only flips to
+     * TERMINATED here — the actual settlement of held escrow funds and
+     * outstanding payments is handled by the existing escrow / payment
+     * workflows. The reason is appended to the contract description so
+     * a future reader of the contract can see why it ended.
+     *
+     * Business rule: only ACTIVE / SIGNED contracts can be terminated.
+     * Pre-signature contracts go through decline() instead;
+     * already-terminated / completed / cancelled contracts cannot be
+     * terminated again.
+     */
+    public function terminate(string $id, Request $request): RedirectResponse
+    {
+        $contract = $this->findOrFail($id);
+        $user     = auth()->user();
+
+        abort_unless($user?->hasPermission('contract.view'), 403);
+        $this->authorizeContractParty($contract);
+
+        $statusValue = $this->statusValue($contract->status);
+        if (!in_array($statusValue, [ContractStatus::ACTIVE->value, ContractStatus::SIGNED->value], true)) {
+            return back()->withErrors([
+                'contract' => __('contracts.terminate_window_closed'),
+            ]);
+        }
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:10', 'max:1000'],
+        ]);
+
+        $contract->update([
+            'status'      => ContractStatus::TERMINATED,
+            'description' => trim(($contract->description ?? '') . "\n\n[TERMINATED " . now()->toDateString() . " by " . $this->displayName($user) . "] " . $validated['reason']),
+        ]);
+
+        return redirect()
+            ->route('dashboard.contracts.show', ['id' => $contract->id])
+            ->with('status', __('contracts.terminated_successfully'));
+    }
+
+    /**
+     * Helper: send a notification to every user belonging to a contract
+     * party, optionally excluding one company (typically the actor's
+     * own). Wrapped in try/catch so a notification failure can NEVER
+     * roll back a contract action — the contract is the source of
+     * truth, the notification is best-effort.
+     */
+    private function notifyAmendment(
+        Contract $contract,
+        ContractAmendment $amendment,
+        \Illuminate\Notifications\Notification $notification,
+        ?int $excludeCompanyId = null,
+    ): void {
+        try {
+            $partyCompanyIds = collect($contract->parties ?? [])
+                ->pluck('company_id')
+                ->push($contract->buyer_company_id)
+                ->filter()
+                ->unique()
+                ->reject(fn ($cid) => $excludeCompanyId !== null && (int) $cid === (int) $excludeCompanyId)
+                ->values()
+                ->all();
+
+            if (empty($partyCompanyIds)) {
+                return;
+            }
+
+            $recipients = User::whereIn('company_id', $partyCompanyIds)->get();
+            if ($recipients->isNotEmpty()) {
+                Notification::send($recipients, $notification);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Amendment notification dispatch failed', [
+                'contract_id'  => $contract->id,
+                'amendment_id' => $amendment->id,
+                'error'        => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Resolve a friendly display name for a user — first + last name
+     * with a sane fallback so notification subjects don't ever read
+     * "  has signed". Used by every notification dispatch in this
+     * controller.
+     */
+    private function displayName(User $user): string
+    {
+        $name = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? ''));
+        return $name !== '' ? $name : ($user->email ?? 'A party');
     }
 
     /**
@@ -947,11 +2070,34 @@ class ContractController extends Controller
     }
 
     /**
+     * Decode the contract's `terms` column into a flat array of
+     * `{title, items[]}` sections in a specific locale.
+     *
+     * Three storage shapes are supported:
+     *
+     *   1. Bilingual envelope (new): `{"en": [sections], "ar": [sections]}`
+     *      → return `terms[$locale]`, falling back to `en` then `ar`.
+     *
+     *   2. Flat list of sections (legacy single-locale): `[sections]`
+     *      → return as-is. The caller is responsible for re-rendering in
+     *        a different locale via ContractService::regenerateTermsForLocale
+     *        if the requested locale doesn't match what was baked.
+     *
+     *   3. Plain text (very old contracts): split into a single section.
+     *
      * @return array<int, array{title:string, items: array<int,string>}>
      */
-    private function parseTermsSections($terms): array
+    private function parseTermsSections($terms, ?string $locale = null): array
     {
+        $locale = $locale ?: app()->getLocale();
+
         if (is_array($terms)) {
+            // Bilingual envelope — pick the requested locale.
+            if (isset($terms['en']) || isset($terms['ar'])) {
+                $picked = $terms[$locale] ?? $terms['en'] ?? $terms['ar'] ?? [];
+                return $this->parseTermsSections($picked, $locale);
+            }
+
             return collect($terms)->map(function ($section) {
                 return [
                     'title' => (string) ($section['title'] ?? ''),
@@ -963,7 +2109,7 @@ class ContractController extends Controller
         if (is_string($terms) && trim($terms) !== '') {
             $decoded = json_decode($terms, true);
             if (is_array($decoded)) {
-                return $this->parseTermsSections($decoded);
+                return $this->parseTermsSections($decoded, $locale);
             }
 
             $lines = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $terms))));
@@ -977,6 +2123,43 @@ class ContractController extends Controller
         }
 
         return [];
+    }
+
+    /**
+     * Server-side gate for the bilateral amendment window. Mirrors the
+     * `$canAmend` flag the show() page passes to the view, so the
+     * propose / approve / reject endpoints reject any request that lands
+     * after the contract has moved out of the pre-signature window
+     * (DRAFT or PENDING_SIGNATURES with no party fully signed yet).
+     *
+     * The business rule: clause wording is settled BEFORE the e-signature
+     * is collected. After the contract is fully signed, the only way to
+     * change a clause is to terminate and re-issue.
+     */
+    private function canAmendNow(Contract $contract): bool
+    {
+        $statusValue = $this->statusValue($contract->status);
+        $preSignatureStatus = in_array(
+            $statusValue,
+            [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value],
+            true
+        );
+        return $preSignatureStatus && !$contract->allPartiesHaveSigned();
+    }
+
+    /**
+     * Returns true when the contract's `terms` column is stored in the
+     * bilingual `{en, ar}` envelope (new format) — false for legacy
+     * single-locale flat arrays. Used by the PDF download path to decide
+     * whether to render `terms[$locale]` directly or to regenerate the
+     * standard clauses fresh in the requested locale.
+     */
+    private function termsAreBilingual($terms): bool
+    {
+        if (is_string($terms)) {
+            $terms = json_decode($terms, true);
+        }
+        return is_array($terms) && (isset($terms['en']) || isset($terms['ar']));
     }
 
     /**

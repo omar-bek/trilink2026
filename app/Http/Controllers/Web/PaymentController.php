@@ -6,10 +6,14 @@ use App\Enums\PaymentStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\ExportsCsv;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
+use App\Jobs\IssueTaxInvoiceJob;
 use App\Models\Payment;
+use App\Models\TaxInvoice;
 use App\Services\PaymentService;
+use App\Services\Tax\TaxInvoiceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -27,7 +31,16 @@ class PaymentController extends Controller
 
         $companyId = $this->currentCompanyId();
 
-        $base = Payment::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId));
+        // Company-centric scope: a payment is visible if THIS company is on
+        // either side of it — paying (company_id) OR receiving
+        // (recipient_company_id). The previous filter only matched the
+        // paying side, which silently hid every incoming payment from the
+        // supplier dashboard. The show() endpoint already accepts both
+        // sides; this brings the index in line with that.
+        $base = Payment::query()->when($companyId, fn ($q) => $q->where(function ($qq) use ($companyId) {
+            $qq->where('company_id', $companyId)
+               ->orWhere('recipient_company_id', $companyId);
+        }));
 
         $pendingStatuses   = [PaymentStatus::PENDING_APPROVAL->value, PaymentStatus::APPROVED->value, PaymentStatus::PROCESSING->value];
         $completedStatuses = [PaymentStatus::COMPLETED->value];
@@ -198,7 +211,101 @@ class PaymentController extends Controller
         // section never appears empty.
         $timeline = $this->buildTimeline($p);
 
-        return view('dashboard.payments.show', compact('payment', 'timeline'));
+        // Phase 1 (UAE Compliance Roadmap) — surface the tax invoice that
+        // was auto-issued by PaymentInvoiceObserver when the payment
+        // completed. Buyers and suppliers both need to see it for
+        // input-tax recovery and VAT-return evidence.
+        $taxInvoice = TaxInvoice::where('payment_id', $p->id)
+            ->where('status', '!=', TaxInvoice::STATUS_VOIDED)
+            ->latest('id')
+            ->first();
+
+        $taxInvoiceView = $taxInvoice ? [
+            'id'             => $taxInvoice->id,
+            'invoice_number' => $taxInvoice->invoice_number,
+            'issue_date'     => $this->longDate($taxInvoice->issue_date),
+            'total'          => $this->money((float) $taxInvoice->total_inclusive, $taxInvoice->currency ?? 'AED'),
+            'vat'            => $this->money((float) $taxInvoice->total_tax, $taxInvoice->currency ?? 'AED'),
+            'download_url'   => route('dashboard.payments.invoice.download', ['id' => $p->id]),
+            'has_pdf'        => (bool) $taxInvoice->pdf_path,
+        ] : null;
+
+        return view('dashboard.payments.show', compact('payment', 'timeline', 'taxInvoiceView'));
+    }
+
+    /**
+     * Download the tax invoice attached to a payment. Only the paying
+     * company, the recipient company, admins, or government auditors may
+     * download. This is the user-facing counterpart of the admin route at
+     * admin.tax-invoices.download — it resolves the invoice via the
+     * payment id so buyers/suppliers don't need to know tax_invoice ids.
+     */
+    public function downloadInvoice(string $id, TaxInvoiceService $taxService): StreamedResponse|RedirectResponse
+    {
+        abort_unless(auth()->user()?->hasPermission('payment.view'), 403);
+
+        $payment = Payment::findOrFail((int) $id);
+
+        $user = auth()->user();
+        if (!$user->isAdmin() && !$user->isGovernment()
+            && $user->company_id !== $payment->company_id
+            && $user->company_id !== $payment->recipient_company_id
+        ) {
+            abort(404);
+        }
+
+        $invoice = TaxInvoice::where('payment_id', $payment->id)
+            ->where('status', '!=', TaxInvoice::STATUS_VOIDED)
+            ->latest('id')
+            ->first();
+
+        if (!$invoice) {
+            return back()->withErrors([
+                'invoice' => __('tax_invoices.not_yet_issued'),
+            ]);
+        }
+
+        // Lazy re-render: if the PDF is missing from disk (job crashed
+        // mid-render, file was cleaned up, ...) regenerate it instead of
+        // failing. Matches the admin download behaviour so buyers and
+        // suppliers don't get stuck waiting for finance to intervene.
+        if (!$invoice->pdf_path || !Storage::disk('local')->exists($invoice->pdf_path)) {
+            $invoice = $taxService->renderAndStorePdf($invoice);
+        }
+
+        return Storage::disk('local')->download(
+            $invoice->pdf_path,
+            $invoice->invoice_number . '.pdf',
+            ['Content-Type' => 'application/pdf']
+        );
+    }
+
+    /**
+     * Manually re-queue the tax invoice issuance job for a payment whose
+     * auto-issuance failed (or which was completed before Phase 1 shipped).
+     * Only the paying company or an admin may trigger this — the supplier
+     * shouldn't be able to force-issue an invoice against their own books.
+     */
+    public function issueInvoice(string $id): RedirectResponse
+    {
+        abort_unless(auth()->user()?->hasPermission('payment.process'), 403);
+
+        $payment = Payment::findOrFail((int) $id);
+
+        $user = auth()->user();
+        if (!$user->isAdmin() && $user->company_id !== $payment->company_id) {
+            abort(403);
+        }
+
+        if ($payment->status !== PaymentStatus::COMPLETED) {
+            return back()->withErrors([
+                'invoice' => __('tax_invoices.only_completed'),
+            ]);
+        }
+
+        IssueTaxInvoiceJob::dispatch($payment->id, $user->id);
+
+        return back()->with('status', __('tax_invoices.issue_queued'));
     }
 
     /**

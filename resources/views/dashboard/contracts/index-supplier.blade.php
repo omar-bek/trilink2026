@@ -35,16 +35,41 @@ $statCards = [
     @endforeach
 </div>
 
-{{-- Search --}}
+{{-- Search + filters. The previous version of this row had an empty
+     placeholder div where the status filter was meant to go — replaced
+     with a real status select + sort dropdown so the supplier can
+     actually filter their backlog. --}}
 <form method="GET" action="{{ route('dashboard.contracts') }}"
       class="bg-[#1a1d29] border border-[rgba(255,255,255,0.1)] rounded-[16px] p-4 mb-6 flex flex-col lg:flex-row gap-3">
     <div class="flex-1 relative">
-        <svg class="w-4 h-4 text-[#b4b6c0] absolute start-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
+        <svg class="w-4 h-4 text-[#b4b6c0] absolute start-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.35-4.35"/></svg>
         <input type="text" name="q" value="{{ request('q') }}"
                placeholder="{{ __('contracts.search_placeholder') }}"
+               aria-label="{{ __('common.search') }}"
                class="w-full bg-[#0f1117] border border-[rgba(255,255,255,0.1)] rounded-[12px] ps-11 pe-4 h-12 text-[14px] text-white placeholder:text-[rgba(255,255,255,0.5)] focus:outline-none focus:border-[#4f7cff]/50 transition-colors">
     </div>
-    <div class="w-full lg:w-[200px] bg-[#0f1117] border border-[rgba(255,255,255,0.1)] rounded-[12px] h-12"></div>
+    <select name="status" onchange="this.form.submit()"
+            aria-label="{{ __('contracts.all_status') }}"
+            class="w-full lg:w-[180px] bg-[#0f1117] border border-[rgba(255,255,255,0.1)] rounded-[12px] px-4 h-12 text-[14px] text-white focus:outline-none focus:border-[#4f7cff]/50 transition-colors">
+        <option value="all"       @selected(request('status', 'all') === 'all')>{{ __('contracts.all_status') }}</option>
+        <option value="active"    @selected(request('status') === 'active')>{{ __('contracts.active') }}</option>
+        <option value="pending"   @selected(request('status') === 'pending')>{{ __('status.pending') }}</option>
+        <option value="completed" @selected(request('status') === 'completed')>{{ __('contracts.completed') }}</option>
+        <option value="cancelled" @selected(request('status') === 'cancelled')>{{ __('status.cancelled') }}</option>
+    </select>
+    <select name="sort" onchange="this.form.submit()"
+            aria-label="{{ __('contracts.sort_newest') }}"
+            class="w-full lg:w-[180px] bg-[#0f1117] border border-[rgba(255,255,255,0.1)] rounded-[12px] px-4 h-12 text-[14px] text-white focus:outline-none focus:border-[#4f7cff]/50 transition-colors">
+        <option value="newest"      @selected(request('sort', 'newest') === 'newest')>{{ __('contracts.sort_newest') }}</option>
+        <option value="oldest"      @selected(request('sort') === 'oldest')>{{ __('contracts.sort_oldest') }}</option>
+        <option value="value_desc"  @selected(request('sort') === 'value_desc')>{{ __('contracts.sort_value_desc') }}</option>
+        <option value="value_asc"   @selected(request('sort') === 'value_asc')>{{ __('contracts.sort_value_asc') }}</option>
+        <option value="ending_soon" @selected(request('sort') === 'ending_soon')>{{ __('contracts.sort_ending_soon') }}</option>
+    </select>
+    <button type="submit"
+            class="inline-flex items-center justify-center gap-2 h-12 px-5 rounded-[12px] text-[14px] font-medium text-white bg-[#4f7cff] hover:bg-[#6b91ff] transition-colors">
+        {{ __('common.search') }}
+    </button>
 </form>
 
 {{-- Tabs --}}
@@ -173,6 +198,12 @@ $statCards = [
         <p class="text-[14px] text-[#b4b6c0] text-center py-12">{{ __('contracts.no_completed') }}</p>
         @endforelse
     </div>
+
+    @if(isset($paginator) && $paginator->hasPages())
+    <div class="mt-6 pt-4 border-t border-[rgba(255,255,255,0.08)]">
+        {{ $paginator->onEachSide(1)->links() }}
+    </div>
+    @endif
 </div>
 
 @endsection

@@ -13,6 +13,35 @@ $subtitle    = __('rfq.subtitle') . ($companyName ? ' · ' . $companyName : '');
 
 <x-dashboard.page-header :title="__('rfq.title')" :subtitle="$subtitle" />
 
+{{-- =====================================================================
+     Company-centric view switcher.
+     The platform treats the COMPANY as the primary actor — a single
+     company can publish RFQs (buyer-side) AND bid on other companies'
+     RFQs (supplier-side). Managers/admins (and any company-attached
+     user) can pivot between the two views from one place. The tabs are
+     hidden when the controller didn't provide tab counts (legacy callers
+     or users with no company), in which case the page renders exactly
+     as it always did.
+     ===================================================================== --}}
+@if(!empty($tabCounts))
+<div class="bg-surface border border-th-border rounded-2xl p-1.5 mb-6 inline-flex gap-1">
+    @php
+        $tabs = [
+            ['key' => 'mine',        'label' => __('rfq.tab_mine'),        'count' => $tabCounts['mine']],
+            ['key' => 'marketplace', 'label' => __('rfq.tab_marketplace'), 'count' => $tabCounts['marketplace']],
+        ];
+    @endphp
+    @foreach($tabs as $tab)
+    @php $isActive = ($activeTab ?? 'mine') === $tab['key']; @endphp
+    <a href="{{ route('dashboard.rfqs', ['tab' => $tab['key']]) }}"
+       class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors {{ $isActive ? 'bg-accent text-white shadow-[0_4px_14px_rgba(79,124,255,0.25)]' : 'text-muted hover:text-primary hover:bg-surface-2' }}">
+        {{ $tab['label'] }}
+        <span class="inline-flex items-center justify-center min-w-[22px] h-[20px] px-1.5 rounded-full text-[11px] font-bold {{ $isActive ? 'bg-white/20 text-white' : 'bg-page text-muted' }}">{{ $tab['count'] }}</span>
+    </a>
+    @endforeach
+</div>
+@endif
+
 {{-- Top stats — clickable; each card filters the list by that status. --}}
 @php
     $rfqStatusCards = [

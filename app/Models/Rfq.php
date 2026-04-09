@@ -41,6 +41,9 @@ class Rfq extends Model
         'reserve_price',
         'bid_decrement',
         'anti_snipe_seconds',
+        // Phase 4 (UAE Compliance Roadmap) — ICV scoring weighting.
+        'icv_weight_percentage',
+        'icv_minimum_score',
     ];
 
     protected function casts(): array
@@ -59,6 +62,9 @@ class Rfq extends Model
             'reserve_price' => 'decimal:2',
             'bid_decrement' => 'decimal:2',
             'anti_snipe_seconds' => 'integer',
+            // Phase 4 — ICV weighting on bid evaluation.
+            'icv_weight_percentage' => 'integer',
+            'icv_minimum_score'     => 'decimal:2',
         ];
     }
 

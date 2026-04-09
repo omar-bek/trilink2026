@@ -26,7 +26,15 @@ class ShipmentController extends Controller
 
         $companyId = $this->currentCompanyId();
 
-        $base = Shipment::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId));
+        // Company-centric scope: a shipment is visible if THIS company is on
+        // any side of it — the owner (company_id, typically the buyer) OR
+        // the assigned logistics provider (logistics_company_id). Mirrors
+        // the trackById() endpoint which already accepts both sides; the
+        // index used to silently hide shipments from logistics providers.
+        $base = Shipment::query()->when($companyId, fn ($q) => $q->where(function ($qq) use ($companyId) {
+            $qq->where('company_id', $companyId)
+               ->orWhere('logistics_company_id', $companyId);
+        }));
 
         // Filters from query string. The status filter maps to the same UI
         // tab keys used by the index blade so the dropdown values stay

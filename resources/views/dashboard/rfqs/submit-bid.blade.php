@@ -73,6 +73,33 @@
     </div>
 </div>
 
+{{-- Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction hints.
+     Surface non-blocking warnings when the buyer/supplier combination
+     triggers a special VAT or jurisdiction case. The supplier should
+     know what to expect at contract acceptance time. --}}
+@if(!empty($vat_hint) || !empty($jurisdiction_hint))
+<div class="mb-6 p-4 rounded-2xl bg-[#ffb020]/10 border border-[#ffb020]/30">
+    <div class="flex items-start gap-3">
+        <svg class="w-5 h-5 text-[#ffb020] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+        <div class="flex-1 space-y-2">
+            <p class="text-[13px] font-semibold text-primary">{{ __('bids.fz_hint_title') }}</p>
+            @if($vat_hint === 'designated_zone_internal')
+                <p class="text-[12px] text-body leading-relaxed">{{ __('bids.fz_hint_designated_internal') }}</p>
+            @elseif($vat_hint === 'reverse_charge')
+                <p class="text-[12px] text-body leading-relaxed">{{ __('bids.fz_hint_reverse_charge') }}</p>
+            @endif
+            @if($jurisdiction_hint === 'difc')
+                <p class="text-[12px] text-body leading-relaxed">{{ __('bids.fz_hint_jurisdiction_difc') }}</p>
+            @elseif($jurisdiction_hint === 'adgm')
+                <p class="text-[12px] text-body leading-relaxed">{{ __('bids.fz_hint_jurisdiction_adgm') }}</p>
+            @elseif($jurisdiction_hint === 'mismatch')
+                <p class="text-[12px] text-body leading-relaxed">{{ __('bids.fz_hint_jurisdiction_mismatch') }}</p>
+            @endif
+        </div>
+    </div>
+</div>
+@endif
+
 {{-- =====================================================================
      Validation errors banner.
      ===================================================================== --}}

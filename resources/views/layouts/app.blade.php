@@ -48,6 +48,12 @@
         document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
     });
     </script>
+
+    {{-- Phase 2 (UAE Compliance Roadmap) — PDPL cookie banner. Each
+         public page also embeds it directly inside its content slot
+         so it shows even if a child template skips this layout. --}}
+    <x-privacy.cookie-banner />
+
     @stack('scripts')
 </body>
 </html>

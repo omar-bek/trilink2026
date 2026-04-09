@@ -94,6 +94,33 @@
                     <x-auth.select :label="__('register.field_country')" name="country" required :placeholder="__('register.field_country_placeholder')" :options="$countries" />
                     <x-auth.input :label="__('register.field_city')" name="city" :placeholder="__('register.field_city_placeholder')" required />
 
+                    {{-- Phase 3 (UAE Compliance Roadmap) — Free Zone vs Mainland.
+                         The choice drives both the legal jurisdiction (federal /
+                         DIFC / ADGM) and the VAT classification (designated zone
+                         vs standard) on every contract this company is later a
+                         party to. The free-zone authority dropdown only unlocks
+                         when the user picks "Free Zone". --}}
+                    <div class="md:col-span-2">
+                        <x-auth.select
+                            :label="__('register.field_establishment_type')"
+                            name="establishment_type"
+                            required
+                            :placeholder="__('register.field_establishment_type_placeholder')"
+                            :options="['mainland' => __('register.establishment_mainland'), 'free_zone' => __('register.establishment_free_zone')]"
+                            id="register-establishment-type"
+                        />
+                    </div>
+
+                    <div class="md:col-span-2" id="register-fz-authority-wrapper" style="display: none;">
+                        <x-auth.select
+                            :label="__('register.field_free_zone_authority')"
+                            name="free_zone_authority"
+                            :placeholder="__('register.field_free_zone_authority_placeholder')"
+                            :options="$freeZoneAuthorities ?? []"
+                        />
+                        <p class="text-[12px] text-muted mt-2">{{ __('register.field_free_zone_help') }}</p>
+                    </div>
+
                     <div class="md:col-span-2">
                         <x-auth.textarea :label="__('register.field_address')" name="address" :placeholder="__('register.field_address_placeholder')" required :rows="3" />
                     </div>
@@ -251,7 +278,7 @@ const TOTAL_STEPS = 3;
 // to JS as the initial currentStep.
 @php
     $stepFields = [
-        1 => ['company_type', 'company_name_en', 'company_name_ar', 'trade_license', 'tax_number', 'country', 'city', 'address', 'phone', 'email', 'website', 'description'],
+        1 => ['company_type', 'company_name_en', 'company_name_ar', 'trade_license', 'tax_number', 'country', 'city', 'address', 'phone', 'email', 'website', 'description', 'establishment_type', 'free_zone_authority'],
         2 => ['trade_license_file', 'tax_certificate_file', 'company_profile_file'],
         3 => ['manager_name', 'manager_email', 'manager_phone', 'manager_password'],
     ];
@@ -387,6 +414,29 @@ if (currentStep !== 1) {
     progress.style.width = `calc((100% - 80px) * ${progressWidth / 100})`;
     if (currentStep === 3) populateSummary();
 }
+
+// Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
+// Toggle the free-zone authority dropdown when the user picks
+// "Free Zone". Mainland selection clears + hides the authority field
+// so a stale selection doesn't get submitted by accident.
+(function () {
+    const typeSelect = document.getElementById('register-establishment-type');
+    const wrapper = document.getElementById('register-fz-authority-wrapper');
+    if (!typeSelect || !wrapper) return;
+    const authoritySelect = wrapper.querySelector('select');
+
+    const sync = () => {
+        const isFreeZone = typeSelect.value === 'free_zone';
+        wrapper.style.display = isFreeZone ? '' : 'none';
+        if (authoritySelect) {
+            authoritySelect.required = isFreeZone;
+            if (!isFreeZone) authoritySelect.value = '';
+        }
+    };
+
+    typeSelect.addEventListener('change', sync);
+    sync(); // initial state on (re)render — preserves server-side error redraws
+})();
 
 // Form submits normally to {{ route('register.submit') }} — server handles validation + redirect.
 </script>

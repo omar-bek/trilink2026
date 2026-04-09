@@ -11,6 +11,7 @@ $statusPills = [
     'accepted'     => ['bg' => 'bg-[#00d9b5]/10', 'border' => 'border-[#00d9b5]/20', 'text' => 'text-[#00d9b5]', 'dot' => 'bg-[#00d9b5]', 'label' => __('supplier.won')],
     'rejected'     => ['bg' => 'bg-[#ff4d7f]/10', 'border' => 'border-[#ff4d7f]/20', 'text' => 'text-[#ff4d7f]', 'dot' => 'bg-[#ff4d7f]', 'label' => __('supplier.lost')],
     'draft'        => ['bg' => 'bg-muted/10', 'border' => 'border-muted/20', 'text' => 'text-muted', 'dot' => 'bg-muted', 'label' => __('status.draft')],
+    'withdrawn'    => ['bg' => 'bg-muted/10', 'border' => 'border-muted/20', 'text' => 'text-muted', 'dot' => 'bg-muted', 'label' => __('status.withdrawn')],
     'negotiation'  => ['bg' => 'bg-[#ffb020]/10', 'border' => 'border-[#ffb020]/20', 'text' => 'text-[#ffb020]', 'dot' => 'bg-[#ffb020]', 'label' => __('status.negotiation')],
 ];
 
@@ -30,6 +31,27 @@ $statCards = [
     <div>
         <h1 class="text-[28px] sm:text-[32px] font-bold text-primary leading-tight tracking-[-0.02em]">{{ __('supplier.my_bids') }}</h1>
         <p class="text-[16px] text-muted mt-1">{{ __('supplier.my_bids_subtitle') }}</p>
+
+        {{-- Company-centric view switcher (mirrors the buyer-side index).
+             Hidden when the controller didn't compute tab counts. --}}
+        @if(!empty($tab_counts))
+        <div class="mt-4 bg-surface border border-th-border rounded-2xl p-1.5 inline-flex gap-1">
+            @php
+                $bidSwitcherTabs = [
+                    ['key' => 'received',  'label' => __('bids.tab_received'),  'count' => $tab_counts['received']],
+                    ['key' => 'submitted', 'label' => __('bids.tab_submitted'), 'count' => $tab_counts['submitted']],
+                ];
+            @endphp
+            @foreach($bidSwitcherTabs as $tab)
+            @php $isActive = ($active_tab ?? 'submitted') === $tab['key']; @endphp
+            <a href="{{ route('dashboard.bids', ['tab' => $tab['key']]) }}"
+               class="inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[13px] font-semibold transition-colors {{ $isActive ? 'bg-accent text-white shadow-[0_4px_14px_rgba(79,124,255,0.25)]' : 'text-muted hover:text-primary hover:bg-surface-2' }}">
+                {{ $tab['label'] }}
+                <span class="inline-flex items-center justify-center min-w-[22px] h-[20px] px-1.5 rounded-full text-[11px] font-bold {{ $isActive ? 'bg-white/20 text-white' : 'bg-page text-muted' }}">{{ $tab['count'] }}</span>
+            </a>
+            @endforeach
+        </div>
+        @endif
     </div>
     <a href="{{ route('dashboard.rfqs') }}"
        class="inline-flex items-center gap-2 h-11 px-5 rounded-[12px] text-[14px] font-medium text-white bg-accent hover:bg-accent-h transition-colors">
@@ -65,13 +87,18 @@ $statCards = [
 </form>
 
 {{-- Tabs --}}
+{{-- Drafts/withdrawn live in their own tab so every bid the supplier
+     owns is reachable from this page. Without it, draft and withdrawn
+     bids vanished from the index entirely (the badge would say "2"
+     while the page only listed 1). --}}
 <div x-data="{ tab: 'active' }" class="bg-surface border border-th-border rounded-[16px] p-[25px]">
-    <div class="grid grid-cols-3 border-b border-th-border mb-6 -mx-[25px] px-[25px]">
+    <div class="grid grid-cols-4 border-b border-th-border mb-6 -mx-[25px] px-[25px]">
         @php
             $tabs = [
                 'active' => ['label' => __('supplier.active_bids'), 'count' => count($active_bids)],
                 'won'    => ['label' => __('supplier.won'),         'count' => count($won_bids)],
                 'lost'   => ['label' => __('supplier.lost'),        'count' => count($lost_bids)],
+                'draft'  => ['label' => __('status.draft'),         'count' => count($draft_bids ?? [])],
             ];
         @endphp
         @foreach($tabs as $key => $t)
@@ -83,7 +110,7 @@ $statCards = [
         @endforeach
     </div>
 
-    @foreach(['active' => $active_bids, 'won' => $won_bids, 'lost' => $lost_bids] as $tabKey => $list)
+    @foreach(['active' => $active_bids, 'won' => $won_bids, 'lost' => $lost_bids, 'draft' => ($draft_bids ?? [])] as $tabKey => $list)
     <div x-show="tab === '{{ $tabKey }}'" x-cloak class="space-y-3">
         @forelse($list as $bid)
         @php $pill = $statusPills[$bid['status']] ?? $statusPills['draft']; @endphp

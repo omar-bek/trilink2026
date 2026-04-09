@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\ContractController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DisputeController;
+use App\Http\Controllers\Api\EInvoiceWebhookController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PurchaseRequestController;
@@ -48,6 +49,12 @@ Route::post('webhooks/paypal', [WebhookController::class, 'paypalWebhook']);
 // {provider} segment is the BankPartnerInterface::key() of whichever
 // bank is firing the callback (mashreq_neobiz, enbd_trade, mock).
 Route::post('webhooks/escrow/{provider}', [WebhookController::class, 'escrowWebhook'])->name('api.webhooks.escrow');
+
+// Phase 5 (UAE Compliance Roadmap) — async ASP webhook for FTA Peppol
+// e-invoicing acknowledgments. The {provider} segment scopes the
+// shared secret per ASP so a leak on one can't be replayed against
+// another. Body MUST be HMAC-SHA256 signed in X-EInvoice-Signature.
+Route::post('webhooks/e-invoice/{provider}', [EInvoiceWebhookController::class, 'handle'])->name('api.webhooks.einvoice');
 
 /*
 |--------------------------------------------------------------------------

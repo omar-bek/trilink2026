@@ -11,6 +11,8 @@ use App\Enums\ContractStatus;
 use App\Enums\DisputeStatus;
 use App\Enums\DisputeType;
 use App\Enums\DocumentType;
+use App\Enums\FreeZoneAuthority;
+use App\Enums\LegalJurisdiction;
 use App\Enums\PaymentStatus;
 use App\Enums\PurchaseRequestStatus;
 use App\Enums\RfqStatus;
@@ -34,6 +36,7 @@ use App\Models\CompanyInfoRequest;
 use App\Models\CompanyInsurance;
 use App\Models\CompanySupplier;
 use App\Models\ConflictMineralsDeclaration;
+use App\Models\Consent;
 use App\Models\Contract;
 use App\Models\ContractAmendment;
 use App\Models\ContractVersion;
@@ -45,9 +48,12 @@ use App\Models\EscrowRelease;
 use App\Models\EsgQuestionnaire;
 use App\Models\ExchangeRate;
 use App\Models\Feedback;
+use App\Models\IcvCertificate;
+use App\Models\InvoiceNumberSequence;
 use App\Models\ModernSlaveryStatement;
 use App\Models\NegotiationMessage;
 use App\Models\Payment;
+use App\Models\PrivacyRequest;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\PurchaseRequest;
@@ -58,6 +64,8 @@ use App\Models\ScimUser;
 use App\Models\SearchHistory;
 use App\Models\Setting;
 use App\Models\Shipment;
+use App\Models\TaxCreditNote;
+use App\Models\TaxInvoice;
 use App\Models\TaxRate;
 use App\Models\TrackingEvent;
 use App\Models\User;
@@ -116,6 +124,12 @@ use Illuminate\Support\Str;
  *   Platform
  *    44. AuditLog                        45. DatabaseNotification
  *
+ *   UAE Compliance (Phases 1-4)
+ *    46. InvoiceNumberSequence           50. PrivacyRequest
+ *    47. TaxInvoice                      51. IcvCertificate
+ *    48. TaxCreditNote                   (+ free-zone & ICV-weight columns
+ *    49. Consent                            on Companies / Rfqs)
+ *
  * Login: every user is created with the password "password".
  */
 class ComprehensiveSeeder extends Seeder
@@ -133,6 +147,11 @@ class ComprehensiveSeeder extends Seeder
 
         [$buyer, $buyerPending, $logistics, $clearance, $serviceProvider, $sanctioned, $admin]
             = $this->seedCompaniesAndUsers($cats);
+
+        // Phase 3 — stamp free-zone authority + legal jurisdiction onto the
+        // demo companies so the contract clause router and the VAT engine
+        // both have realistic inputs to work with.
+        $this->seedFreeZoneJurisdictions($buyer, $logistics, $clearance, $serviceProvider);
 
         $branches = $this->seedBranches($buyer, $cats);
         $this->bindBranchManager($buyer, $branches);
@@ -156,6 +175,7 @@ class ComprehensiveSeeder extends Seeder
 
         $prs       = $this->seedPurchaseRequests($buyer, $branches, $cats);
         $rfqs      = $this->seedRfqs($buyer, $branches, $prs, $logistics, $clearance, $serviceProvider, $cats);
+        $this->seedIcvWeightingOnRfqs($rfqs);
         $bids      = $this->seedBids($rfqs, $logistics, $clearance, $serviceProvider);
         $this->seedNegotiationMessages($bids);
 
@@ -181,12 +201,26 @@ class ComprehensiveSeeder extends Seeder
         $this->seedAuditLogs($buyer);
         $this->seedDatabaseNotifications($buyer);
 
+        // ---- UAE Compliance Roadmap (Phases 1-4) ----
+        // Phase 4 — ICV certificates (one verified per supplier so the
+        // bid-evaluation composite score has data to weight against).
+        $this->seedIcvCertificates($admin);
+        // Phase 2 — PDPL consent ledger + a few data-subject requests in
+        // different lifecycle states.
+        $this->seedConsentsAndPrivacyRequests($admin);
+        // Phase 1 — issue a UAE-grade tax invoice for every COMPLETED
+        // payment plus one credit note covering the refunded payment.
+        // Pre-seeds the per-supplier invoice-number sequence rows.
+        $this->seedTaxInvoicesAndCreditNotes($admin);
+
         $this->command->info(sprintf(
-            'ComprehensiveSeeder: done — %d Companies, %d Users, %d Products, %d PRs, %d RFQs, %d Bids, %d Contracts, %d Payments, %d Shipments, %d Disputes, %d Webhooks, %d Notifications.',
+            'ComprehensiveSeeder: done — %d Companies, %d Users, %d Products, %d PRs, %d RFQs, %d Bids, %d Contracts, %d Payments, %d Shipments, %d Disputes, %d Webhooks, %d Notifications, %d ICV certs, %d Consents, %d PrivacyReqs, %d TaxInvoices, %d CreditNotes.',
             Company::count(), User::count(), Product::count(),
             PurchaseRequest::count(), Rfq::count(), Bid::count(),
             Contract::count(), Payment::count(), Shipment::count(),
             Dispute::count(), WebhookEndpoint::count(), DatabaseNotification::count(),
+            IcvCertificate::count(), Consent::count(), PrivacyRequest::count(),
+            TaxInvoice::count(), TaxCreditNote::count(),
         ));
     }
 
@@ -2302,5 +2336,475 @@ class ComprehensiveSeeder extends Seeder
                 'updated_at'      => now()->subHours($i + 1),
             ]);
         }
+    }
+
+    // ================================================================
+    // Phase 3 — Free Zone & Legal Jurisdiction (UAE Compliance Roadmap)
+    // ================================================================
+    /**
+     * Stamps free-zone authority + legal jurisdiction onto the demo
+     * companies created by seedCompaniesAndUsers(). Done as a
+     * post-processor so the existing seed flow stays unchanged and the
+     * mapping table here is the single source of truth for the demo
+     * jurisdiction layout.
+     *
+     * Layout choices and reasoning:
+     *   - Buyer Al-Ahram → DIFC (so the contract clause router exercises
+     *     the DIFC common-law branch end-to-end).
+     *   - Emirates Industrial → KIZAD (Designated Zone, exercises the
+     *     0%-VAT-between-designated-zones path).
+     *   - Al-Khoory → JAFZA (Designated Zone, mainland buyer, exercises
+     *     the reverse-charge mechanic).
+     *   - Dubai Tech → DMCC (Designated Zone, free zone supplier).
+     *   - Gulf Office → mainland (control case, no free zone).
+     *   - MedCo → DAFZA (Designated Zone).
+     *   - FastLine logistics → JAFZA (Designated Zone).
+     *   - CargoCheck → mainland (clearance brokerage stays mainland).
+     *   - BuildTech → ADGM (so the ADGM common-law branch is exercised).
+     */
+    private function seedFreeZoneJurisdictions(
+        Company $buyer,
+        Company $logistics,
+        Company $clearance,
+        Company $serviceProvider,
+    ): void {
+        // [registration_number, FreeZoneAuthority|null, LegalJurisdiction]
+        $supplierByReg = $this->suppliers->keyBy('registration_number');
+
+        $rows = [
+            // The buyer is a DIFC entity in the demo so the dispatcher
+            // routes to the DIFC clause-set when contracting with another
+            // DIFC supplier.
+            [$buyer,           null,                       LegalJurisdiction::DIFC],
+            [$logistics,       FreeZoneAuthority::JAFZA,   LegalJurisdiction::FEDERAL],
+            [$clearance,       null,                       LegalJurisdiction::FEDERAL],
+            [$serviceProvider, FreeZoneAuthority::ADGM,    LegalJurisdiction::ADGM],
+        ];
+
+        // Suppliers — match by the registration_number used in
+        // seedCompaniesAndUsers() so the seeder is order-independent.
+        $supplierZones = [
+            'SUP-EMIND-001'  => FreeZoneAuthority::KIZAD,
+            'SUP-KHOORY-001' => FreeZoneAuthority::JAFZA,
+            'SUP-DBTECH-001' => FreeZoneAuthority::DMCC,
+            'SUP-GULFE-001'  => null, // mainland control case
+            'SUP-MEDCO-001'  => FreeZoneAuthority::DAFZA,
+        ];
+        foreach ($supplierZones as $reg => $zone) {
+            if ($supplier = $supplierByReg->get($reg)) {
+                $rows[] = [$supplier, $zone, LegalJurisdiction::FEDERAL];
+            }
+        }
+
+        foreach ($rows as [$company, $zone, $jurisdiction]) {
+            $company->forceFill([
+                'is_free_zone'        => $zone !== null,
+                'free_zone_authority' => $zone?->value,
+                'is_designated_zone'  => $zone !== null && $zone->isDesignated(),
+                'legal_jurisdiction'  => $jurisdiction->value,
+            ])->save();
+        }
+    }
+
+    // ================================================================
+    // Phase 4 — ICV weighting on RFQs
+    // ================================================================
+    /**
+     * Adds ICV weighting to a couple of the demo RFQs so the
+     * compare-bids view exercises the composite-score path. Most RFQs
+     * stay at the default (icv_weight_percentage = 0) so the pure-price
+     * baseline behaviour is also visible in the demo data.
+     *
+     * @param Collection<int,Rfq> $rfqs
+     */
+    private function seedIcvWeightingOnRfqs(Collection $rfqs): void
+    {
+        // Pick the two highest-budget non-cancelled RFQs and turn them
+        // into government-style 70/30 evaluations. The cutoff knocks out
+        // bidders below 30% so RedFlag-style suppliers are flagged at
+        // the bottom.
+        $candidates = $rfqs
+            ->filter(fn (Rfq $r) => $r->status !== RfqStatus::CANCELLED->value)
+            ->sortByDesc('budget')
+            ->take(2)
+            ->values();
+
+        foreach ($candidates as $i => $rfq) {
+            $rfq->forceFill([
+                // First one mirrors the typical government tender split,
+                // second one is a more aggressive 60/40 to demonstrate
+                // the upper end of what we see in production.
+                'icv_weight_percentage' => $i === 0 ? 30 : 40,
+                'icv_minimum_score'     => 30.00,
+            ])->save();
+        }
+    }
+
+    // ================================================================
+    // Phase 4 — ICV certificates
+    // ================================================================
+    /**
+     * One verified ICV certificate per supplier, plus one expired
+     * certificate so the IcvScoringService filter (only most-recent
+     * verified active wins) is observable in the demo.
+     *
+     * Idempotency: keyed on (company_id, issuer, certificate_number) —
+     * the unique constraint on the table.
+     */
+    private function seedIcvCertificates(User $admin): void
+    {
+        // [supplier registration_number, issuer, score, status, issued_offset_days, expires_offset_days]
+        // Scores deliberately span the realistic distribution: low-30s
+        // (mainland trader), mid-40s (regional supplier), 60+ (large
+        // industrial), 70+ (top-tier strategic supplier).
+        $defs = [
+            ['SUP-EMIND-001',  IcvCertificate::ISSUER_MOIAT,    72.50, IcvCertificate::STATUS_VERIFIED, -120, 245],
+            ['SUP-KHOORY-001', IcvCertificate::ISSUER_MOIAT,    48.20, IcvCertificate::STATUS_VERIFIED,  -90, 275],
+            ['SUP-DBTECH-001', IcvCertificate::ISSUER_ADNOC,    61.10, IcvCertificate::STATUS_VERIFIED,  -60, 305],
+            ['SUP-GULFE-001',  IcvCertificate::ISSUER_MOIAT,    34.00, IcvCertificate::STATUS_VERIFIED,  -45, 320],
+            ['SUP-MEDCO-001',  IcvCertificate::ISSUER_MUBADALA, 55.75, IcvCertificate::STATUS_VERIFIED,  -30, 335],
+
+            // Historical / expired record on Emirates Industrial — proves
+            // the scoring service correctly skips expired certificates.
+            ['SUP-EMIND-001',  IcvCertificate::ISSUER_MOIAT,    66.00, IcvCertificate::STATUS_EXPIRED,  -500, -135],
+        ];
+
+        $supplierByReg = $this->suppliers->keyBy('registration_number');
+
+        foreach ($defs as $i => [$reg, $issuer, $score, $status, $issuedOffset, $expiresOffset]) {
+            $supplier = $supplierByReg->get($reg);
+            if (!$supplier) {
+                continue;
+            }
+            // Deterministic certificate number so re-running the seeder
+            // updates the same row instead of creating duplicates.
+            $certNumber = sprintf('%s-%s-%04d', strtoupper($issuer), date('Y'), 1000 + $i);
+
+            IcvCertificate::updateOrCreate(
+                [
+                    'company_id'         => $supplier->id,
+                    'issuer'             => $issuer,
+                    'certificate_number' => $certNumber,
+                ],
+                [
+                    'score'             => $score,
+                    'issued_date'       => now()->addDays($issuedOffset)->toDateString(),
+                    'expires_date'      => now()->addDays($expiresOffset)->toDateString(),
+                    'file_path'         => null,
+                    'file_sha256'       => null,
+                    'file_size'         => null,
+                    'original_filename' => null,
+                    'status'            => $status,
+                    'rejection_reason'  => null,
+                    'uploaded_by'       => $admin->id,
+                    'verified_by'       => $status === IcvCertificate::STATUS_VERIFIED ? $admin->id : null,
+                    'verified_at'       => $status === IcvCertificate::STATUS_VERIFIED ? now()->addDays($issuedOffset + 1) : null,
+                ],
+            );
+        }
+    }
+
+    // ================================================================
+    // Phase 2 — PDPL consent ledger + privacy requests
+    // ================================================================
+    /**
+     * Seeds a realistic consent baseline for the demo users (everyone
+     * has accepted the privacy policy + essential cookies; some have
+     * also opted into analytics/marketing). Then creates a handful of
+     * data-subject requests in different lifecycle states so the admin
+     * privacy queue has data to display.
+     *
+     * Idempotency: consent rows are keyed on (user_id, consent_type,
+     * version) so re-running the seeder converges. Privacy requests are
+     * keyed on (user_id, request_type) — the demo only ever has one
+     * request of each type per user.
+     */
+    private function seedConsentsAndPrivacyRequests(User $admin): void
+    {
+        // ---- Consents ----
+        // Pick a representative slice of users so the admin DSAR queue
+        // has data without ballooning the table. Skip null lookups.
+        $consentingEmails = [
+            'manager@al-ahram.test',
+            'buyer@al-ahram.test',
+            'finance@al-ahram.test',
+            'sales@al-ahram.test',
+            'mohammed@emirates-ind.test',
+            'fatima@khoory.test',
+            'rashid@dbtech.test',
+            'omar@medco.test',
+        ];
+
+        $users = User::whereIn('email', $consentingEmails)->get()->keyBy('email');
+
+        // Everyone has accepted the privacy policy + essential cookies
+        // (essential is implicitly granted on signup so we backdate it).
+        // A subset has opted into analytics + marketing.
+        $alwaysOn = [
+            Consent::TYPE_PRIVACY_POLICY,
+            Consent::TYPE_DATA_PROCESSING,
+            Consent::TYPE_COOKIES_ESSENTIAL,
+        ];
+        $optedInExtras = [
+            'manager@al-ahram.test'      => [Consent::TYPE_COOKIES_ANALYTICS, Consent::TYPE_MARKETING_EMAIL],
+            'buyer@al-ahram.test'        => [Consent::TYPE_COOKIES_ANALYTICS],
+            'finance@al-ahram.test'      => [Consent::TYPE_MARKETING_EMAIL],
+            'mohammed@emirates-ind.test' => [Consent::TYPE_COOKIES_ANALYTICS, Consent::TYPE_MARKETING_EMAIL],
+            'fatima@khoory.test'         => [Consent::TYPE_COOKIES_ANALYTICS],
+        ];
+
+        foreach ($users as $email => $user) {
+            foreach ($alwaysOn as $type) {
+                Consent::updateOrCreate(
+                    [
+                        'user_id'      => $user->id,
+                        'consent_type' => $type,
+                        'version'      => '1.0',
+                    ],
+                    [
+                        'granted_at'   => now()->subDays(45),
+                        'withdrawn_at' => null,
+                        'ip_address'   => '127.0.0.1',
+                        'user_agent'   => 'ComprehensiveSeeder/2.0',
+                    ],
+                );
+            }
+            foreach ($optedInExtras[$email] ?? [] as $type) {
+                Consent::updateOrCreate(
+                    [
+                        'user_id'      => $user->id,
+                        'consent_type' => $type,
+                        'version'      => '1.0',
+                    ],
+                    [
+                        'granted_at'   => now()->subDays(40),
+                        'withdrawn_at' => null,
+                        'ip_address'   => '127.0.0.1',
+                        'user_agent'   => 'ComprehensiveSeeder/2.0',
+                    ],
+                );
+            }
+        }
+
+        // One historical withdrawal so the admin can see a non-trivial
+        // ledger row in the demo.
+        if ($noura = $users->get('finance@al-ahram.test')) {
+            Consent::updateOrCreate(
+                [
+                    'user_id'      => $noura->id,
+                    'consent_type' => Consent::TYPE_THIRD_PARTY_SHARE,
+                    'version'      => '1.0',
+                ],
+                [
+                    'granted_at'   => now()->subDays(50),
+                    'withdrawn_at' => now()->subDays(5),
+                    'ip_address'   => '127.0.0.1',
+                    'user_agent'   => 'ComprehensiveSeeder/2.0',
+                ],
+            );
+        }
+
+        // ---- Privacy requests ----
+        // One row per (lifecycle state, request_type) we want visible in
+        // the admin queue. Keyed on (user_id, request_type) for
+        // idempotency.
+        $requestDefs = [
+            // [email, request_type, status, requested_offset_days, scheduled_offset_days|null, completed_offset_days|null, rejection|null]
+            ['buyer@al-ahram.test',   PrivacyRequest::TYPE_DATA_EXPORT,   PrivacyRequest::STATUS_COMPLETED,  -8, null, -7, null],
+            ['sales@al-ahram.test',   PrivacyRequest::TYPE_DATA_EXPORT,   PrivacyRequest::STATUS_PENDING,    -1, null, null, null],
+            ['fatima@khoory.test',    PrivacyRequest::TYPE_RECTIFICATION, PrivacyRequest::STATUS_IN_REVIEW,  -3, null, null, null],
+            ['rashid@dbtech.test',    PrivacyRequest::TYPE_ERASURE,       PrivacyRequest::STATUS_APPROVED,   -2,  28, null, null],
+            ['omar@medco.test',       PrivacyRequest::TYPE_RESTRICTION,   PrivacyRequest::STATUS_REJECTED,   -10, null, null, 'Active contracts in place — restriction would breach contractual obligations.'],
+        ];
+
+        foreach ($requestDefs as [$email, $type, $status, $reqOffset, $schedOffset, $compOffset, $rejection]) {
+            $user = $users->get($email);
+            if (!$user) {
+                continue;
+            }
+
+            $isHandled = in_array($status, [
+                PrivacyRequest::STATUS_IN_REVIEW,
+                PrivacyRequest::STATUS_APPROVED,
+                PrivacyRequest::STATUS_REJECTED,
+                PrivacyRequest::STATUS_COMPLETED,
+            ], true);
+
+            PrivacyRequest::updateOrCreate(
+                [
+                    'user_id'      => $user->id,
+                    'request_type' => $type,
+                ],
+                [
+                    'status'               => $status,
+                    'requested_at'         => now()->addDays($reqOffset),
+                    'scheduled_for'        => $schedOffset !== null ? now()->addDays($schedOffset) : null,
+                    'completed_at'         => $compOffset !== null ? now()->addDays($compOffset) : null,
+                    'rejection_reason'     => $rejection,
+                    'fulfillment_metadata' => $status === PrivacyRequest::STATUS_COMPLETED
+                        ? ['archive_path' => "privacy-exports/{$user->id}-export.zip", 'tables_touched' => 14]
+                        : null,
+                    'handled_by'           => $isHandled ? $admin->id : null,
+                ],
+            );
+        }
+    }
+
+    // ================================================================
+    // Phase 1 — Tax invoices, credit notes, and number sequences
+    // ================================================================
+    /**
+     * Issues a tax invoice for every COMPLETED payment in the demo and
+     * reverses one of them with a tax credit note. Pre-seeds the
+     * per-supplier invoice_number_sequences counter row so the
+     * production allocator picks up where this seeder left off.
+     *
+     * Direct insert (not via TaxInvoiceService): the service renders a
+     * PDF inside the same transaction, which would couple the seeder to
+     * dompdf + a working view. We don't need printable demo PDFs — only
+     * the rows — so we mint deterministic numbers ourselves and skip
+     * the rendering step.
+     *
+     * Idempotency: keyed on payment_id for invoices and on
+     * (original_invoice_id, reason) for credit notes.
+     */
+    private function seedTaxInvoicesAndCreditNotes(User $admin): void
+    {
+        $year = (int) date('Y');
+
+        // Group completed payments by supplier so we can mint a clean
+        // 1..N counter for each supplier's invoice series.
+        $completedPayments = Payment::with(['contract', 'recipientCompany', 'company'])
+            ->where('status', PaymentStatus::COMPLETED->value)
+            ->orderBy('id')
+            ->get();
+
+        // Per-supplier running counter while seeding so the numbers are
+        // dense and deterministic.
+        $supplierCounters = [];
+
+        foreach ($completedPayments as $payment) {
+            $supplier = $payment->recipientCompany;
+            $buyer    = $payment->company;
+            if (!$supplier || !$buyer) {
+                continue;
+            }
+
+            $supplierCounters[$supplier->id] = ($supplierCounters[$supplier->id] ?? 0) + 1;
+            $seq = $supplierCounters[$supplier->id];
+            $invoiceNumber = sprintf('INV-%d-%06d', $year, ($supplier->id * 1000) + $seq);
+
+            $line = [
+                'description'    => $payment->contract?->title ?? ('Milestone ' . ($payment->milestone ?? '')),
+                'quantity'       => 1,
+                'unit'           => 'lump_sum',
+                'unit_price'     => (float) $payment->amount,
+                'discount'       => 0,
+                'taxable_amount' => (float) $payment->amount,
+                'tax_rate'       => (float) ($payment->vat_rate ?? 5),
+                'tax_amount'     => (float) $payment->vat_amount,
+                'line_total'     => (float) $payment->total_amount,
+            ];
+
+            TaxInvoice::updateOrCreate(
+                ['payment_id' => $payment->id],
+                [
+                    'invoice_number'      => $invoiceNumber,
+                    'contract_id'         => $payment->contract_id,
+                    'issue_date'          => $payment->approved_at?->toDateString() ?? now()->toDateString(),
+                    'supply_date'         => $payment->approved_at?->toDateString() ?? now()->toDateString(),
+                    'supplier_company_id' => $supplier->id,
+                    'supplier_trn'        => $supplier->tax_number,
+                    'supplier_name'       => $supplier->name,
+                    'supplier_address'    => trim(($supplier->address ?? '') . ', ' . ($supplier->city ?? '') . ', ' . ($supplier->country ?? ''), ', '),
+                    'supplier_country'    => $supplier->country,
+                    'buyer_company_id'    => $buyer->id,
+                    'buyer_trn'           => $buyer->tax_number,
+                    'buyer_name'          => $buyer->name,
+                    'buyer_address'       => trim(($buyer->address ?? '') . ', ' . ($buyer->city ?? '') . ', ' . ($buyer->country ?? ''), ', '),
+                    'buyer_country'       => $buyer->country,
+                    'line_items'          => [$line],
+                    'subtotal_excl_tax'   => (float) $payment->amount,
+                    'total_discount'      => 0,
+                    'total_tax'           => (float) $payment->vat_amount,
+                    'total_inclusive'     => (float) $payment->total_amount,
+                    'currency'            => $payment->currency ?? 'AED',
+                    'pdf_path'            => null,
+                    'pdf_sha256'          => null,
+                    'status'              => TaxInvoice::STATUS_ISSUED,
+                    'voided_at'           => null,
+                    'voided_by'           => null,
+                    'void_reason'         => null,
+                    'issued_by'           => $admin->id,
+                    'issued_at'           => $payment->approved_at ?? now(),
+                    'metadata'            => ['source' => 'ComprehensiveSeeder'],
+                ],
+            );
+        }
+
+        // Pre-seed the invoice number sequence rows so the live
+        // allocator continues from the right place after the seeder
+        // populates the demo invoices. Without this, the first
+        // production-issued invoice would collide on the unique key.
+        foreach ($supplierCounters as $supplierId => $lastSeq) {
+            InvoiceNumberSequence::updateOrCreate(
+                ['company_id' => $supplierId, 'series' => 'INV', 'year' => $year],
+                ['next_value' => ($supplierId * 1000) + $lastSeq + 1],
+            );
+        }
+
+        // Issue a credit note against the refunded payment so the demo
+        // shows the full reverse path. Find the refunded payment via
+        // the seeded data, then reverse the matching tax invoice that
+        // sits on the same contract.
+        $refunded = Payment::where('status', PaymentStatus::REFUNDED->value)->first();
+        if (!$refunded) {
+            return;
+        }
+
+        // The refund itself was never invoiced (it has no COMPLETED
+        // peer at the same milestone), so the credit note targets the
+        // most recent issued invoice on the same contract instead.
+        $original = TaxInvoice::where('contract_id', $refunded->contract_id)
+            ->where('status', TaxInvoice::STATUS_ISSUED)
+            ->orderByDesc('id')
+            ->first();
+        if (!$original) {
+            return;
+        }
+
+        $cnSeq = 1;
+        $cnNumber = sprintf('CN-%d-%06d', $year, ($original->supplier_company_id * 1000) + $cnSeq);
+
+        // Reuse the original line items shape — the credit note rolls
+        // back the same goods/services described on the source invoice.
+        $reverseLine = $original->line_items[0] ?? [];
+        // Negative sign is rendered at PDF time, not stored in the JSON.
+
+        TaxCreditNote::updateOrCreate(
+            ['original_invoice_id' => $original->id, 'reason' => TaxCreditNote::REASON_REFUND],
+            [
+                'credit_note_number' => $cnNumber,
+                'issue_date'         => now()->toDateString(),
+                'notes'              => 'Goodwill refund issued to the buyer per dispute settlement.',
+                'line_items'         => [$reverseLine],
+                'subtotal_excl_tax'  => (float) ($reverseLine['taxable_amount'] ?? 0),
+                'total_tax'          => (float) ($reverseLine['tax_amount'] ?? 0),
+                'total_inclusive'    => (float) ($reverseLine['line_total'] ?? 0),
+                'currency'           => $original->currency,
+                'pdf_path'           => null,
+                'pdf_sha256'         => null,
+                'issued_by'          => $admin->id,
+                'issued_at'          => now(),
+                'metadata'           => ['source' => 'ComprehensiveSeeder'],
+            ],
+        );
+
+        // Pre-seed the credit-note number sequence so the live allocator
+        // doesn't reuse our seeded number.
+        InvoiceNumberSequence::updateOrCreate(
+            ['company_id' => $original->supplier_company_id, 'series' => 'CN', 'year' => $year],
+            ['next_value' => ($original->supplier_company_id * 1000) + $cnSeq + 1],
+        );
     }
 }

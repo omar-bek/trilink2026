@@ -52,6 +52,17 @@
                     <option value="{{ $country }}" @selected($filters['country'] === $country)>{{ $country }}</option>
                 @endforeach
             </select>
+            {{-- Phase 4 (UAE Compliance Roadmap) — minimum ICV filter.
+                 Government-adjacent buyers can narrow the directory to
+                 suppliers with a usable in-country value score above
+                 the chosen threshold. --}}
+            <select name="icv_min"
+                    class="bg-page border border-th-border rounded-xl px-4 h-11 text-[13px] text-primary focus:outline-none focus:border-accent/50">
+                <option value="">{{ __('public_directory.icv_any') }}</option>
+                @foreach([20, 30, 40, 50, 60, 70] as $threshold)
+                    <option value="{{ $threshold }}" @selected((int) ($filters['icv_min'] ?? 0) === $threshold)>{{ __('public_directory.icv_min_label', ['n' => $threshold]) }}</option>
+                @endforeach
+            </select>
         </div>
         <div class="flex justify-end mt-3">
             <button type="submit"
@@ -78,6 +89,44 @@
                 </div>
                 <x-dashboard.verification-badge :level="$supplier->verification_level" />
             </div>
+
+            {{-- Phase 4 (UAE Compliance Roadmap) — ICV badge. Shows the
+                 supplier's best active ICV score so government-adjacent
+                 buyers can spot eligible candidates without opening
+                 each profile. Pulled from the eager-loaded relation. --}}
+            @php $bestIcv = $supplier->icvCertificates?->first(); @endphp
+            @if($bestIcv)
+                <div class="mb-3">
+                    <span class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        ICV {{ rtrim(rtrim(number_format((float) $bestIcv->score, 2), '0'), '.') }}%
+                    </span>
+                </div>
+            @endif
+
+            {{-- Phase 3 (UAE Compliance Roadmap) — Free Zone & jurisdiction
+                 badges. Free zone authority + DIFC/ADGM tag let buyers
+                 filter on legal & VAT classification at a glance. --}}
+            @if($supplier->is_free_zone || $supplier->jurisdiction()?->value !== 'federal')
+                <div class="flex flex-wrap gap-1.5 mb-3">
+                    @if($supplier->is_free_zone && $supplier->free_zone_authority)
+                        <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-accent">
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            {{ $supplier->free_zone_authority->label() }}
+                        </span>
+                    @endif
+                    @if($supplier->is_designated_zone)
+                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#00d9b5]/10 border border-[#00d9b5]/20 text-[#00d9b5]">
+                            {{ __('public_directory.designated_zone') }}
+                        </span>
+                    @endif
+                    @if($supplier->jurisdiction()?->value !== 'federal')
+                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#8B5CF6]/10 border border-[#8B5CF6]/20 text-[#8B5CF6]">
+                            {{ $supplier->jurisdiction()->label() }}
+                        </span>
+                    @endif
+                </div>
+            @endif
 
             @if($supplier->description)
             <p class="text-[12px] text-muted line-clamp-2 mb-3">{{ $supplier->description }}</p>

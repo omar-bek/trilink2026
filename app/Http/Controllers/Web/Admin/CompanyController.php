@@ -55,13 +55,24 @@ class CompanyController extends Controller
         return view('dashboard.admin.companies.index', compact('companies', 'stats', 'q', 'status', 'type'));
     }
 
+    /**
+     * Admin company detail page. Renders the unified Company Profile
+     * blade in `admin` mode so the layout matches what the manager
+     * sees on /dashboard/company/profile, but with the document /
+     * insurance / ICV review controls and the verification-level
+     * selector enabled. The legacy admin-only show.blade.php has been
+     * retired — every section it carried (and more) is now part of
+     * the unified profile, so a separate template would only diverge.
+     */
     public function show(int $id): View
     {
-        $company = Company::with(['users', 'categories'])
+        $company = Company::with(['users', 'categories', 'bankDetails', 'beneficialOwners', 'infoRequest'])
             ->withCount(['purchaseRequests', 'rfqs', 'bids', 'buyerContracts', 'payments'])
             ->findOrFail($id);
 
-        return view('dashboard.admin.companies.show', compact('company'));
+        $data = \App\Http\Controllers\Web\CompanyProfileController::buildViewData($company, mode: 'admin');
+
+        return view('dashboard.company.profile', $data);
     }
 
     public function edit(int $id): View

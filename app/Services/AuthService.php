@@ -34,6 +34,15 @@ class AuthService
                 'city' => $data['city'] ?? null,
                 'country' => $data['country'] ?? null,
                 'description' => $data['description'] ?? null,
+                // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
+                // The registration controller derives these from the
+                // selected free zone authority. Default to mainland /
+                // federal when the registration source did not pass them
+                // (legacy API callers, tests).
+                'is_free_zone'        => (bool) ($data['is_free_zone'] ?? false),
+                'free_zone_authority' => $data['free_zone_authority'] ?? null,
+                'is_designated_zone'  => (bool) ($data['is_designated_zone'] ?? false),
+                'legal_jurisdiction'  => $data['legal_jurisdiction'] ?? 'federal',
             ]);
 
             $user = User::create([

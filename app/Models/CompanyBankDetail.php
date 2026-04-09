@@ -27,6 +27,26 @@ class CompanyBankDetail extends Model
         'notes',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            // Phase 2 (UAE Compliance Roadmap) — PDPL Article 20 + AML
+            // best practice: bank account identifiers + the natural
+            // person they belong to are sensitive personal data and
+            // sensitive financial data simultaneously. Encrypted at
+            // rest with AES-256-CBC.
+            //
+            // Note: encrypting these breaks raw column search; the
+            // join-on-IBAN flow used by the screening pipeline now
+            // has to load the row into memory and decrypt before
+            // comparing. That's a tiny perf hit on a small table
+            // and an acceptable trade for the compliance gain.
+            'holder_name' => 'encrypted',
+            'iban'        => 'encrypted',
+            'swift'       => 'encrypted',
+        ];
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);

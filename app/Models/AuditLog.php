@@ -31,8 +31,22 @@ class AuditLog extends Model
     {
         return [
             'action' => AuditAction::class,
-            'before' => 'array',
-            'after' => 'array',
+            // Phase 2.5 (UAE Compliance Roadmap — post-implementation
+            // hardening). Audit log rows contain personal data — IP
+            // addresses, user agents, before/after JSON snapshots that
+            // routinely include emails / names / TRNs / addresses — so
+            // they must be encrypted at rest under PDPL Article 20.
+            //
+            // The hash chain is computed against the RAW DB bytes via
+            // $log->getAttributes(), which for encrypted casts returns
+            // the ciphertext as stored on disk. Since the ciphertext is
+            // stable in the DB (we never re-encrypt at read time), the
+            // chain stays internally consistent — see the canonicalize()
+            // and verify-chain command for the recipe.
+            'before'     => 'encrypted:array',
+            'after'      => 'encrypted:array',
+            'ip_address' => 'encrypted',
+            'user_agent' => 'encrypted',
         ];
     }
 

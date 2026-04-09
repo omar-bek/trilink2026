@@ -48,6 +48,10 @@ class SupplierProfileController extends Controller
         $q             = trim((string) $request->query('q', ''));
         $categoryId    = (int) $request->query('category', 0) ?: null;
         $country       = trim((string) $request->query('country', ''));
+        // Phase 4 (UAE Compliance Roadmap) — minimum ICV filter. Lets
+        // government-adjacent buyers narrow the directory to suppliers
+        // with a usable in-country value score above a chosen threshold.
+        $icvMin        = (int) $request->query('icv_min', 0);
 
         $base = Company::query()
             ->whereIn('type', [CompanyType::SUPPLIER->value, CompanyType::SERVICE_PROVIDER->value])
@@ -71,7 +75,28 @@ class SupplierProfileController extends Controller
             $base->where('country', $country);
         }
 
-        $companies = $base->with('categories:id,name')
+        // Phase 4 — only return companies that have at least one verified
+        // non-expired ICV certificate at or above the chosen threshold.
+        // We use a whereHas instead of joining + grouping so the limit
+        // and ordering on the parent query stay simple.
+        if ($icvMin > 0) {
+            $base->whereHas('icvCertificates', function ($iq) use ($icvMin) {
+                $iq->where('status', \App\Models\IcvCertificate::STATUS_VERIFIED)
+                   ->where('expires_date', '>=', now()->toDateString())
+                   ->where('score', '>=', $icvMin);
+            });
+        }
+
+        $companies = $base->with([
+                'categories:id,name',
+                // Eager-load the active ICV certificates so the blade can
+                // pick the highest score per company without N+1.
+                'icvCertificates' => function ($q) {
+                    $q->where('status', \App\Models\IcvCertificate::STATUS_VERIFIED)
+                      ->where('expires_date', '>=', now()->toDateString())
+                      ->orderByDesc('score');
+                },
+            ])
             ->orderBy('verification_level', 'desc')
             ->orderBy('name')
             ->limit(24)
@@ -94,6 +119,7 @@ class SupplierProfileController extends Controller
                 'q'        => $q,
                 'category' => $categoryId,
                 'country'  => $country,
+                'icv_min'  => $icvMin,
             ],
         ]);
     }
@@ -317,10 +343,29 @@ class SupplierProfileController extends Controller
         return max(0, min(100, $score));
     }
 
-    public function show(int $id): View
+    public function show(int $id): View|\Illuminate\Http\RedirectResponse
     {
-        $company = Company::findOrFail($id);
         abort_unless(auth()->check(), 403);
+
+        $company = Company::with(['users', 'categories', 'bankDetails', 'beneficialOwners'])
+            ->withCount(['purchaseRequests', 'rfqs', 'bids', 'buyerContracts', 'payments'])
+            ->findOrFail($id);
+
+        // If the viewer is looking at THEIR OWN company we redirect to
+        // the manager-facing profile so they get the editable form
+        // instead of the read-only public surface.
+        $viewer = auth()->user();
+        if ($viewer && $viewer->company_id === $company->id) {
+            return redirect()->route('dashboard.company.profile');
+        }
+
+        // The unified profile blade does the rendering — same layout
+        // the manager and the admin see, with the public mode hiding
+        // bank details, beneficial owners, team list, payment counts
+        // and any non-verified document. We additionally compute
+        // reviews / ratings for the cross-company viewer because
+        // they're a key trust signal when evaluating a partner.
+        $data = CompanyProfileController::buildViewData($company, mode: 'public');
 
         // Aggregate ratings (avg + count) — the controller computes once and
         // hands the view a flat array so the template stays dumb.
@@ -401,8 +446,12 @@ class SupplierProfileController extends Controller
             ];
         })->all();
 
-        return view('dashboard.suppliers.profile', [
-            'company'             => $company,
+        // Render the unified Company Profile blade in PUBLIC mode and
+        // merge the review/rating bundle on top — the public surface
+        // shows the same identity / verified docs / branches the
+        // manager and admin see, plus a reviews panel that's exclusive
+        // to the cross-company viewing path.
+        return view('dashboard.company.profile', array_merge($data, [
             'rating'              => $rating,
             'review_count'        => $reviewCount,
             'breakdown'           => $breakdown,
@@ -411,6 +460,6 @@ class SupplierProfileController extends Controller
             'completed_contracts' => $completedContracts,
             'certifications'      => $certifications,
             'years_active'        => $company->created_at ? max(1, (int) $company->created_at->diffInYears(now())) : 0,
-        ]);
+        ]));
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\CompanyType;
 use App\Enums\ContractStatus;
 use App\Enums\DisputeStatus;
 use App\Enums\PaymentStatus;
@@ -167,46 +168,68 @@ class SidebarBadgeService
         $badges = $this->empty();
         $cid    = $user->company_id;
 
-        $isSupplierSide = in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
+        // Supplier-side detection mirrors FormatsForViews::isSupplierSideUser():
+        // a user is supplier-side if EITHER their role is a pure supplier
+        // role OR their company TYPE is supplier/logistics/clearance/
+        // service_provider. The role-only check this method used to do
+        // sent every company_manager (and finance/sales) of a supplier
+        // company down the buyer branch, where the RFQ count then queried
+        // "RFQs OUR company published" and returned 0 because suppliers
+        // don't publish RFQs — the badge was silently zero.
+        $isSupplierSide = $this->isSupplierSideUser($user, $role);
 
         // Procurement workflow ────────────────────────────────────────
+        //
+        // Badge convention: every badge here MUST equal the total number
+        // of rows the user will see when they click into the matching
+        // index page. Status / freshness filters used to live here, but
+        // they made the badge smaller than the index — users would see
+        // "RFQs (7)" in the sidebar then click in and find 10 rows on
+        // the page, which felt buggy. The actionable-subset counts
+        // (e.g. "pending-requests") are surfaced as their own dedicated
+        // badges instead.
         $this->safe(function () use (&$badges, $cid, $isSupplierSide) {
             if (! $isSupplierSide) {
-                $badges['purchase-requests'] = PurchaseRequest::where('company_id', $cid)
-                    ->whereNotIn('status', [PurchaseRequestStatus::REJECTED->value])
-                    ->count();
-                $badges['pending-requests'] = PurchaseRequest::where('company_id', $cid)
+                // Buyer side — every PR / RFQ this company OWNS, no
+                // status filter, so the badge matches the "all" tab on
+                // the index page.
+                $badges['purchase-requests'] = PurchaseRequest::where('company_id', $cid)->count();
+                // Actionable subset stays separate — this is the "needs
+                // attention" pill the manager sees in the sidebar.
+                $badges['pending-requests']  = PurchaseRequest::where('company_id', $cid)
                     ->where('status', PurchaseRequestStatus::PENDING_APPROVAL->value)
                     ->count();
-                $badges['rfqs'] = Rfq::where('company_id', $cid)
-                    ->where('status', RfqStatus::OPEN->value)
-                    ->count();
+                $badges['rfqs'] = Rfq::where('company_id', $cid)->count();
             } else {
-                // Suppliers see "new RFQs in the last 7 days" excluding their own.
+                // Supplier side — every OPEN RFQ from another company is
+                // a row on the marketplace tab. No created_at filter so
+                // the badge matches what supplierIndex() returns.
                 $badges['rfqs'] = Rfq::query()
                     ->where('status', RfqStatus::OPEN->value)
                     ->where('company_id', '!=', $cid)
-                    ->where('created_at', '>=', now()->subDays(7))
                     ->count();
             }
         });
 
-        $this->safe(function () use (&$badges, $cid, $role) {
-            if (in_array($role, ['supplier', 'service_provider', 'sales', 'sales_manager'], true)) {
+        $this->safe(function () use (&$badges, $cid, $isSupplierSide, $role) {
+            // Bids that the company SUBMITTED vs bids it RECEIVED.
+            // Supplier-side users (and sales / sales_manager on the
+            // buyer side, who author offers) see their submissions;
+            // everyone else gets "received on our RFQs". No status
+            // filter — matches the bid index "total" column exactly.
+            if ($isSupplierSide || in_array($role, ['sales', 'sales_manager'], true)) {
                 $badges['bids'] = Bid::where('company_id', $cid)->count();
             } else {
                 $badges['bids'] = Bid::whereHas('rfq', fn ($q) => $q->where('company_id', $cid))->count();
             }
         });
 
-        // Contracts — counted via buyer_company_id OR parties JSON for suppliers.
+        // Contracts — counted via buyer_company_id OR parties JSON, no
+        // status filter so the badge matches every row that will appear
+        // on the contracts index page (active, signed, draft, completed,
+        // cancelled — everything).
         $this->safe(function () use (&$badges, $cid) {
             $badges['contracts'] = Contract::query()
-                ->whereIn('status', [
-                    ContractStatus::PENDING_SIGNATURES->value,
-                    ContractStatus::SIGNED->value,
-                    ContractStatus::ACTIVE->value,
-                ])
                 ->where(function ($q) use ($cid) {
                     $q->where('buyer_company_id', $cid)
                       ->orWhereJsonContains('parties', ['company_id' => $cid]);
@@ -427,5 +450,39 @@ class SidebarBadgeService
         } catch (\Throwable $e) {
             report($e);
         }
+    }
+
+    /**
+     * Whether the given user should be treated as supplier-side for the
+     * purposes of badge counting. Mirrors
+     * {@see \App\Http\Controllers\Web\Concerns\FormatsForViews::isSupplierSideUser()}
+     * — a user is supplier-side if EITHER their role is a pure supplier
+     * role OR their company type is one of the supplier-side types.
+     *
+     * Kept inline (instead of taking the controller trait as a dependency)
+     * because this service is also used by background workers / jobs that
+     * have no controller around them.
+     */
+    private function isSupplierSideUser(User $user, string $role): bool
+    {
+        // Pure supplier-side roles short-circuit immediately so the
+        // company lookup is skipped entirely for the common case.
+        if (in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true)) {
+            return true;
+        }
+
+        if (!$user->company_id) {
+            return false;
+        }
+
+        // Single-column lookup keeps the query cheap; the parent for() call
+        // is already inside Cache::remember so this only fires on cache miss.
+        $type = Company::query()
+            ->whereKey($user->company_id)
+            ->value('type');
+
+        $typeValue = $type instanceof CompanyType ? $type->value : (string) $type;
+
+        return in_array($typeValue, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
     }
 }

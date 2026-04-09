@@ -11,8 +11,6 @@ $role = $authUser?->role?->value ?? 'buyer';
 // the forgetForCompany() hook used by entity observers to invalidate.
 $badges = app(\App\Services\SidebarBadgeService::class)->for($authUser);
 
-$isSupplierSide = in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
-
 // Color scheme for the role badge — each role gets a distinct accent.
 $roleBadgeColors = [
     'buyer'            => ['ring' => '#4f7cff', 'text' => '#4f7cff', 'bg' => 'rgba(79,124,255,0.08)'],
@@ -124,6 +122,16 @@ $nav = [
              'route' => 'dashboard.purchase-requests', 'route_query' => ['status' => 'pending_approval'],
              'icon' => 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
              'perm' => 'pr.approve', 'badge' => 'pending-requests'],
+            // Unified Company Profile — manager-facing entry. Shows
+            // identity, documents, insurances, ICV, banking, beneficial
+            // owners, branches and team in one place. Permission gate
+            // is team.view so every company-attached user can see it.
+            // Hidden from admin/government because admins reach the
+            // SAME profile via /dashboard/admin/companies/{id} and
+            // government users have no company tenant of their own.
+            ['key' => 'company-profile', 'label' => __('nav.company_profile'), 'route' => 'dashboard.company.profile',
+             'icon' => 'M3 21V7l9-4 9 4v14M9 21V12h6v9M3 21h18',
+             'perm' => 'team.view', 'except_roles' => ['admin', 'government']],
             ['key' => 'company-users', 'label' => __('nav.team_management'), 'route' => 'company.users',
              'icon' => 'M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z',
              'perm' => 'team.view', 'badge' => 'company-users'],
@@ -144,6 +152,13 @@ $nav = [
             ['key' => 'insurances', 'label' => __('nav.insurances'), 'route' => 'dashboard.insurances.index',
              'icon' => 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.623 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
              'perm' => null, 'roles' => ['company_manager'], 'badge' => 'insurances'],
+            // Phase 4 (UAE Compliance Roadmap) — In-Country Value certificates.
+            // Supplier-side self-service for uploading MoIAT/ADNOC ICV
+            // certificates. The score drives composite bid evaluation
+            // for any RFQ that opts into ICV weighting.
+            ['key' => 'icv-certificates', 'label' => __('nav.icv_certificates'), 'route' => 'dashboard.icv-certificates.index',
+             'icon' => 'M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0',
+             'perm' => null, 'roles' => ['company_manager'], 'badge' => 'icv-certificates'],
             ['key' => 'gov', 'label' => __('gov.title'), 'route' => 'gov.index',
              'icon' => 'M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z',
              'perm' => null, 'roles' => ['government', 'admin']],
@@ -169,6 +184,13 @@ $nav = [
             ['key' => 'api-tokens', 'label' => __('nav.api_tokens'), 'route' => 'dashboard.api-tokens.index',
              'icon' => 'M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z',
              'perm' => null, 'roles' => ['company_manager'], 'badge' => 'api-tokens'],
+            // Phase 2 (UAE Compliance Roadmap) — PDPL self-service hub.
+            // Open to every authenticated user; no permission gate
+            // because the data subject is always entitled to act on
+            // their own personal data record (PDPL Articles 13-16).
+            ['key' => 'privacy', 'label' => __('nav.privacy'), 'route' => 'dashboard.privacy.index',
+             'icon' => 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
+             'perm' => null],
         ],
     ],
 ];
@@ -176,8 +198,15 @@ $nav = [
 // Helper: a nav item is visible if (a) it has no perm requirement, or
 // (b) the user holds the catalog permission, or (c) it has a role allowlist
 // that the user matches (used by the gov section, which lives outside the
-// catalog).
+// catalog). An optional `except_roles` denylist runs first so an entry
+// can be hidden from a specific role even when its permission gate
+// would otherwise let it through (used by the company-profile entry,
+// which would otherwise leak into the admin sidebar).
 $visible = function (array $item) use ($authUser, $role): bool {
+    $exceptRoles = $item['except_roles'] ?? null;
+    if (!empty($exceptRoles) && in_array($role, $exceptRoles, true)) {
+        return false;
+    }
     $roles = $item['roles'] ?? null;
     if (!empty($roles)) {
         return in_array('*', $roles, true) || in_array($role, $roles, true);
@@ -260,6 +289,12 @@ $fmtBadge = function (int $n): string {
                          'icon' => 'M3 7h18M3 12h18M3 17h18', 'badge' => 'admin-categories'],
                         ['key' => 'admin-tax-rates',    'label' => __('admin.tabs.tax_rates'),    'route' => 'admin.tax-rates.index',
                          'icon' => 'M9 14l6-6M9 8h.01M15 14h.01M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z', 'badge' => 'admin-tax-rates'],
+                        ['key' => 'admin-tax-invoices', 'label' => __('admin.tabs.tax_invoices'), 'route' => 'admin.tax-invoices.index',
+                         'icon' => 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+                        ['key' => 'admin-icv-certificates', 'label' => __('admin.tabs.icv_certificates'), 'route' => 'admin.icv-certificates.index',
+                         'icon' => 'M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z'],
+                        ['key' => 'admin-e-invoice', 'label' => __('admin.tabs.e_invoice'), 'route' => 'admin.e-invoice.index',
+                         'icon' => 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.281m5.94 2.28l-2.28 5.941'],
                         ['key' => 'admin-settings',     'label' => __('admin.tabs.settings'),     'route' => 'admin.settings.index',
                          'icon' => 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.008.378.137.75.43.991l1.004.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.241.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281zM15 12a3 3 0 11-6 0 3 3 0 016 0z', 'badge' => 'admin-settings'],
                         ['key' => 'admin-audit',        'label' => __('admin.tabs.audit'),        'route' => 'admin.audit.index',
