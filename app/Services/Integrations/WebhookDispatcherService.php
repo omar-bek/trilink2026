@@ -48,9 +48,9 @@ class WebhookDispatcherService
     public function deliver(WebhookEndpoint $endpoint, string $event, array $payload): WebhookDelivery
     {
         $body = json_encode([
-            'event'      => $event,
-            'data'       => $payload,
-            'sent_at'    => now()->toIso8601String(),
+            'event' => $event,
+            'data' => $payload,
+            'sent_at' => now()->toIso8601String(),
             'company_id' => $endpoint->company_id,
         ], JSON_UNESCAPED_UNICODE);
 
@@ -61,19 +61,19 @@ class WebhookDispatcherService
 
         $delivery = WebhookDelivery::create([
             'webhook_endpoint_id' => $endpoint->id,
-            'event'               => $event,
-            'payload'             => json_decode($body, true),
-            'attempt'             => 1,
-            'status'              => WebhookDelivery::STATUS_PENDING,
+            'event' => $event,
+            'payload' => json_decode($body, true),
+            'attempt' => 1,
+            'status' => WebhookDelivery::STATUS_PENDING,
         ]);
 
         try {
             $response = Http::timeout(10)
                 ->withHeaders([
-                    'Content-Type'         => 'application/json',
-                    'X-TriLink-Event'      => $event,
-                    'X-TriLink-Signature'  => $signature,
-                    'X-TriLink-Delivery-Id'=> (string) $delivery->id,
+                    'Content-Type' => 'application/json',
+                    'X-TriLink-Event' => $event,
+                    'X-TriLink-Signature' => $signature,
+                    'X-TriLink-Delivery-Id' => (string) $delivery->id,
                 ])
                 ->withBody($body, 'application/json')
                 ->post($endpoint->url);
@@ -82,33 +82,33 @@ class WebhookDispatcherService
 
             $delivery->update([
                 'response_status' => $response->status(),
-                'response_body'   => substr((string) $response->body(), 0, 2000),
-                'status'          => $isSuccess ? WebhookDelivery::STATUS_SUCCESS : WebhookDelivery::STATUS_FAILED,
+                'response_body' => substr((string) $response->body(), 0, 2000),
+                'status' => $isSuccess ? WebhookDelivery::STATUS_SUCCESS : WebhookDelivery::STATUS_FAILED,
             ]);
 
             if ($isSuccess) {
                 $endpoint->update([
                     'last_delivered_at' => now(),
-                    'failure_count'     => 0,
+                    'failure_count' => 0,
                 ]);
             } else {
                 $endpoint->increment('failure_count');
                 Log::warning('Webhook delivery failed', [
                     'endpoint' => $endpoint->id,
-                    'event'    => $event,
-                    'status'   => $response->status(),
+                    'event' => $event,
+                    'status' => $response->status(),
                 ]);
             }
         } catch (\Throwable $e) {
             $delivery->update([
-                'status'        => WebhookDelivery::STATUS_FAILED,
+                'status' => WebhookDelivery::STATUS_FAILED,
                 'response_body' => substr($e->getMessage(), 0, 2000),
             ]);
             $endpoint->increment('failure_count');
             Log::warning('Webhook delivery exception', [
                 'endpoint' => $endpoint->id,
-                'event'    => $event,
-                'error'    => $e->getMessage(),
+                'event' => $event,
+                'error' => $e->getMessage(),
             ]);
         }
 

@@ -30,11 +30,11 @@ class DisputeManagementController extends Controller
         $disputes = $query->paginate(20)->withQueryString();
 
         $stats = [
-            'total'     => Dispute::count(),
-            'open'      => Dispute::where('status', 'open')->count(),
+            'total' => Dispute::count(),
+            'open' => Dispute::where('status', 'open')->count(),
             'escalated' => Dispute::where('status', 'escalated')->count(),
-            'overdue'   => Dispute::where('sla_due_date', '<', now())->where('status', '!=', 'resolved')->count(),
-            'resolved'  => Dispute::where('status', 'resolved')->count(),
+            'overdue' => Dispute::where('sla_due_date', '<', now())->where('status', '!=', 'resolved')->count(),
+            'resolved' => Dispute::where('status', 'resolved')->count(),
             'avg_resolution_days' => round((float) Dispute::where('status', 'resolved')
                 ->whereNotNull('resolved_at')
                 ->selectRaw('AVG(DATEDIFF(resolved_at, created_at)) as d')
@@ -56,7 +56,7 @@ class DisputeManagementController extends Controller
 
         Dispute::where('id', $id)->update([
             'assigned_to' => $data['assigned_to'],
-            'status'      => 'under_review',
+            'status' => 'under_review',
         ]);
 
         return back()->with('status', __('admin.disputes.assigned'));

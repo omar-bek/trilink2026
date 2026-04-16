@@ -55,9 +55,10 @@ class VerificationService
             VerificationLevel::SILVER,
             VerificationLevel::BRONZE,
         ] as $tier) {
-            if (!$this->satisfies($tier, $verifiedTypes, $beneficialOwnerCount)) {
+            if (! $this->satisfies($tier, $verifiedTypes, $beneficialOwnerCount)) {
                 continue;
             }
+
             return $tier;
         }
 
@@ -80,10 +81,10 @@ class VerificationService
             throw new \RuntimeException('Cannot promote a company with an unresolved sanctions verdict.');
         }
 
-        if (!$force && $target !== VerificationLevel::UNVERIFIED) {
+        if (! $force && $target !== VerificationLevel::UNVERIFIED) {
             $verifiedTypes = $this->verifiedDocumentTypes($company);
             $beneficialOwnerCount = $company->beneficialOwners()->count();
-            if (!$this->satisfies($target, $verifiedTypes, $beneficialOwnerCount)) {
+            if (! $this->satisfies($target, $verifiedTypes, $beneficialOwnerCount)) {
                 throw new \RuntimeException(
                     "Company does not satisfy {$target->value} tier requirements (use \$force=true to override).",
                 );
@@ -92,8 +93,8 @@ class VerificationService
 
         $company->update([
             'verification_level' => $target,
-            'verified_by'        => $promotedByUserId,
-            'verified_at'        => now(),
+            'verified_by' => $promotedByUserId,
+            'verified_at' => now(),
         ]);
 
         return $company->fresh();
@@ -107,7 +108,7 @@ class VerificationService
      */
     public function autoPromoteIfEligible(Company $company, int $triggeredByUserId): ?VerificationLevel
     {
-        $current  = $company->verification_level ?? VerificationLevel::UNVERIFIED;
+        $current = $company->verification_level ?? VerificationLevel::UNVERIFIED;
         $eligible = $this->eligibleLevel($company);
 
         if ($eligible->rank() <= $current->rank()) {
@@ -115,6 +116,7 @@ class VerificationService
         }
 
         $this->promote($company, $eligible, $triggeredByUserId);
+
         return $eligible;
     }
 
@@ -134,6 +136,7 @@ class VerificationService
         if ($tier->requiresBeneficialOwners() && $beneficialOwnerCount < 1) {
             return false;
         }
+
         return true;
     }
 

@@ -56,10 +56,10 @@ class CompanyUserController extends Controller
         abort_unless($companyId, 403);
 
         return view('dashboard.company.users.create', [
-            'user'              => null,
-            'assignableRoles'   => UserRole::assignableByCompanyManager(),
+            'user' => null,
+            'assignableRoles' => UserRole::assignableByCompanyManager(),
             'permissionCatalog' => Permissions::catalog(),
-            'roleDefaults'      => $this->roleDefaultsMap(),
+            'roleDefaults' => $this->roleDefaultsMap(),
         ]);
     }
 
@@ -73,17 +73,17 @@ class CompanyUserController extends Controller
         $data = $this->validateUser($request);
 
         $user = User::create([
-            'first_name'       => $data['first_name'],
-            'last_name'        => $data['last_name'] ?? null,
-            'email'            => $data['email'],
-            'phone'            => $data['phone'] ?? null,
-            'role'             => $data['role'],
-            'position_title'   => $data['position_title'] ?? null,
+            'first_name' => $data['first_name'],
+            'last_name' => $data['last_name'] ?? null,
+            'email' => $data['email'],
+            'phone' => $data['phone'] ?? null,
+            'role' => $data['role'],
+            'position_title' => $data['position_title'] ?? null,
             'additional_roles' => $data['additional_roles'] ?? [],
-            'permissions'      => $data['permissions'] ?? [],
-            'company_id'       => $companyId,
-            'status'           => $data['status'] ?? UserStatus::ACTIVE->value,
-            'password'         => Hash::make($data['password'] ?? Str::password(14)),
+            'permissions' => $data['permissions'] ?? [],
+            'company_id' => $companyId,
+            'status' => $data['status'] ?? UserStatus::ACTIVE->value,
+            'password' => Hash::make($data['password'] ?? Str::password(14)),
         ]);
 
         $this->audit(AuditAction::CREATE, $user);
@@ -100,10 +100,10 @@ class CompanyUserController extends Controller
         $user = $this->findInCompany($id);
 
         return view('dashboard.company.users.edit', [
-            'user'              => $user,
-            'assignableRoles'   => UserRole::assignableByCompanyManager(),
+            'user' => $user,
+            'assignableRoles' => UserRole::assignableByCompanyManager(),
             'permissionCatalog' => Permissions::catalog(),
-            'roleDefaults'      => $this->roleDefaultsMap(),
+            'roleDefaults' => $this->roleDefaultsMap(),
         ]);
     }
 
@@ -111,7 +111,7 @@ class CompanyUserController extends Controller
     {
         abort_unless(auth()->user()?->hasPermission('team.edit'), 403);
 
-        $user   = $this->findInCompany($id);
+        $user = $this->findInCompany($id);
         $before = $user->only(['first_name', 'last_name', 'email', 'phone', 'role', 'position_title', 'additional_roles', 'permissions', 'status']);
 
         $data = $this->validateUser($request, $user->id);
@@ -124,18 +124,18 @@ class CompanyUserController extends Controller
         }
 
         $payload = [
-            'first_name'       => $data['first_name'],
-            'last_name'        => $data['last_name'] ?? null,
-            'email'            => $data['email'],
-            'phone'            => $data['phone'] ?? null,
-            'role'             => $data['role'],
-            'position_title'   => $data['position_title'] ?? null,
+            'first_name' => $data['first_name'],
+            'last_name' => $data['last_name'] ?? null,
+            'email' => $data['email'],
+            'phone' => $data['phone'] ?? null,
+            'role' => $data['role'],
+            'position_title' => $data['position_title'] ?? null,
             'additional_roles' => $data['additional_roles'] ?? [],
-            'permissions'      => $data['permissions'] ?? [],
-            'status'           => $data['status'] ?? $user->status?->value,
+            'permissions' => $data['permissions'] ?? [],
+            'status' => $data['status'] ?? $user->status?->value,
         ];
 
-        if (!empty($data['password'])) {
+        if (! empty($data['password'])) {
             $payload['password'] = Hash::make($data['password']);
         }
 
@@ -199,18 +199,18 @@ class CompanyUserController extends Controller
         $assignable = array_map(fn ($r) => $r->value, UserRole::assignableByCompanyManager());
 
         return $request->validate([
-            'first_name'         => ['required', 'string', 'max:100'],
-            'last_name'          => ['nullable', 'string', 'max:100'],
-            'email'              => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($ignoreId)->whereNull('deleted_at')],
-            'phone'              => ['nullable', 'string', 'max:30'],
-            'position_title'     => ['nullable', 'string', 'max:120'],
-            'role'               => ['required', Rule::in($assignable)],
-            'additional_roles'   => ['nullable', 'array'],
+            'first_name' => ['required', 'string', 'max:100'],
+            'last_name' => ['nullable', 'string', 'max:100'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($ignoreId)->whereNull('deleted_at')],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'position_title' => ['nullable', 'string', 'max:120'],
+            'role' => ['required', Rule::in($assignable)],
+            'additional_roles' => ['nullable', 'array'],
             'additional_roles.*' => [Rule::in($assignable)],
-            'permissions'        => ['nullable', 'array'],
-            'permissions.*'      => [Rule::in(Permissions::all())],
-            'status'             => ['nullable', new Enum(UserStatus::class)],
-            'password'           => ['nullable', 'string', 'min:8'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => [Rule::in(Permissions::all())],
+            'status' => ['nullable', new Enum(UserStatus::class)],
+            'password' => ['nullable', 'string', 'min:8'],
         ]);
     }
 
@@ -231,22 +231,23 @@ class CompanyUserController extends Controller
         foreach (UserRole::assignableByCompanyManager() as $r) {
             $map[$r->value] = Permissions::defaultsForRole($r->value);
         }
+
         return $map;
     }
 
     private function audit(AuditAction $action, User $user, ?array $before = null, ?array $after = null): void
     {
         AuditLog::create([
-            'user_id'       => auth()->id(),
-            'company_id'    => auth()->user()?->company_id,
-            'action'        => $action,
+            'user_id' => auth()->id(),
+            'company_id' => auth()->user()?->company_id,
+            'action' => $action,
             'resource_type' => 'User',
-            'resource_id'   => $user->id,
-            'before'        => $before,
-            'after'         => $after,
-            'ip_address'    => request()->ip(),
-            'user_agent'    => substr((string) request()->userAgent(), 0, 255),
-            'status'        => 'success',
+            'resource_id' => $user->id,
+            'before' => $before,
+            'after' => $after,
+            'ip_address' => request()->ip(),
+            'user_agent' => substr((string) request()->userAgent(), 0, 255),
+            'status' => 'success',
         ]);
     }
 }

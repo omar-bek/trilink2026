@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Contract;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,8 +19,8 @@ use Illuminate\Notifications\Notification;
  */
 class ContractSignatureDeclinedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Contract $contract,
@@ -30,8 +32,8 @@ class ContractSignatureDeclinedNotification extends Notification implements Shou
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'contract_milestones',
             ['database', 'mail']
         );
@@ -43,7 +45,7 @@ class ContractSignatureDeclinedNotification extends Notification implements Shou
 
         $mail = $this->baseMail($notifiable, 'notifications.contract.signature_declined.subject', ['number' => $number])
             ->line($this->t($notifiable, 'notifications.contract.signature_declined.line1', [
-                'party'  => $this->declinerName,
+                'party' => $this->declinerName,
                 'number' => $number,
             ]));
 
@@ -60,14 +62,14 @@ class ContractSignatureDeclinedNotification extends Notification implements Shou
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'error',
-            'title'       => $this->t($notifiable, 'notifications.contract.signature_declined.title'),
-            'message'     => $this->t($notifiable, 'notifications.contract.signature_declined.message', [
-                'party'  => $this->declinerName,
+            'type' => 'error',
+            'title' => $this->t($notifiable, 'notifications.contract.signature_declined.title'),
+            'message' => $this->t($notifiable, 'notifications.contract.signature_declined.message', [
+                'party' => $this->declinerName,
                 'number' => $this->contract->contract_number,
             ]),
             'entity_type' => 'contract',
-            'entity_id'   => $this->contract->id,
+            'entity_id' => $this->contract->id,
         ];
     }
 }

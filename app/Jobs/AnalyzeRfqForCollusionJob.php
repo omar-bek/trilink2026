@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Enums\AuditAction;
 use App\Enums\UserRole;
+use App\Models\AuditLog;
 use App\Models\Rfq;
 use App\Models\User;
 use App\Notifications\SuspectedCollusionNotification;
@@ -32,11 +34,12 @@ use Throwable;
  * a slow pattern-matching pass doesn't block invoice issuance or
  * sanctions screening.
  */
-class AnalyzeRfqForCollusionJob implements ShouldQueue, ShouldBeUnique
+class AnalyzeRfqForCollusionJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 2;
+
     public int $backoff = 120;
 
     public function __construct(
@@ -47,13 +50,13 @@ class AnalyzeRfqForCollusionJob implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        return 'collusion-check:' . $this->rfqId;
+        return 'collusion-check:'.$this->rfqId;
     }
 
     public function handle(AntiCollusionService $service): void
     {
         $rfq = Rfq::find($this->rfqId);
-        if (!$rfq) {
+        if (! $rfq) {
             return;
         }
 
@@ -70,27 +73,27 @@ class AnalyzeRfqForCollusionJob implements ShouldQueue, ShouldBeUnique
         foreach ($findings as $finding) {
             try {
                 DB::table('collusion_alerts')->insert([
-                    'rfq_id'     => $rfq->id,
-                    'type'       => $finding['type'],
-                    'severity'   => $finding['severity'],
-                    'evidence'   => json_encode($finding['evidence'], JSON_UNESCAPED_UNICODE),
-                    'status'     => 'open',
+                    'rfq_id' => $rfq->id,
+                    'type' => $finding['type'],
+                    'severity' => $finding['severity'],
+                    'evidence' => json_encode($finding['evidence'], JSON_UNESCAPED_UNICODE),
+                    'status' => 'open',
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
             } catch (Throwable) {
                 // Table doesn't exist yet — log to audit instead.
-                \App\Models\AuditLog::create([
-                    'user_id'       => null,
-                    'company_id'    => $rfq->company_id,
-                    'action'        => \App\Enums\AuditAction::CREATE,
+                AuditLog::create([
+                    'user_id' => null,
+                    'company_id' => $rfq->company_id,
+                    'action' => AuditAction::CREATE,
                     'resource_type' => 'CollusionAlert',
-                    'resource_id'   => $rfq->id,
-                    'before'        => null,
-                    'after'         => $finding,
-                    'ip_address'    => '0.0.0.0',
-                    'user_agent'    => 'AnalyzeRfqForCollusionJob',
-                    'status'        => $finding['severity'],
+                    'resource_id' => $rfq->id,
+                    'before' => null,
+                    'after' => $finding,
+                    'ip_address' => '0.0.0.0',
+                    'user_agent' => 'AnalyzeRfqForCollusionJob',
+                    'status' => $finding['severity'],
                 ]);
             }
         }

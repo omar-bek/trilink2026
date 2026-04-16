@@ -62,7 +62,7 @@ class UaeLocalListProvider
 
         foreach ($entries as $entry) {
             // Exact ID match — definitive hit.
-            if ($registrationNumber && !empty($entry['id_number'])) {
+            if ($registrationNumber && ! empty($entry['id_number'])) {
                 $entryId = trim((string) $entry['id_number']);
                 if ($entryId !== '' && $entryId === trim($registrationNumber)) {
                     return 'hit';
@@ -97,7 +97,7 @@ class UaeLocalListProvider
         $normName = $this->normalize($fullName);
 
         foreach ($entries as $entry) {
-            if ($idNumber && !empty($entry['id_number'])) {
+            if ($idNumber && ! empty($entry['id_number'])) {
                 if (trim((string) $entry['id_number']) === trim($idNumber)) {
                     return 'hit';
                 }
@@ -114,7 +114,7 @@ class UaeLocalListProvider
 
     private function loadEntries(): array
     {
-        if (!Storage::disk('local')->exists(self::FIXTURE_PATH)) {
+        if (! Storage::disk('local')->exists(self::FIXTURE_PATH)) {
             return [];
         }
 
@@ -136,6 +136,7 @@ class UaeLocalListProvider
         $name = preg_replace('/\b(al-?|el-?|abu\s|bin\s|ibn\s)/u', '', $name);
         // Collapse whitespace
         $name = preg_replace('/\s+/', ' ', trim($name));
+
         return $name;
     }
 

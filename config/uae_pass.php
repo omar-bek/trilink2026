@@ -33,7 +33,7 @@ return [
     // id.uaepass.ae and requires a TDRA-issued client_id.
     'environment' => env('UAE_PASS_ENV', 'sandbox'),
 
-    'client_id'     => env('UAE_PASS_CLIENT_ID'),
+    'client_id' => env('UAE_PASS_CLIENT_ID'),
     'client_secret' => env('UAE_PASS_CLIENT_SECRET'),
 
     // OAuth scopes the consent screen asks for. `urn:uae:digitalid:profile`
@@ -51,13 +51,13 @@ return [
     'endpoints' => [
         'sandbox' => [
             'authorize' => 'https://stg-id.uaepass.ae/idshub/authorize',
-            'token'     => 'https://stg-id.uaepass.ae/idshub/token',
-            'userinfo'  => 'https://stg-id.uaepass.ae/idshub/userinfo',
+            'token' => 'https://stg-id.uaepass.ae/idshub/token',
+            'userinfo' => 'https://stg-id.uaepass.ae/idshub/userinfo',
         ],
         'production' => [
             'authorize' => 'https://id.uaepass.ae/idshub/authorize',
-            'token'     => 'https://id.uaepass.ae/idshub/token',
-            'userinfo'  => 'https://id.uaepass.ae/idshub/userinfo',
+            'token' => 'https://id.uaepass.ae/idshub/token',
+            'userinfo' => 'https://id.uaepass.ae/idshub/userinfo',
         ],
     ],
 

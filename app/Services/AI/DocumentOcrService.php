@@ -18,9 +18,7 @@ use Illuminate\Support\Facades\Storage;
  */
 class DocumentOcrService
 {
-    public function __construct(private readonly AnthropicClient $client)
-    {
-    }
+    public function __construct(private readonly AnthropicClient $client) {}
 
     /**
      * Extract structured fields from an uploaded document. Result shape:
@@ -42,7 +40,7 @@ class DocumentOcrService
      */
     public function extract(string $diskPath, string $disk = 'local', ?string $hintType = null): array
     {
-        if (!Storage::disk($disk)->exists($diskPath)) {
+        if (! Storage::disk($disk)->exists($diskPath)) {
             return $this->error('File not found');
         }
 
@@ -53,7 +51,8 @@ class DocumentOcrService
         // Cache by content hash so repeatedly OCR'ing the same file
         // doesn't re-bill the API. 6 hours is enough for the buyer to
         // review + accept the extraction.
-        $cacheKey = 'ocr:' . md5($diskPath . '|' . $size . '|' . $hintType);
+        $cacheKey = 'ocr:'.md5($diskPath.'|'.$size.'|'.$hintType);
+
         return Cache::remember($cacheKey, now()->addHours(6), function () use ($diskPath, $disk, $mime, $name, $hintType) {
             // Vision-capable mime types only. PDFs > 5MB also fall back
             // to mock because base64-encoding bigger blobs blows the
@@ -63,6 +62,7 @@ class DocumentOcrService
 
             if ($this->client->isConfigured() && $isVisionMime && $size < 5 * 1024 * 1024) {
                 $data = base64_encode((string) Storage::disk($disk)->get($diskPath));
+
                 return $this->extractWithClaude($data, $mime, $hintType, $name);
             }
 
@@ -112,15 +112,15 @@ TXT;
 
         $parsed = $this->client->send($system, $userContent, expectJson: true, maxTokens: 1500);
 
-        if (!$parsed) {
+        if (! $parsed) {
             return $this->mockExtraction($fileName, $hintType);
         }
 
         return [
-            'success'       => true,
-            'source'        => 'claude',
+            'success' => true,
+            'source' => 'claude',
             'document_type' => (string) ($parsed['document_type'] ?? 'unknown'),
-            'fields'        => $parsed['fields'] ?? [],
+            'fields' => $parsed['fields'] ?? [],
         ];
     }
 
@@ -137,24 +137,24 @@ TXT;
         $hash = substr(md5($fileName), 0, 8);
 
         return [
-            'success'       => true,
-            'source'        => 'mock',
+            'success' => true,
+            'source' => 'mock',
             'document_type' => $type,
-            'fields'        => [
+            'fields' => [
                 'document_number' => strtoupper($hash),
-                'date'            => now()->subDays(crc32($hash) % 30)->toDateString(),
-                'total_amount'    => round((crc32($hash) % 50000) + 500, 2),
-                'currency'        => 'AED',
-                'parties'         => [
+                'date' => now()->subDays(crc32($hash) % 30)->toDateString(),
+                'total_amount' => round((crc32($hash) % 50000) + 500, 2),
+                'currency' => 'AED',
+                'parties' => [
                     'supplier' => 'Sample Supplier Co.',
-                    'buyer'    => 'Sample Buyer LLC',
+                    'buyer' => 'Sample Buyer LLC',
                 ],
-                'line_items'      => [
+                'line_items' => [
                     [
                         'description' => 'Sample line item',
-                        'qty'         => 10,
-                        'unit_price'  => 50.0,
-                        'total'       => 500.0,
+                        'qty' => 10,
+                        'unit_price' => 50.0,
+                        'total' => 500.0,
                     ],
                 ],
             ],
@@ -164,22 +164,23 @@ TXT;
     private function guessTypeFromName(string $name): string
     {
         $lower = strtolower($name);
+
         return match (true) {
-            str_contains($lower, 'invoice')   => 'invoice',
+            str_contains($lower, 'invoice') => 'invoice',
             str_contains($lower, 'bl') || str_contains($lower, 'bill_of_lading') || str_contains($lower, 'lading') => 'bill_of_lading',
-            str_contains($lower, 'packing')   => 'packing_list',
-            default                            => 'unknown',
+            str_contains($lower, 'packing') => 'packing_list',
+            default => 'unknown',
         };
     }
 
     private function error(string $message): array
     {
         return [
-            'success'       => false,
-            'source'        => 'error',
+            'success' => false,
+            'source' => 'error',
             'document_type' => 'unknown',
-            'fields'        => [],
-            'error'         => $message,
+            'fields' => [],
+            'error' => $message,
         ];
     }
 }

@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Log;
 class SyncExchangeRates extends Command
 {
     protected $signature = 'fx:sync {--date= : ISO date to record (defaults to today)}';
+
     protected $description = 'Sync daily currency exchange rates into the exchange_rates table.';
 
     /**
@@ -50,7 +51,7 @@ class SyncExchangeRates extends Command
         // direction hit a row without triangulation.
         $written = 0;
         foreach ($rates as $code => $rate) {
-            if (!in_array($code, self::CURRENCIES, true) || $rate <= 0) {
+            if (! in_array($code, self::CURRENCIES, true) || $rate <= 0) {
                 continue;
             }
 
@@ -72,6 +73,7 @@ class SyncExchangeRates extends Command
         Cache::flush();
 
         $this->info("FX sync complete: {$written} rows written for {$asOf->toDateString()} ({$source}).");
+
         return self::SUCCESS;
     }
 
@@ -82,7 +84,7 @@ class SyncExchangeRates extends Command
     private function fetchUsdRates(): array
     {
         $appId = config('services.openexchangerates.app_id');
-        if (!$appId) {
+        if (! $appId) {
             return [];
         }
 
@@ -90,7 +92,7 @@ class SyncExchangeRates extends Command
             $response = Http::timeout((int) config('services.openexchangerates.timeout', 8))
                 ->get('https://openexchangerates.org/api/latest.json', [
                     'app_id' => $appId,
-                    'base'   => 'USD',
+                    'base' => 'USD',
                 ]);
 
             if ($response->failed()) {
@@ -100,6 +102,7 @@ class SyncExchangeRates extends Command
             return (array) ($response->json('rates') ?? []);
         } catch (\Throwable $e) {
             Log::warning('FX sync failed', ['error' => $e->getMessage()]);
+
             return [];
         }
     }

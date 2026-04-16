@@ -37,27 +37,27 @@ class CertificateUploadAdminController extends Controller
         if ($q = $request->query('q')) {
             $query->where(function ($w) use ($q) {
                 $w->where('certificate_number', 'like', "%{$q}%")
-                  ->orWhere('issuer', 'like', "%{$q}%")
-                  ->orWhereHas('company', fn ($c) => $c->where('name', 'like', "%{$q}%"));
+                    ->orWhere('issuer', 'like', "%{$q}%")
+                    ->orWhereHas('company', fn ($c) => $c->where('name', 'like', "%{$q}%"));
             });
         }
 
         $certificates = $query->paginate(20)->withQueryString();
 
         $stats = [
-            'pending'  => CertificateUpload::where('status', CertificateUpload::STATUS_PENDING)->count(),
+            'pending' => CertificateUpload::where('status', CertificateUpload::STATUS_PENDING)->count(),
             'verified' => CertificateUpload::where('status', CertificateUpload::STATUS_VERIFIED)->count(),
             'rejected' => CertificateUpload::where('status', CertificateUpload::STATUS_REJECTED)->count(),
-            'expired'  => CertificateUpload::where('status', CertificateUpload::STATUS_EXPIRED)->count(),
+            'expired' => CertificateUpload::where('status', CertificateUpload::STATUS_EXPIRED)->count(),
         ];
 
         return view('dashboard.admin.certificate-uploads.index', [
             'certificates' => $certificates,
-            'stats'        => $stats,
-            'filters'      => [
-                'q'      => $request->query('q'),
+            'stats' => $stats,
+            'filters' => [
+                'q' => $request->query('q'),
                 'status' => $request->query('status'),
-                'type'   => $request->query('type'),
+                'type' => $request->query('type'),
             ],
         ]);
     }
@@ -73,9 +73,9 @@ class CertificateUploadAdminController extends Controller
         }
 
         $cert->update([
-            'status'           => CertificateUpload::STATUS_VERIFIED,
-            'verified_by'      => $request->user()->id,
-            'verified_at'      => now(),
+            'status' => CertificateUpload::STATUS_VERIFIED,
+            'verified_by' => $request->user()->id,
+            'verified_at' => now(),
             'rejection_reason' => null,
         ]);
 
@@ -97,9 +97,9 @@ class CertificateUploadAdminController extends Controller
         }
 
         $cert->update([
-            'status'           => CertificateUpload::STATUS_REJECTED,
-            'verified_by'      => $request->user()->id,
-            'verified_at'      => now(),
+            'status' => CertificateUpload::STATUS_REJECTED,
+            'verified_by' => $request->user()->id,
+            'verified_at' => now(),
             'rejection_reason' => $data['reason'],
         ]);
 
@@ -112,13 +112,13 @@ class CertificateUploadAdminController extends Controller
 
         $cert = CertificateUpload::findOrFail($id);
 
-        if (!$cert->file_path || !Storage::disk('local')->exists($cert->file_path)) {
+        if (! $cert->file_path || ! Storage::disk('local')->exists($cert->file_path)) {
             return back()->withErrors(['file' => __('cert_upload.file_missing')]);
         }
 
         return Storage::disk('local')->download(
             $cert->file_path,
-            ($cert->original_filename ?: ('cert-' . $cert->id . '.pdf'))
+            ($cert->original_filename ?: ('cert-'.$cert->id.'.pdf'))
         );
     }
 }

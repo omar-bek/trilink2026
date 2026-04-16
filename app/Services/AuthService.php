@@ -16,7 +16,6 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthService
 {
-
     public function registerCompany(array $data): array
     {
         $result = DB::transaction(function () use ($data) {
@@ -39,10 +38,10 @@ class AuthService
                 // selected free zone authority. Default to mainland /
                 // federal when the registration source did not pass them
                 // (legacy API callers, tests).
-                'is_free_zone'        => (bool) ($data['is_free_zone'] ?? false),
+                'is_free_zone' => (bool) ($data['is_free_zone'] ?? false),
                 'free_zone_authority' => $data['free_zone_authority'] ?? null,
-                'is_designated_zone'  => (bool) ($data['is_designated_zone'] ?? false),
-                'legal_jurisdiction'  => $data['legal_jurisdiction'] ?? 'federal',
+                'is_designated_zone' => (bool) ($data['is_designated_zone'] ?? false),
+                'legal_jurisdiction' => $data['legal_jurisdiction'] ?? 'federal',
             ]);
 
             $user = User::create([
@@ -85,6 +84,7 @@ class AuthService
         );
 
         unset($result['company']);
+
         return $result;
     }
 
@@ -92,7 +92,7 @@ class AuthService
     {
         $user = User::create([
             'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
+            'last_name' => $data['last_name'],
             'email' => $data['email'],
             'password' => $data['password'],
             'phone' => $data['phone'] ?? null,
@@ -117,11 +117,11 @@ class AuthService
     {
         $user = User::where('email', $email)->first();
 
-        if (!$user || !Hash::check($password, $user->password)) {
+        if (! $user || ! Hash::check($password, $user->password)) {
             return null;
         }
 
-        if (!$user->isActive()) {
+        if (! $user->isActive()) {
             return null;
         }
 
@@ -139,23 +139,24 @@ class AuthService
 
     public function changePassword(User $user, string $currentPassword, string $newPassword): bool
     {
-        if (!Hash::check($currentPassword, $user->password)) {
+        if (! Hash::check($currentPassword, $user->password)) {
             return false;
         }
 
         $user->update(['password' => $newPassword]);
+
         return true;
     }
 
     public function refresh(string $refreshToken): ?array
     {
         $userId = Cache::get("refresh_token:{$refreshToken}");
-        if (!$userId) {
+        if (! $userId) {
             return null;
         }
 
         $user = User::find($userId);
-        if (!$user || !$user->isActive()) {
+        if (! $user || ! $user->isActive()) {
             return null;
         }
 
@@ -184,7 +185,7 @@ class AuthService
     public function forgotPassword(string $email): ?string
     {
         $user = User::where('email', $email)->first();
-        if (!$user) {
+        if (! $user) {
             return null;
         }
 
@@ -201,7 +202,7 @@ class AuthService
     {
         $record = DB::table('password_reset_tokens')->where('email', $email)->first();
 
-        if (!$record || !Hash::check($token, $record->token)) {
+        if (! $record || ! Hash::check($token, $record->token)) {
             return false;
         }
 
@@ -210,7 +211,7 @@ class AuthService
         }
 
         $user = User::where('email', $email)->first();
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 

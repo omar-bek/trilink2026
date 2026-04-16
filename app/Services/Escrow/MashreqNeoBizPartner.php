@@ -29,22 +29,22 @@ class MashreqNeoBizPartner implements BankPartnerInterface
     public function openAccount(Contract $contract): array
     {
         $payload = [
-            'reference'         => $contract->contract_number,
-            'currency'          => $contract->currency ?? 'AED',
-            'beneficiary_name'  => $this->supplierName($contract),
-            'remitter_name'     => $contract->buyerCompany?->name,
-            'expected_amount'   => (float) $contract->total_amount,
-            'callback_url'      => route('api.webhooks.escrow', ['provider' => $this->key()]),
+            'reference' => $contract->contract_number,
+            'currency' => $contract->currency ?? 'AED',
+            'beneficiary_name' => $this->supplierName($contract),
+            'remitter_name' => $contract->buyerCompany?->name,
+            'expected_amount' => (float) $contract->total_amount,
+            'callback_url' => route('api.webhooks.escrow', ['provider' => $this->key()]),
         ];
 
         $response = $this->call('POST', '/accounts', $payload);
 
         return [
-            'external_account_id' => $response['account_id'] ?? ('NEOBIZ-' . strtoupper(Str::random(10))),
-            'currency'            => $payload['currency'],
-            'metadata'            => array_merge($response, [
+            'external_account_id' => $response['account_id'] ?? ('NEOBIZ-'.strtoupper(Str::random(10))),
+            'currency' => $payload['currency'],
+            'metadata' => array_merge($response, [
                 'provider' => $this->key(),
-                'mode'     => $this->apiKey ? 'live' : 'stub',
+                'mode' => $this->apiKey ? 'live' : 'stub',
             ]),
         ];
     }
@@ -52,45 +52,45 @@ class MashreqNeoBizPartner implements BankPartnerInterface
     public function deposit(EscrowAccount $account, float $amount, string $currency): array
     {
         $response = $this->call('POST', "/accounts/{$account->external_account_id}/deposits", [
-            'amount'    => $amount,
-            'currency'  => $currency,
-            'reference' => 'DEP-' . strtoupper(Str::random(8)),
+            'amount' => $amount,
+            'currency' => $currency,
+            'reference' => 'DEP-'.strtoupper(Str::random(8)),
         ]);
 
         return [
-            'reference' => $response['transaction_id'] ?? ('NEOBIZ-DEP-' . strtoupper(Str::random(10))),
+            'reference' => $response['transaction_id'] ?? ('NEOBIZ-DEP-'.strtoupper(Str::random(10))),
             // Mashreq settles inter-bank wires asynchronously — the
             // webhook handler later promotes the status to 'completed'.
-            'status'    => $response['status'] ?? 'pending',
+            'status' => $response['status'] ?? 'pending',
         ];
     }
 
     public function release(EscrowAccount $account, float $amount, string $currency, string $milestone): array
     {
         $response = $this->call('POST', "/accounts/{$account->external_account_id}/releases", [
-            'amount'    => $amount,
-            'currency'  => $currency,
+            'amount' => $amount,
+            'currency' => $currency,
             'milestone' => $milestone,
-            'reference' => 'REL-' . strtoupper(Str::random(8)),
+            'reference' => 'REL-'.strtoupper(Str::random(8)),
         ]);
 
         return [
-            'reference' => $response['transaction_id'] ?? ('NEOBIZ-REL-' . strtoupper(Str::random(10))),
-            'status'    => $response['status'] ?? 'completed',
+            'reference' => $response['transaction_id'] ?? ('NEOBIZ-REL-'.strtoupper(Str::random(10))),
+            'status' => $response['status'] ?? 'completed',
         ];
     }
 
     public function refund(EscrowAccount $account, float $amount, string $currency, string $reason): array
     {
         $response = $this->call('POST', "/accounts/{$account->external_account_id}/refunds", [
-            'amount'   => $amount,
+            'amount' => $amount,
             'currency' => $currency,
-            'reason'   => $reason,
+            'reason' => $reason,
         ]);
 
         return [
-            'reference' => $response['transaction_id'] ?? ('NEOBIZ-RFD-' . strtoupper(Str::random(10))),
-            'status'    => $response['status'] ?? 'completed',
+            'reference' => $response['transaction_id'] ?? ('NEOBIZ-RFD-'.strtoupper(Str::random(10))),
+            'status' => $response['status'] ?? 'completed',
         ];
     }
 
@@ -107,7 +107,7 @@ class MashreqNeoBizPartner implements BankPartnerInterface
      */
     private function call(string $method, string $path, array $body = []): array
     {
-        if (!$this->apiKey) {
+        if (! $this->apiKey) {
             return [];
         }
 
@@ -115,7 +115,7 @@ class MashreqNeoBizPartner implements BankPartnerInterface
             $response = Http::withToken($this->apiKey)
                 ->acceptJson()
                 ->timeout($this->timeout)
-                ->{strtolower($method)}($this->baseUrl . $path, $body);
+                ->{strtolower($method)}($this->baseUrl.$path, $body);
 
             if ($response->failed()) {
                 throw new BankPartnerException("Mashreq NeoBiz API error: HTTP {$response->status()}");
@@ -123,7 +123,7 @@ class MashreqNeoBizPartner implements BankPartnerInterface
 
             return $response->json() ?? [];
         } catch (\Throwable $e) {
-            throw new BankPartnerException('Mashreq NeoBiz request failed: ' . $e->getMessage(), 0, $e);
+            throw new BankPartnerException('Mashreq NeoBiz request failed: '.$e->getMessage(), 0, $e);
         }
     }
 
@@ -134,6 +134,7 @@ class MashreqNeoBizPartner implements BankPartnerInterface
                 return $party['name'] ?? null;
             }
         }
+
         return null;
     }
 }

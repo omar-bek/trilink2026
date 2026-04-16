@@ -15,14 +15,21 @@ use Illuminate\Support\Facades\Http;
  */
 class AramexCarrier extends AbstractCarrier
 {
-    public function code(): string { return 'aramex'; }
-    public function name(): string { return 'Aramex'; }
+    public function code(): string
+    {
+        return 'aramex';
+    }
+
+    public function name(): string
+    {
+        return 'Aramex';
+    }
 
     protected function isLive(): bool
     {
-        return !empty($this->config['username'])
-            && !empty($this->config['password'])
-            && !empty($this->config['account_number']);
+        return ! empty($this->config['username'])
+            && ! empty($this->config['password'])
+            && ! empty($this->config['account_number']);
     }
 
     protected function liveQuote(array $request): array
@@ -34,27 +41,27 @@ class AramexCarrier extends AbstractCarrier
 
         $response = Http::timeout(10)->post($endpoint, [
             'ClientInfo' => [
-                'UserName'      => $this->config['username'],
-                'Password'      => $this->config['password'],
+                'UserName' => $this->config['username'],
+                'Password' => $this->config['password'],
                 'AccountNumber' => $this->config['account_number'],
-                'AccountPin'    => $this->config['account_pin'] ?? '',
+                'AccountPin' => $this->config['account_pin'] ?? '',
                 'AccountEntity' => $this->config['account_entity'] ?? 'DXB',
                 'AccountCountryCode' => $this->config['account_country'] ?? 'AE',
-                'Version'       => 'v1.0',
+                'Version' => 'v1.0',
             ],
-            'OriginAddress'      => $this->mapAddress($request['origin'] ?? []),
+            'OriginAddress' => $this->mapAddress($request['origin'] ?? []),
             'DestinationAddress' => $this->mapAddress($request['destination'] ?? []),
-            'ShipmentDetails'    => [
+            'ShipmentDetails' => [
                 'NumberOfPieces' => $request['parcels'] ?? 1,
-                'ActualWeight'   => ['Value' => $request['weight_kg'] ?? 1, 'Unit' => 'KG'],
-                'ProductGroup'   => $request['international'] ?? false ? 'EXP' : 'DOM',
-                'ProductType'    => 'PPX',
-                'PaymentType'    => 'P',
+                'ActualWeight' => ['Value' => $request['weight_kg'] ?? 1, 'Unit' => 'KG'],
+                'ProductGroup' => $request['international'] ?? false ? 'EXP' : 'DOM',
+                'ProductType' => 'PPX',
+                'PaymentType' => 'P',
             ],
         ]);
 
-        if (!$response->successful()) {
-            return ['success' => false, 'error' => 'Aramex API HTTP ' . $response->status()];
+        if (! $response->successful()) {
+            return ['success' => false, 'error' => 'Aramex API HTTP '.$response->status()];
         }
 
         $body = $response->json();
@@ -65,10 +72,10 @@ class AramexCarrier extends AbstractCarrier
 
         return [
             'success' => true,
-            'rates'   => [[
-                'service'      => 'standard',
-                'price'        => (float) $total,
-                'currency'     => $body['TotalAmount']['CurrencyCode'] ?? 'AED',
+            'rates' => [[
+                'service' => 'standard',
+                'price' => (float) $total,
+                'currency' => $body['TotalAmount']['CurrencyCode'] ?? 'AED',
                 'transit_days' => 5,
             ]],
         ];
@@ -77,15 +84,23 @@ class AramexCarrier extends AbstractCarrier
     private function mapAddress(array $address): array
     {
         return [
-            'Line1'       => $address['address'] ?? '',
-            'City'        => $address['city'] ?? '',
+            'Line1' => $address['address'] ?? '',
+            'City' => $address['city'] ?? '',
             'CountryCode' => strtoupper($address['country'] ?? 'AE'),
-            'PostCode'    => $address['post_code'] ?? '',
+            'PostCode' => $address['post_code'] ?? '',
         ];
     }
 
-    protected function mockBaseFee(): float { return 22.0; }
-    protected function mockPerKgRate(): float { return 4.5; }
+    protected function mockBaseFee(): float
+    {
+        return 22.0;
+    }
+
+    protected function mockPerKgRate(): float
+    {
+        return 4.5;
+    }
+
     protected function mockTransitDays(string $service): int
     {
         return $service === 'express' ? 1 : 3;

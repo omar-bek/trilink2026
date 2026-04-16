@@ -32,8 +32,7 @@ interface CreditScoringProviderInterface
      * Pull a credit report for the given company.
      *
      * @param  string  $registrationNumber  Trade license / commercial registration
-     * @param  string|null  $country         ISO-2 country code (selects bureau)
-     *
+     * @param  string|null  $country  ISO-2 country code (selects bureau)
      * @return array{
      *     success: bool,
      *     score: int|null,

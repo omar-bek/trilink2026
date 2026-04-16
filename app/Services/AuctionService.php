@@ -21,14 +21,21 @@ use Illuminate\Support\Facades\DB;
  */
 class AuctionService
 {
-    public const BID_REJECTED_NOT_AUCTION       = 'not_auction';
-    public const BID_REJECTED_NOT_OPEN          = 'not_open';
-    public const BID_REJECTED_BEFORE_START      = 'before_start';
-    public const BID_REJECTED_AFTER_END         = 'after_end';
-    public const BID_REJECTED_BELOW_RESERVE     = 'below_reserve';
-    public const BID_REJECTED_ABOVE_LEADER      = 'above_leader';
-    public const BID_REJECTED_DECREMENT         = 'decrement';
-    public const BID_REJECTED_OWN_RFQ           = 'own_rfq';
+    public const BID_REJECTED_NOT_AUCTION = 'not_auction';
+
+    public const BID_REJECTED_NOT_OPEN = 'not_open';
+
+    public const BID_REJECTED_BEFORE_START = 'before_start';
+
+    public const BID_REJECTED_AFTER_END = 'after_end';
+
+    public const BID_REJECTED_BELOW_RESERVE = 'below_reserve';
+
+    public const BID_REJECTED_ABOVE_LEADER = 'above_leader';
+
+    public const BID_REJECTED_DECREMENT = 'decrement';
+
+    public const BID_REJECTED_OWN_RFQ = 'own_rfq';
 
     /**
      * Place a bid in a live reverse auction.
@@ -37,7 +44,7 @@ class AuctionService
      */
     public function placeAuctionBid(Rfq $rfq, int $companyId, int $providerId, float $price, string $currency): Bid|string
     {
-        if (!$rfq->is_auction) {
+        if (! $rfq->is_auction) {
             return self::BID_REJECTED_NOT_AUCTION;
         }
         if ($rfq->company_id === $companyId) {
@@ -77,20 +84,20 @@ class AuctionService
 
             if ($existing) {
                 $existing->update([
-                    'price'    => $price,
+                    'price' => $price,
                     'currency' => $currency,
-                    'status'   => BidStatus::SUBMITTED,
+                    'status' => BidStatus::SUBMITTED,
                 ]);
                 $bid = $existing->fresh();
             } else {
                 $bid = Bid::create([
-                    'rfq_id'      => $rfq->id,
-                    'company_id'  => $companyId,
+                    'rfq_id' => $rfq->id,
+                    'company_id' => $companyId,
                     'provider_id' => $providerId,
-                    'price'       => $price,
-                    'currency'    => $currency,
-                    'status'      => BidStatus::SUBMITTED,
-                    'items'       => [],
+                    'price' => $price,
+                    'currency' => $currency,
+                    'status' => BidStatus::SUBMITTED,
+                    'items' => [],
                 ]);
             }
 
@@ -138,13 +145,13 @@ class AuctionService
             ->limit($limit)
             ->get()
             ->map(fn (Bid $b, int $i) => [
-                'rank'     => $i + 1,
-                'company'  => $rfq->is_anonymous
-                    ? 'Bidder #' . str_pad((string) ($b->company_id * 137 % 9999), 4, '0', STR_PAD_LEFT)
+                'rank' => $i + 1,
+                'company' => $rfq->is_anonymous
+                    ? 'Bidder #'.str_pad((string) ($b->company_id * 137 % 9999), 4, '0', STR_PAD_LEFT)
                     : ($b->company?->name ?? '—'),
-                'price'    => (float) $b->price,
+                'price' => (float) $b->price,
                 'currency' => $b->currency ?? 'AED',
-                'updated'  => $b->updated_at?->toIso8601String() ?? '',
+                'updated' => $b->updated_at?->toIso8601String() ?? '',
             ])
             ->values()
             ->all();
@@ -159,15 +166,15 @@ class AuctionService
         $rfq->refresh();
 
         return [
-            'rfq_id'           => $rfq->id,
-            'rfq_number'       => $rfq->rfq_number,
-            'is_live'          => $rfq->isLiveAuction(),
-            'auction_ends_at'  => $rfq->auction_ends_at?->toIso8601String(),
-            'server_time'      => now()->toIso8601String(),
-            'leader_price'     => optional($this->currentLeader($rfq))->price,
-            'reserve_price'    => $rfq->reserve_price ? (float) $rfq->reserve_price : null,
-            'bid_decrement'    => $rfq->bid_decrement ? (float) $rfq->bid_decrement : null,
-            'leaderboard'      => $this->leaderboard($rfq, 10),
+            'rfq_id' => $rfq->id,
+            'rfq_number' => $rfq->rfq_number,
+            'is_live' => $rfq->isLiveAuction(),
+            'auction_ends_at' => $rfq->auction_ends_at?->toIso8601String(),
+            'server_time' => now()->toIso8601String(),
+            'leader_price' => optional($this->currentLeader($rfq))->price,
+            'reserve_price' => $rfq->reserve_price ? (float) $rfq->reserve_price : null,
+            'bid_decrement' => $rfq->bid_decrement ? (float) $rfq->bid_decrement : null,
+            'leaderboard' => $this->leaderboard($rfq, 10),
         ];
     }
 }

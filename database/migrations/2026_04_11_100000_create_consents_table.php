@@ -27,7 +27,8 @@ use Illuminate\Support\Facades\Schema;
  * user have consent at moment T?" — and that question becomes impossible
  * if we mutate or delete past rows.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('consents', function (Blueprint $table) {

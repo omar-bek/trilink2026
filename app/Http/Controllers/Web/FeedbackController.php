@@ -36,10 +36,10 @@ class FeedbackController extends Controller
         abort_unless($targetCompanyId, 422, 'Cannot resolve review target.');
 
         $validated = $request->validate([
-            'rating'              => ['required', 'integer', 'min:1', 'max:5'],
-            'comment'             => ['nullable', 'string', 'max:2000'],
-            'quality_score'       => ['nullable', 'integer', 'min:1', 'max:5'],
-            'on_time_score'       => ['nullable', 'integer', 'min:1', 'max:5'],
+            'rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'comment' => ['nullable', 'string', 'max:2000'],
+            'quality_score' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'on_time_score' => ['nullable', 'integer', 'min:1', 'max:5'],
             'communication_score' => ['nullable', 'integer', 'min:1', 'max:5'],
         ]);
 
@@ -47,12 +47,12 @@ class FeedbackController extends Controller
         // constraint from double-posting if the user mashes submit twice.
         Feedback::updateOrCreate(
             [
-                'contract_id'      => $contract->id,
+                'contract_id' => $contract->id,
                 'rater_company_id' => $raterCompanyId,
             ],
             array_merge($validated, [
                 'target_company_id' => $targetCompanyId,
-                'rater_user_id'     => $user->id,
+                'rater_user_id' => $user->id,
             ])
         );
 

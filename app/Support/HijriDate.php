@@ -19,7 +19,7 @@ class HijriDate
     {
         if (extension_loaded('intl')) {
             $fmt = new \IntlDateFormatter(
-                $locale . '@calendar=islamic-umalqura',
+                $locale.'@calendar=islamic-umalqura',
                 \IntlDateFormatter::LONG,
                 \IntlDateFormatter::NONE,
                 $date->getTimezone(),
@@ -44,7 +44,7 @@ class HijriDate
     {
         $hijri = self::fromGregorian($date, $locale);
 
-        return $hijri . ' هـ';
+        return $hijri.' هـ';
     }
 
     /** Convert Julian Day to Hijri string (Kuwaiti algorithm). */
@@ -67,6 +67,6 @@ class HijriDate
             9 => 'رمضان', 10 => 'شوال', 11 => 'ذو القعدة', 12 => 'ذو الحجة',
         ];
 
-        return $d . ' ' . ($months[$m] ?? '') . ' ' . $y;
+        return $d.' '.($months[$m] ?? '').' '.$y;
     }
 }

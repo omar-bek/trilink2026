@@ -25,7 +25,6 @@ use App\Models\User;
 use App\Services\AnalyticsService;
 use App\Services\OnboardingChecklistService;
 use App\Support\NotificationFormatter;
-use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 /**
@@ -43,32 +42,31 @@ class DashboardController extends Controller
     public function __construct(
         private readonly AnalyticsService $analytics,
         private readonly NotificationFormatter $notificationFormatter,
-        private readonly OnboardingChecklistService $onboarding = new OnboardingChecklistService(),
-    ) {
-    }
+        private readonly OnboardingChecklistService $onboarding = new OnboardingChecklistService,
+    ) {}
 
     public function index(): View
     {
-        $authUser  = auth()->user();
+        $authUser = auth()->user();
         $companyId = $this->currentCompanyId();
-        $role      = $authUser?->role?->value ?? 'buyer';
+        $role = $authUser?->role?->value ?? 'buyer';
 
         $user = [
-            'name'    => $authUser?->first_name ?? __('common.guest'),
+            'name' => $authUser?->first_name ?? __('common.guest'),
             'company' => $authUser?->company?->name ?? '',
-            'role'    => $role,
+            'role' => $role,
         ];
 
         $payload = match ($role) {
-            'supplier', 'service_provider'      => $this->supplierPayload($companyId),
-            'logistics'                         => $this->logisticsPayload($companyId),
-            'clearance'                         => $this->clearancePayload($companyId),
-            'finance', 'finance_manager'        => $this->financePayload($companyId, $role),
-            'sales', 'sales_manager'            => $this->salesPayload($companyId),
+            'supplier', 'service_provider' => $this->supplierPayload($companyId),
+            'logistics' => $this->logisticsPayload($companyId),
+            'clearance' => $this->clearancePayload($companyId),
+            'finance', 'finance_manager' => $this->financePayload($companyId, $role),
+            'sales', 'sales_manager' => $this->salesPayload($companyId),
             'company_manager', 'branch_manager' => $this->managerPayload($companyId, $authUser?->id),
-            'government'                        => $this->governmentPayload(),
-            'admin'                             => $this->adminPayload(),
-            default                             => $this->buyerPayload($companyId),
+            'government' => $this->governmentPayload(),
+            'admin' => $this->adminPayload(),
+            default => $this->buyerPayload($companyId),
         };
 
         // Sprint B.6 — onboarding checklist. Same widget across every
@@ -114,12 +112,12 @@ class DashboardController extends Controller
                 ->count()
             : 0;
         if ($supplierBidCount > 0) {
-            $wonCount  = Bid::where('company_id', $companyId)->where('status', BidStatus::ACCEPTED->value)->count();
+            $wonCount = Bid::where('company_id', $companyId)->where('status', BidStatus::ACCEPTED->value)->count();
             $totalBids = Bid::where('company_id', $companyId)->count();
-            $winRate   = $totalBids > 0 ? round(($wonCount / $totalBids) * 100, 1) : 0;
+            $winRate = $totalBids > 0 ? round(($wonCount / $totalBids) * 100, 1) : 0;
 
             $stats[] = $this->stat($supplierBidCount, __('supplier.active_bids'), 'purple', 'M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25');
-            $stats[] = $this->stat($winRate . '%', __('supplier.win_rate'), 'green', 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22');
+            $stats[] = $this->stat($winRate.'%', __('supplier.win_rate'), 'green', 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22');
         }
 
         // Active RFQs (primary list)
@@ -132,17 +130,17 @@ class DashboardController extends Controller
             ->get();
 
         $primaryList = [
-            'title'          => __('dashboard.active_rfqs'),
-            'subtitle'       => __('dashboard.current_procurement'),
+            'title' => __('dashboard.active_rfqs'),
+            'subtitle' => __('dashboard.current_procurement'),
             'view_all_route' => 'dashboard.rfqs',
-            'items'          => $rfqs->map(fn (Rfq $r) => [
-                'id'     => '#' . $r->rfq_number,
-                'title'  => $r->title,
+            'items' => $rfqs->map(fn (Rfq $r) => [
+                'id' => '#'.$r->rfq_number,
+                'title' => $r->title,
                 'amount' => $this->money((float) $r->budget, $r->currency ?? 'AED'),
                 'status' => $r->status?->value === RfqStatus::OPEN->value ? 'open' : 'draft',
-                'meta1'  => $r->bids->count() . ' bids',
-                'meta2'  => optional($r->deadline)->format('M j'),
-                'href'   => route('dashboard.rfqs.show', ['id' => $r->id]),
+                'meta1' => $r->bids->count().' bids',
+                'meta2' => optional($r->deadline)->format('M j'),
+                'href' => route('dashboard.rfqs.show', ['id' => $r->id]),
             ])->all(),
         ];
 
@@ -155,16 +153,16 @@ class DashboardController extends Controller
             ->get();
 
         $listLeft = [
-            'title'          => __('dashboard.active_contracts'),
-            'subtitle'       => __('dashboard.in_execution'),
+            'title' => __('dashboard.active_contracts'),
+            'subtitle' => __('dashboard.in_execution'),
             'view_all_route' => 'dashboard.contracts',
-            'items'          => $contracts->map(fn (Contract $c) => [
-                'id'             => $c->contract_number,
-                'title'          => $c->title,
-                'amount'         => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+            'items' => $contracts->map(fn (Contract $c) => [
+                'id' => $c->contract_number,
+                'title' => $c->title,
+                'amount' => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
                 'progress_label' => __('contracts.in_production'),
-                'progress'       => $c->realProgress(),
-                'href'           => route('dashboard.contracts.show', ['id' => $c->id]),
+                'progress' => $c->realProgress(),
+                'href' => route('dashboard.contracts.show', ['id' => $c->id]),
             ])->all(),
         ];
 
@@ -178,16 +176,16 @@ class DashboardController extends Controller
             ->get();
 
         $listRight = [
-            'title'          => __('dashboard.active_shipments'),
-            'subtitle'       => __('dashboard.in_transit_tracking'),
+            'title' => __('dashboard.active_shipments'),
+            'subtitle' => __('dashboard.in_transit_tracking'),
             'view_all_route' => 'dashboard.shipments',
-            'items'          => $shipments->map(fn (Shipment $sh) => [
-                'id'             => $sh->tracking_number,
-                'title'          => $sh->contract?->title ?? '—',
+            'items' => $shipments->map(fn (Shipment $sh) => [
+                'id' => $sh->tracking_number,
+                'title' => $sh->contract?->title ?? '—',
                 'progress_label' => __('shipments.in_transit'),
-                'progress'       => $sh->realProgress(),
-                'eta'            => optional($sh->estimated_delivery)->format('M j, Y'),
-                'href'           => route('dashboard.shipments.show', ['id' => $sh->id]),
+                'progress' => $sh->realProgress(),
+                'eta' => optional($sh->estimated_delivery)->format('M j, Y'),
+                'href' => route('dashboard.shipments.show', ['id' => $sh->id]),
             ])->all(),
         ];
 
@@ -201,31 +199,31 @@ class DashboardController extends Controller
             ->get();
 
         $bottomSection = [
-            'title'          => __('dashboard.pending_payments'),
-            'subtitle'       => __('dashboard.upcoming_milestones'),
+            'title' => __('dashboard.pending_payments'),
+            'subtitle' => __('dashboard.upcoming_milestones'),
             'view_all_route' => 'dashboard.payments',
-            'items'          => $payments->map(fn (Payment $p) => [
-                'id'           => $p->contract?->contract_number ?? sprintf('PAY-%04d', $p->id),
-                'supplier'     => $p->recipientCompany?->name ?? '—',
-                'milestone'    => $p->milestone ?? '—',
-                'amount'       => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
-                'date'         => optional($p->created_at)->format('M j, Y'),
-                'status'       => $p->status?->value === PaymentStatus::PENDING_APPROVAL->value ? 'due_soon' : 'scheduled',
-                'href'         => route('dashboard.payments.show', ['id' => $p->id]),
+            'items' => $payments->map(fn (Payment $p) => [
+                'id' => $p->contract?->contract_number ?? sprintf('PAY-%04d', $p->id),
+                'supplier' => $p->recipientCompany?->name ?? '—',
+                'milestone' => $p->milestone ?? '—',
+                'amount' => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
+                'date' => optional($p->created_at)->format('M j, Y'),
+                'status' => $p->status?->value === PaymentStatus::PENDING_APPROVAL->value ? 'due_soon' : 'scheduled',
+                'href' => route('dashboard.payments.show', ['id' => $p->id]),
             ])->all(),
         ];
 
         return [
-            'headerAction'  => [
+            'headerAction' => [
                 'label' => __('dashboard.create_pr'),
                 'route' => 'dashboard.purchase-requests.create',
-                'icon'  => 'M12 4.5v15m7.5-7.5h-15',
+                'icon' => 'M12 4.5v15m7.5-7.5h-15',
             ],
-            'stats'         => $stats,
-            'primaryList'   => $primaryList,
+            'stats' => $stats,
+            'primaryList' => $primaryList,
             'notifications' => $this->buildNotifications($companyId),
-            'listLeft'      => $listLeft,
-            'listRight'     => $listRight,
+            'listLeft' => $listLeft,
+            'listRight' => $listRight,
             'bottomSection' => $bottomSection,
         ];
     }
@@ -264,6 +262,7 @@ class DashboardController extends Controller
             $availableRfqs = $availableRfqs
                 ->map(function (Rfq $r) use ($supplierCompany) {
                     $r->setAttribute('match_score', $r->matchScoreFor($supplierCompany));
+
                     return $r;
                 })
                 ->sortByDesc(fn (Rfq $r) => $r->getAttribute('match_score'))
@@ -282,7 +281,7 @@ class DashboardController extends Controller
             ->get();
 
         $totalBids = Bid::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId))->count();
-        $wonBids   = Bid::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId))->where('status', BidStatus::ACCEPTED->value)->count();
+        $wonBids = Bid::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId))->where('status', BidStatus::ACCEPTED->value)->count();
         $successRate = $totalBids > 0 ? round(($wonBids / $totalBids) * 100) : 0;
 
         $stats = [
@@ -296,49 +295,49 @@ class DashboardController extends Controller
                 'orange',
                 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
             ),
-            $this->stat($successRate . '%', __('supplier.success_rate'), 'green', 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22'),
+            $this->stat($successRate.'%', __('supplier.success_rate'), 'green', 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22'),
         ];
 
         $primaryList = [
-            'title'          => __('supplier.recommended_for_you'),
-            'subtitle'       => __('supplier.recommended_subtitle'),
+            'title' => __('supplier.recommended_for_you'),
+            'subtitle' => __('supplier.recommended_subtitle'),
             'view_all_route' => 'dashboard.rfqs',
-            'items'          => $availableRfqs->map(function (Rfq $r) {
+            'items' => $availableRfqs->map(function (Rfq $r) {
                 $score = $r->getAttribute('match_score');
 
                 return [
-                    'id'     => '#' . $r->rfq_number,
-                    'title'  => $r->title,
+                    'id' => '#'.$r->rfq_number,
+                    'title' => $r->title,
                     'amount' => $this->money((float) $r->budget, $r->currency ?? 'AED'),
                     'status' => 'open',
-                    'meta1'  => $r->bids->count() . ' bids',
-                    'meta2'  => $score !== null ? $score . '% match' : (optional($r->deadline)->format('M j') ?: ''),
-                    'href'   => route('dashboard.rfqs.show', ['id' => $r->id]),
+                    'meta1' => $r->bids->count().' bids',
+                    'meta2' => $score !== null ? $score.'% match' : (optional($r->deadline)->format('M j') ?: ''),
+                    'href' => route('dashboard.rfqs.show', ['id' => $r->id]),
                 ];
             })->all(),
         ];
 
         $listLeft = [
-            'title'          => __('supplier.my_active_bids'),
-            'subtitle'       => __('supplier.submitted_and_under_review'),
+            'title' => __('supplier.my_active_bids'),
+            'subtitle' => __('supplier.submitted_and_under_review'),
             'view_all_route' => 'dashboard.bids',
-            'items'          => $myActiveBids->map(fn (Bid $b) => [
-                'id'             => sprintf('BID-%04d · #%s', $b->id, $b->rfq?->rfq_number ?? '—'),
-                'title'          => $b->rfq?->title ?? '—',
-                'amount'         => $this->money((float) $b->price, $b->currency ?? 'AED'),
+            'items' => $myActiveBids->map(fn (Bid $b) => [
+                'id' => sprintf('BID-%04d · #%s', $b->id, $b->rfq?->rfq_number ?? '—'),
+                'title' => $b->rfq?->title ?? '—',
+                'amount' => $this->money((float) $b->price, $b->currency ?? 'AED'),
                 'progress_label' => ucfirst(str_replace('_', ' ', $b->status?->value ?? 'submitted')),
                 // Bid lifecycle progress: SUBMITTED is half-way (the buyer
                 // has the offer); UNDER_REVIEW means active comparison is
                 // happening; ACCEPTED is the deal closed.
-                'progress'       => match ($b->status?->value) {
-                    BidStatus::DRAFT->value        => 10,
-                    BidStatus::SUBMITTED->value    => 50,
+                'progress' => match ($b->status?->value) {
+                    BidStatus::DRAFT->value => 10,
+                    BidStatus::SUBMITTED->value => 50,
                     BidStatus::UNDER_REVIEW->value => 80,
-                    BidStatus::ACCEPTED->value     => 100,
-                    BidStatus::REJECTED->value     => 0,
-                    default                        => 25,
+                    BidStatus::ACCEPTED->value => 100,
+                    BidStatus::REJECTED->value => 0,
+                    default => 25,
                 },
-                'href'           => route('dashboard.bids.show', ['id' => $b->id]),
+                'href' => route('dashboard.bids.show', ['id' => $b->id]),
             ])->all(),
         ];
 
@@ -350,16 +349,16 @@ class DashboardController extends Controller
             ->get();
 
         $listRight = [
-            'title'          => __('contracts.title'),
-            'subtitle'       => __('dashboard.in_execution'),
+            'title' => __('contracts.title'),
+            'subtitle' => __('dashboard.in_execution'),
             'view_all_route' => 'dashboard.contracts',
-            'items'          => $contracts->map(fn (Contract $c) => [
-                'id'             => $c->contract_number,
-                'title'          => $c->title,
-                'amount'         => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+            'items' => $contracts->map(fn (Contract $c) => [
+                'id' => $c->contract_number,
+                'title' => $c->title,
+                'amount' => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
                 'progress_label' => __('contracts.in_production'),
-                'progress'       => $c->realProgress(),
-                'href'           => route('dashboard.contracts.show', ['id' => $c->id]),
+                'progress' => $c->realProgress(),
+                'href' => route('dashboard.contracts.show', ['id' => $c->id]),
             ])->all(),
         ];
 
@@ -372,31 +371,31 @@ class DashboardController extends Controller
             ->get();
 
         $bottomSection = [
-            'title'          => __('supplier.recent_payments'),
-            'subtitle'       => __('supplier.payments_received_from_buyers'),
+            'title' => __('supplier.recent_payments'),
+            'subtitle' => __('supplier.payments_received_from_buyers'),
             'view_all_route' => 'dashboard.payments',
-            'items'          => $recentPayments->map(fn (Payment $p) => [
-                'id'        => $p->contract?->contract_number ?? sprintf('PAY-%04d', $p->id),
-                'supplier'  => $p->company?->name ?? '—',
+            'items' => $recentPayments->map(fn (Payment $p) => [
+                'id' => $p->contract?->contract_number ?? sprintf('PAY-%04d', $p->id),
+                'supplier' => $p->company?->name ?? '—',
                 'milestone' => $p->milestone ?? '—',
-                'amount'    => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
-                'date'      => optional($p->created_at)->format('M j, Y'),
-                'status'    => $p->status?->value === PaymentStatus::COMPLETED->value ? 'scheduled' : 'due_soon',
-                'href'      => route('dashboard.payments.show', ['id' => $p->id]),
+                'amount' => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
+                'date' => optional($p->created_at)->format('M j, Y'),
+                'status' => $p->status?->value === PaymentStatus::COMPLETED->value ? 'scheduled' : 'due_soon',
+                'href' => route('dashboard.payments.show', ['id' => $p->id]),
             ])->all(),
         ];
 
         return [
-            'headerAction'  => [
+            'headerAction' => [
                 'label' => __('supplier.browse_rfqs'),
                 'route' => 'dashboard.rfqs',
-                'icon'  => 'M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178',
+                'icon' => 'M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178',
             ],
-            'stats'         => $stats,
-            'primaryList'   => $primaryList,
+            'stats' => $stats,
+            'primaryList' => $primaryList,
             'notifications' => $this->buildNotifications($companyId),
-            'listLeft'      => $listLeft,
-            'listRight'     => $listRight,
+            'listLeft' => $listLeft,
+            'listRight' => $listRight,
             'bottomSection' => $bottomSection,
         ];
     }
@@ -423,16 +422,16 @@ class DashboardController extends Controller
             ->get();
 
         $payload['listRight'] = [
-            'title'          => __('dashboard.active_shipments'),
-            'subtitle'       => __('dashboard.in_transit_tracking'),
+            'title' => __('dashboard.active_shipments'),
+            'subtitle' => __('dashboard.in_transit_tracking'),
             'view_all_route' => 'dashboard.shipments',
-            'items'          => $shipments->map(fn (Shipment $sh) => [
-                'id'             => $sh->tracking_number,
-                'title'          => $sh->contract?->title ?? '—',
+            'items' => $shipments->map(fn (Shipment $sh) => [
+                'id' => $sh->tracking_number,
+                'title' => $sh->contract?->title ?? '—',
                 'progress_label' => __('shipments.in_transit'),
-                'progress'       => $sh->realProgress(),
-                'eta'            => optional($sh->estimated_delivery)->format('M j, Y'),
-                'href'           => route('dashboard.shipments.show', ['id' => $sh->id]),
+                'progress' => $sh->realProgress(),
+                'eta' => optional($sh->estimated_delivery)->format('M j, Y'),
+                'href' => route('dashboard.shipments.show', ['id' => $sh->id]),
             ])->all(),
         ];
 
@@ -469,7 +468,7 @@ class DashboardController extends Controller
             ])
             ->where(function ($q) {
                 $q->whereNull('customs_clearance_status')
-                  ->orWhere('customs_clearance_status', 'pending');
+                    ->orWhere('customs_clearance_status', 'pending');
             })
             ->count();
 
@@ -499,19 +498,19 @@ class DashboardController extends Controller
         ];
 
         $primaryList = [
-            'title'          => __('clearance.in_clearance_now'),
-            'subtitle'       => __('clearance.in_clearance_subtitle'),
+            'title' => __('clearance.in_clearance_now'),
+            'subtitle' => __('clearance.in_clearance_subtitle'),
             'view_all_route' => 'dashboard.shipments',
-            'items'          => $inClearance->map(fn (Shipment $sh) => [
-                'id'     => $sh->tracking_number,
-                'title'  => $sh->contract?->title ?? '—',
+            'items' => $inClearance->map(fn (Shipment $sh) => [
+                'id' => $sh->tracking_number,
+                'title' => $sh->contract?->title ?? '—',
                 'amount' => $sh->customs_clearance_status
-                    ? __('clearance.status_' . $sh->customs_clearance_status)
+                    ? __('clearance.status_'.$sh->customs_clearance_status)
                     : __('clearance.status_pending'),
                 'status' => 'pending',
-                'meta1'  => is_array($sh->origin) ? ($sh->origin['country'] ?? '—') : '—',
-                'meta2'  => optional($sh->estimated_delivery)->format('M j'),
-                'href'   => route('dashboard.shipments.show', ['id' => $sh->id]),
+                'meta1' => is_array($sh->origin) ? ($sh->origin['country'] ?? '—') : '—',
+                'meta2' => optional($sh->estimated_delivery)->format('M j'),
+                'href' => route('dashboard.shipments.show', ['id' => $sh->id]),
             ])->all(),
         ];
 
@@ -524,16 +523,16 @@ class DashboardController extends Controller
             ->get();
 
         $listLeft = [
-            'title'          => __('clearance.arriving_soon'),
-            'subtitle'       => __('clearance.arriving_soon_subtitle'),
+            'title' => __('clearance.arriving_soon'),
+            'subtitle' => __('clearance.arriving_soon_subtitle'),
             'view_all_route' => 'dashboard.shipments',
-            'items'          => $arriving->map(fn (Shipment $sh) => [
-                'id'             => $sh->tracking_number,
-                'title'          => $sh->contract?->title ?? '—',
+            'items' => $arriving->map(fn (Shipment $sh) => [
+                'id' => $sh->tracking_number,
+                'title' => $sh->contract?->title ?? '—',
                 'progress_label' => __('shipments.in_transit'),
-                'progress'       => $sh->realProgress(),
-                'eta'            => optional($sh->estimated_delivery)->format('M j, Y'),
-                'href'           => route('dashboard.shipments.show', ['id' => $sh->id]),
+                'progress' => $sh->realProgress(),
+                'eta' => optional($sh->estimated_delivery)->format('M j, Y'),
+                'href' => route('dashboard.shipments.show', ['id' => $sh->id]),
             ])->all(),
         ];
 
@@ -545,15 +544,15 @@ class DashboardController extends Controller
             ->get();
 
         $listRight = [
-            'title'          => __('clearance.recently_cleared'),
-            'subtitle'       => __('clearance.recently_cleared_subtitle'),
+            'title' => __('clearance.recently_cleared'),
+            'subtitle' => __('clearance.recently_cleared_subtitle'),
             'view_all_route' => 'dashboard.shipments',
-            'items'          => $recentlyCleared->map(fn (Shipment $sh) => [
-                'id'             => $sh->tracking_number,
-                'title'          => $sh->contract?->title ?? '—',
+            'items' => $recentlyCleared->map(fn (Shipment $sh) => [
+                'id' => $sh->tracking_number,
+                'title' => $sh->contract?->title ?? '—',
                 'progress_label' => __('shipments.delivered'),
-                'progress'       => 100,
-                'href'           => route('dashboard.shipments.show', ['id' => $sh->id]),
+                'progress' => 100,
+                'href' => route('dashboard.shipments.show', ['id' => $sh->id]),
             ])->all(),
         ];
 
@@ -567,31 +566,31 @@ class DashboardController extends Controller
             ->get();
 
         $bottomSection = [
-            'title'          => __('clearance.ready_for_pickup'),
-            'subtitle'       => __('clearance.ready_for_pickup_subtitle'),
+            'title' => __('clearance.ready_for_pickup'),
+            'subtitle' => __('clearance.ready_for_pickup_subtitle'),
             'view_all_route' => 'dashboard.shipments',
-            'items'          => $readyForPickup->map(fn (Shipment $sh) => [
-                'id'        => $sh->tracking_number,
-                'supplier'  => $sh->contract?->title ?? '—',
+            'items' => $readyForPickup->map(fn (Shipment $sh) => [
+                'id' => $sh->tracking_number,
+                'supplier' => $sh->contract?->title ?? '—',
                 'milestone' => is_array($sh->destination) ? ($sh->destination['city'] ?? '—') : '—',
-                'amount'    => __('shipments.ready_for_pickup'),
-                'date'      => optional($sh->updated_at)->format('M j, Y'),
-                'status'    => 'scheduled',
-                'href'      => route('dashboard.shipments.show', ['id' => $sh->id]),
+                'amount' => __('shipments.ready_for_pickup'),
+                'date' => optional($sh->updated_at)->format('M j, Y'),
+                'status' => 'scheduled',
+                'href' => route('dashboard.shipments.show', ['id' => $sh->id]),
             ])->all(),
         ];
 
         return [
-            'headerAction'  => [
+            'headerAction' => [
                 'label' => __('clearance.review_clearances'),
                 'route' => 'dashboard.shipments',
-                'icon'  => 'M9 12.75L11.25 15 15 9.75',
+                'icon' => 'M9 12.75L11.25 15 15 9.75',
             ],
-            'stats'         => $stats,
-            'primaryList'   => $primaryList,
+            'stats' => $stats,
+            'primaryList' => $primaryList,
             'notifications' => $this->buildNotifications($companyId),
-            'listLeft'      => $listLeft,
-            'listRight'     => $listRight,
+            'listLeft' => $listLeft,
+            'listRight' => $listRight,
             'bottomSection' => $bottomSection,
         ];
     }
@@ -658,17 +657,17 @@ class DashboardController extends Controller
             ->get();
 
         $primaryList = [
-            'title'          => $isManager ? __('finance.awaiting_your_approval') : __('finance.ready_to_process'),
-            'subtitle'       => $isManager ? __('finance.approval_subtitle') : __('finance.process_subtitle'),
+            'title' => $isManager ? __('finance.awaiting_your_approval') : __('finance.ready_to_process'),
+            'subtitle' => $isManager ? __('finance.approval_subtitle') : __('finance.process_subtitle'),
             'view_all_route' => 'dashboard.payments',
-            'items'          => $primaryRows->map(fn (Payment $p) => [
-                'id'     => sprintf('PAY-%04d', $p->id),
-                'title'  => $p->contract?->title ?? ($p->milestone ?? '—'),
+            'items' => $primaryRows->map(fn (Payment $p) => [
+                'id' => sprintf('PAY-%04d', $p->id),
+                'title' => $p->contract?->title ?? ($p->milestone ?? '—'),
                 'amount' => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
                 'status' => $isManager ? 'pending' : 'scheduled',
-                'meta1'  => $p->recipientCompany?->name ?? '—',
-                'meta2'  => optional($p->created_at)->format('M j'),
-                'href'   => route('dashboard.payments.show', ['id' => $p->id]),
+                'meta1' => $p->recipientCompany?->name ?? '—',
+                'meta2' => optional($p->created_at)->format('M j'),
+                'href' => route('dashboard.payments.show', ['id' => $p->id]),
             ])->all(),
         ];
 
@@ -681,16 +680,16 @@ class DashboardController extends Controller
             ->get();
 
         $listLeft = [
-            'title'          => __('finance.recently_completed'),
-            'subtitle'       => __('finance.recently_completed_subtitle'),
+            'title' => __('finance.recently_completed'),
+            'subtitle' => __('finance.recently_completed_subtitle'),
             'view_all_route' => 'dashboard.payments',
-            'items'          => $recentCompleted->map(fn (Payment $p) => [
-                'id'             => sprintf('PAY-%04d', $p->id),
-                'title'          => $p->recipientCompany?->name ?? ($p->contract?->title ?? '—'),
-                'amount'         => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
+            'items' => $recentCompleted->map(fn (Payment $p) => [
+                'id' => sprintf('PAY-%04d', $p->id),
+                'title' => $p->recipientCompany?->name ?? ($p->contract?->title ?? '—'),
+                'amount' => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
                 'progress_label' => __('payments.completed'),
-                'progress'       => 100,
-                'href'           => route('dashboard.payments.show', ['id' => $p->id]),
+                'progress' => 100,
+                'href' => route('dashboard.payments.show', ['id' => $p->id]),
             ])->all(),
         ];
 
@@ -703,16 +702,16 @@ class DashboardController extends Controller
             ->get();
 
         $listRight = [
-            'title'          => __('finance.active_obligations'),
-            'subtitle'       => __('finance.active_obligations_subtitle'),
+            'title' => __('finance.active_obligations'),
+            'subtitle' => __('finance.active_obligations_subtitle'),
             'view_all_route' => 'dashboard.contracts',
-            'items'          => $activeContracts->map(fn (Contract $c) => [
-                'id'             => $c->contract_number,
-                'title'          => $c->title,
-                'amount'         => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+            'items' => $activeContracts->map(fn (Contract $c) => [
+                'id' => $c->contract_number,
+                'title' => $c->title,
+                'amount' => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
                 'progress_label' => __('contracts.in_production'),
-                'progress'       => $c->realProgress(),
-                'href'           => route('dashboard.contracts.show', ['id' => $c->id]),
+                'progress' => $c->realProgress(),
+                'href' => route('dashboard.contracts.show', ['id' => $c->id]),
             ])->all(),
         ];
 
@@ -725,31 +724,31 @@ class DashboardController extends Controller
             ->get();
 
         $bottomSection = [
-            'title'          => __('finance.needs_attention'),
-            'subtitle'       => __('finance.needs_attention_subtitle'),
+            'title' => __('finance.needs_attention'),
+            'subtitle' => __('finance.needs_attention_subtitle'),
             'view_all_route' => 'dashboard.payments',
-            'items'          => $needsAttention->map(fn (Payment $p) => [
-                'id'        => sprintf('PAY-%04d', $p->id),
-                'supplier'  => $p->recipientCompany?->name ?? '—',
+            'items' => $needsAttention->map(fn (Payment $p) => [
+                'id' => sprintf('PAY-%04d', $p->id),
+                'supplier' => $p->recipientCompany?->name ?? '—',
                 'milestone' => $p->milestone ?? ($p->contract?->title ?? '—'),
-                'amount'    => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
-                'date'      => optional($p->updated_at)->format('M j, Y'),
-                'status'    => 'urgent',
-                'href'      => route('dashboard.payments.show', ['id' => $p->id]),
+                'amount' => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
+                'date' => optional($p->updated_at)->format('M j, Y'),
+                'status' => 'urgent',
+                'href' => route('dashboard.payments.show', ['id' => $p->id]),
             ])->all(),
         ];
 
         return [
-            'headerAction'  => [
+            'headerAction' => [
                 'label' => __('finance.go_to_payments'),
                 'route' => 'dashboard.payments',
-                'icon'  => 'M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75',
+                'icon' => 'M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75',
             ],
-            'stats'         => $stats,
-            'primaryList'   => $primaryList,
+            'stats' => $stats,
+            'primaryList' => $primaryList,
             'notifications' => $this->buildNotifications($companyId),
-            'listLeft'      => $listLeft,
-            'listRight'     => $listRight,
+            'listLeft' => $listLeft,
+            'listRight' => $listRight,
             'bottomSection' => $bottomSection,
         ];
     }
@@ -812,17 +811,17 @@ class DashboardController extends Controller
         ];
 
         $primaryList = [
-            'title'          => __('sales.my_sales_offers'),
-            'subtitle'       => __('sales.my_sales_offers_subtitle'),
+            'title' => __('sales.my_sales_offers'),
+            'subtitle' => __('sales.my_sales_offers_subtitle'),
             'view_all_route' => 'dashboard.rfqs',
-            'items'          => $myOffers->map(fn (Rfq $r) => [
-                'id'     => '#' . $r->rfq_number,
-                'title'  => $r->title,
+            'items' => $myOffers->map(fn (Rfq $r) => [
+                'id' => '#'.$r->rfq_number,
+                'title' => $r->title,
                 'amount' => $this->money((float) $r->budget, $r->currency ?? 'AED'),
                 'status' => $r->status?->value === RfqStatus::OPEN->value ? 'open' : 'draft',
-                'meta1'  => $r->bids->count() . ' ' . __('sales.offers_received'),
-                'meta2'  => optional($r->deadline)->format('M j'),
-                'href'   => route('dashboard.rfqs.show', ['id' => $r->id]),
+                'meta1' => $r->bids->count().' '.__('sales.offers_received'),
+                'meta2' => optional($r->deadline)->format('M j'),
+                'href' => route('dashboard.rfqs.show', ['id' => $r->id]),
             ])->all(),
         ];
 
@@ -835,22 +834,22 @@ class DashboardController extends Controller
             ->get();
 
         $listLeft = [
-            'title'          => __('sales.inbound_bids'),
-            'subtitle'       => __('sales.inbound_bids_subtitle'),
+            'title' => __('sales.inbound_bids'),
+            'subtitle' => __('sales.inbound_bids_subtitle'),
             'view_all_route' => 'dashboard.bids',
-            'items'          => $inboundBids->map(fn (Bid $b) => [
-                'id'             => sprintf('BID-%04d · #%s', $b->id, $b->rfq?->rfq_number ?? '—'),
-                'title'          => $b->company?->name ?? ($b->rfq?->title ?? '—'),
-                'amount'         => $this->money((float) $b->price, $b->currency ?? 'AED'),
+            'items' => $inboundBids->map(fn (Bid $b) => [
+                'id' => sprintf('BID-%04d · #%s', $b->id, $b->rfq?->rfq_number ?? '—'),
+                'title' => $b->company?->name ?? ($b->rfq?->title ?? '—'),
+                'amount' => $this->money((float) $b->price, $b->currency ?? 'AED'),
                 'progress_label' => ucfirst(str_replace('_', ' ', $b->status?->value ?? 'submitted')),
-                'progress'       => match ($b->status?->value) {
-                    BidStatus::DRAFT->value        => 10,
-                    BidStatus::SUBMITTED->value    => 50,
+                'progress' => match ($b->status?->value) {
+                    BidStatus::DRAFT->value => 10,
+                    BidStatus::SUBMITTED->value => 50,
                     BidStatus::UNDER_REVIEW->value => 80,
-                    BidStatus::ACCEPTED->value     => 100,
-                    default                        => 25,
+                    BidStatus::ACCEPTED->value => 100,
+                    default => 25,
                 },
-                'href'           => route('dashboard.bids.show', ['id' => $b->id]),
+                'href' => route('dashboard.bids.show', ['id' => $b->id]),
             ])->all(),
         ];
 
@@ -864,16 +863,16 @@ class DashboardController extends Controller
             ->get();
 
         $listRight = [
-            'title'          => __('sales.active_sales_contracts'),
-            'subtitle'       => __('sales.active_sales_contracts_subtitle'),
+            'title' => __('sales.active_sales_contracts'),
+            'subtitle' => __('sales.active_sales_contracts_subtitle'),
             'view_all_route' => 'dashboard.contracts',
-            'items'          => $salesContracts->map(fn (Contract $c) => [
-                'id'             => $c->contract_number,
-                'title'          => $c->title,
-                'amount'         => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+            'items' => $salesContracts->map(fn (Contract $c) => [
+                'id' => $c->contract_number,
+                'title' => $c->title,
+                'amount' => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
                 'progress_label' => __('contracts.in_production'),
-                'progress'       => $c->realProgress(),
-                'href'           => route('dashboard.contracts.show', ['id' => $c->id]),
+                'progress' => $c->realProgress(),
+                'href' => route('dashboard.contracts.show', ['id' => $c->id]),
             ])->all(),
         ];
 
@@ -888,34 +887,34 @@ class DashboardController extends Controller
             ->get();
 
         $bottomSection = [
-            'title'          => __('sales.recent_wins'),
-            'subtitle'       => __('sales.recent_wins_subtitle'),
+            'title' => __('sales.recent_wins'),
+            'subtitle' => __('sales.recent_wins_subtitle'),
             'view_all_route' => 'dashboard.bids',
-            'items'          => $recentWins->map(fn (Bid $b) => [
-                'id'        => sprintf('BID-%04d', $b->id),
-                'supplier'  => $b->company?->name ?? '—',
+            'items' => $recentWins->map(fn (Bid $b) => [
+                'id' => sprintf('BID-%04d', $b->id),
+                'supplier' => $b->company?->name ?? '—',
                 'milestone' => $b->rfq?->title ?? '—',
-                'amount'    => $this->money((float) $b->price, $b->currency ?? 'AED'),
-                'date'      => optional($b->updated_at)->format('M j, Y'),
-                'status'    => 'scheduled',
-                'href'      => route('dashboard.bids.show', ['id' => $b->id]),
+                'amount' => $this->money((float) $b->price, $b->currency ?? 'AED'),
+                'date' => optional($b->updated_at)->format('M j, Y'),
+                'status' => 'scheduled',
+                'href' => route('dashboard.bids.show', ['id' => $b->id]),
             ])->all(),
         ];
 
         return [
-            'headerAction'  => [
+            'headerAction' => [
                 // No dedicated "create sales offer" form yet — sales reps
                 // currently use the unified RFQ index to seed offers, same
                 // as the supplier role does.
                 'label' => __('sales.browse_offers'),
                 'route' => 'dashboard.rfqs',
-                'icon'  => 'M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178',
+                'icon' => 'M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178',
             ],
-            'stats'         => $stats,
-            'primaryList'   => $primaryList,
+            'stats' => $stats,
+            'primaryList' => $primaryList,
             'notifications' => $this->buildNotifications($companyId),
-            'listLeft'      => $listLeft,
-            'listRight'     => $listRight,
+            'listLeft' => $listLeft,
+            'listRight' => $listRight,
             'bottomSection' => $bottomSection,
         ];
     }
@@ -978,26 +977,26 @@ class DashboardController extends Controller
                 ->count()
             : 0;
         if ($supplierBidCount > 0) {
-            $wonCount  = Bid::where('company_id', $companyId)->where('status', BidStatus::ACCEPTED->value)->count();
+            $wonCount = Bid::where('company_id', $companyId)->where('status', BidStatus::ACCEPTED->value)->count();
             $totalBids = Bid::where('company_id', $companyId)->count();
-            $winRate   = $totalBids > 0 ? round(($wonCount / $totalBids) * 100, 1) : 0;
+            $winRate = $totalBids > 0 ? round(($wonCount / $totalBids) * 100, 1) : 0;
 
             $stats[] = $this->stat($supplierBidCount, __('supplier.active_bids'), 'purple', 'M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25');
-            $stats[] = $this->stat($winRate . '%', __('supplier.win_rate'), 'green', 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22');
+            $stats[] = $this->stat($winRate.'%', __('supplier.win_rate'), 'green', 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22');
         }
 
         $primaryList = [
-            'title'          => __('manager.prs_awaiting_approval'),
-            'subtitle'       => __('manager.prs_subtitle'),
+            'title' => __('manager.prs_awaiting_approval'),
+            'subtitle' => __('manager.prs_subtitle'),
             'view_all_route' => 'dashboard.purchase-requests',
-            'items'          => $pendingPRs->map(fn (PurchaseRequest $pr) => [
-                'id'     => sprintf('PR-%04d', $pr->id),
-                'title'  => $pr->title,
+            'items' => $pendingPRs->map(fn (PurchaseRequest $pr) => [
+                'id' => sprintf('PR-%04d', $pr->id),
+                'title' => $pr->title,
                 'amount' => $this->money((float) ($pr->budget ?? 0), $pr->currency ?? 'AED'),
                 'status' => 'pending',
-                'meta1'  => trim(($pr->buyer?->first_name ?? '') . ' ' . ($pr->buyer?->last_name ?? '')) ?: '—',
-                'meta2'  => optional($pr->created_at)->format('M j'),
-                'href'   => route('dashboard.purchase-requests.show', ['id' => $pr->id]),
+                'meta1' => trim(($pr->buyer?->first_name ?? '').' '.($pr->buyer?->last_name ?? '')) ?: '—',
+                'meta2' => optional($pr->created_at)->format('M j'),
+                'href' => route('dashboard.purchase-requests.show', ['id' => $pr->id]),
             ])->all(),
         ];
 
@@ -1010,16 +1009,16 @@ class DashboardController extends Controller
             ->get();
 
         $listLeft = [
-            'title'          => __('manager.payments_awaiting_approval'),
-            'subtitle'       => __('manager.payments_subtitle'),
+            'title' => __('manager.payments_awaiting_approval'),
+            'subtitle' => __('manager.payments_subtitle'),
             'view_all_route' => 'dashboard.payments',
-            'items'          => $pendingPayments->map(fn (Payment $p) => [
-                'id'             => sprintf('PAY-%04d', $p->id),
-                'title'          => $p->recipientCompany?->name ?? ($p->contract?->title ?? '—'),
-                'amount'         => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
+            'items' => $pendingPayments->map(fn (Payment $p) => [
+                'id' => sprintf('PAY-%04d', $p->id),
+                'title' => $p->recipientCompany?->name ?? ($p->contract?->title ?? '—'),
+                'amount' => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
                 'progress_label' => __('payments.pending_approval'),
-                'progress'       => 25,
-                'href'           => route('dashboard.payments.show', ['id' => $p->id]),
+                'progress' => 25,
+                'href' => route('dashboard.payments.show', ['id' => $p->id]),
             ])->all(),
         ];
 
@@ -1031,16 +1030,16 @@ class DashboardController extends Controller
             ->get();
 
         $listRight = [
-            'title'          => __('dashboard.active_contracts'),
-            'subtitle'       => __('dashboard.in_execution'),
+            'title' => __('dashboard.active_contracts'),
+            'subtitle' => __('dashboard.in_execution'),
             'view_all_route' => 'dashboard.contracts',
-            'items'          => $activeContracts->map(fn (Contract $c) => [
-                'id'             => $c->contract_number,
-                'title'          => $c->title,
-                'amount'         => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+            'items' => $activeContracts->map(fn (Contract $c) => [
+                'id' => $c->contract_number,
+                'title' => $c->title,
+                'amount' => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
                 'progress_label' => __('contracts.in_production'),
-                'progress'       => $c->realProgress(),
-                'href'           => route('dashboard.contracts.show', ['id' => $c->id]),
+                'progress' => $c->realProgress(),
+                'href' => route('dashboard.contracts.show', ['id' => $c->id]),
             ])->all(),
         ];
 
@@ -1054,31 +1053,31 @@ class DashboardController extends Controller
             ->get();
 
         $bottomSection = [
-            'title'          => __('manager.team_recent'),
-            'subtitle'       => __('manager.team_recent_subtitle'),
+            'title' => __('manager.team_recent'),
+            'subtitle' => __('manager.team_recent_subtitle'),
             'view_all_route' => null,
-            'items'          => $latestTeammates->map(fn (User $u) => [
-                'id'        => 'U-' . $u->id,
-                'supplier'  => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: '—',
-                'milestone' => __('role.' . ($u->role?->value ?? 'buyer')),
-                'amount'    => $u->email ?? '—',
-                'date'      => optional($u->created_at)->format('M j, Y'),
-                'status'    => 'open',
+            'items' => $latestTeammates->map(fn (User $u) => [
+                'id' => 'U-'.$u->id,
+                'supplier' => trim(($u->first_name ?? '').' '.($u->last_name ?? '')) ?: '—',
+                'milestone' => __('role.'.($u->role?->value ?? 'buyer')),
+                'amount' => $u->email ?? '—',
+                'date' => optional($u->created_at)->format('M j, Y'),
+                'status' => 'open',
                 'status_label' => __('users.active'),
             ])->all(),
         ];
 
         return [
-            'headerAction'  => [
+            'headerAction' => [
                 'label' => __('manager.review_approvals'),
                 'route' => 'dashboard.purchase-requests',
-                'icon'  => 'M9 12.75L11.25 15 15 9.75',
+                'icon' => 'M9 12.75L11.25 15 15 9.75',
             ],
-            'stats'         => $stats,
-            'primaryList'   => $primaryList,
+            'stats' => $stats,
+            'primaryList' => $primaryList,
             'notifications' => $this->buildNotifications($companyId),
-            'listLeft'      => $listLeft,
-            'listRight'     => $listRight,
+            'listLeft' => $listLeft,
+            'listRight' => $listRight,
             'bottomSection' => $bottomSection,
         ];
     }
@@ -1117,44 +1116,44 @@ class DashboardController extends Controller
         ];
 
         $primaryList = [
-            'title'          => __('gov.escalated_disputes'),
-            'subtitle'       => __('gov.pending_resolution'),
+            'title' => __('gov.escalated_disputes'),
+            'subtitle' => __('gov.pending_resolution'),
             'view_all_route' => 'dashboard.disputes',
-            'items'          => $escalated->map(fn (Dispute $d) => [
-                'id'     => 'DIS-' . $d->id,
-                'title'  => $d->title,
+            'items' => $escalated->map(fn (Dispute $d) => [
+                'id' => 'DIS-'.$d->id,
+                'title' => $d->title,
                 'amount' => $this->money((float) ($d->contract?->total_amount ?? 0), $d->contract?->currency ?? 'AED'),
                 'status' => 'urgent',
-                'meta1'  => ($d->company?->name ?? '—') . ' vs ' . ($d->againstCompany?->name ?? '—'),
-                'meta2'  => optional($d->created_at)->format('M j'),
-                'href'   => route('dashboard.disputes.show', ['id' => $d->id]),
+                'meta1' => ($d->company?->name ?? '—').' vs '.($d->againstCompany?->name ?? '—'),
+                'meta2' => optional($d->created_at)->format('M j'),
+                'href' => route('dashboard.disputes.show', ['id' => $d->id]),
             ])->all(),
         ];
 
         $recentCompanies = Company::latest()->limit(3)->get();
         $listLeft = [
-            'title'    => __('gov.recent_companies'),
+            'title' => __('gov.recent_companies'),
             'subtitle' => __('gov.newly_registered'),
             'view_all_route' => null,
-            'items'    => $recentCompanies->map(fn (Company $c) => [
-                'id'             => 'CO-' . $c->id,
-                'title'          => $c->name,
+            'items' => $recentCompanies->map(fn (Company $c) => [
+                'id' => 'CO-'.$c->id,
+                'title' => $c->name,
                 'progress_label' => $c->city ?? '—',
-                'progress'       => 100,
+                'progress' => 100,
             ])->all(),
         ];
 
         $resolvedDisputes = Dispute::where('status', DisputeStatus::RESOLVED->value)->with(['contract'])->latest()->limit(3)->get();
         $listRight = [
-            'title'    => __('gov.recently_resolved'),
+            'title' => __('gov.recently_resolved'),
             'subtitle' => __('gov.disputes_closed_this_week'),
             'view_all_route' => 'dashboard.disputes',
-            'items'    => $resolvedDisputes->map(fn (Dispute $d) => [
-                'id'             => 'DIS-' . $d->id,
-                'title'          => $d->title,
+            'items' => $resolvedDisputes->map(fn (Dispute $d) => [
+                'id' => 'DIS-'.$d->id,
+                'title' => $d->title,
                 'progress_label' => __('disputes.resolved'),
-                'progress'       => 100,
-                'href'           => route('dashboard.disputes.show', ['id' => $d->id]),
+                'progress' => 100,
+                'href' => route('dashboard.disputes.show', ['id' => $d->id]),
             ])->all(),
         ];
 
@@ -1167,31 +1166,31 @@ class DashboardController extends Controller
             ->get();
 
         $bottomSection = [
-            'title'          => __('gov.top_active_contracts'),
-            'subtitle'       => __('gov.top_active_contracts_subtitle'),
+            'title' => __('gov.top_active_contracts'),
+            'subtitle' => __('gov.top_active_contracts_subtitle'),
             'view_all_route' => 'dashboard.contracts',
-            'items'          => $topContracts->map(fn (Contract $c) => [
-                'id'        => $c->contract_number,
-                'supplier'  => $c->buyerCompany?->name ?? '—',
+            'items' => $topContracts->map(fn (Contract $c) => [
+                'id' => $c->contract_number,
+                'supplier' => $c->buyerCompany?->name ?? '—',
                 'milestone' => $c->title,
-                'amount'    => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
-                'date'      => optional($c->created_at)->format('M j, Y'),
-                'status'    => 'scheduled',
-                'href'      => route('dashboard.contracts.show', ['id' => $c->id]),
+                'amount' => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+                'date' => optional($c->created_at)->format('M j, Y'),
+                'status' => 'scheduled',
+                'href' => route('dashboard.contracts.show', ['id' => $c->id]),
             ])->all(),
         ];
 
         return [
-            'headerAction'  => [
+            'headerAction' => [
                 'label' => __('dashboard.review_disputes'),
                 'route' => 'dashboard.disputes',
-                'icon'  => 'M9 12.75L11.25 15 15 9.75',
+                'icon' => 'M9 12.75L11.25 15 15 9.75',
             ],
-            'stats'         => $stats,
-            'primaryList'   => $primaryList,
+            'stats' => $stats,
+            'primaryList' => $primaryList,
             'notifications' => $this->buildNotifications(null),
-            'listLeft'      => $listLeft,
-            'listRight'     => $listRight,
+            'listLeft' => $listLeft,
+            'listRight' => $listRight,
             'bottomSection' => $bottomSection,
         ];
     }
@@ -1214,12 +1213,12 @@ class DashboardController extends Controller
 
         $recentUsers = User::with('company')->latest()->limit(3)->get();
         $primaryList = [
-            'title'          => __('admin.recent_users'),
-            'subtitle'       => __('admin.newly_registered_accounts'),
+            'title' => __('admin.recent_users'),
+            'subtitle' => __('admin.newly_registered_accounts'),
             'view_all_route' => 'admin.users.index',
-            'items'          => $recentUsers->map(fn (User $u) => [
-                'id'    => 'U-' . $u->id,
-                'title' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+            'items' => $recentUsers->map(fn (User $u) => [
+                'id' => 'U-'.$u->id,
+                'title' => trim(($u->first_name ?? '').' '.($u->last_name ?? '')),
                 'meta1' => $u->email,
                 'meta2' => $u->company?->name ?? '—',
                 'status' => 'open',
@@ -1228,31 +1227,31 @@ class DashboardController extends Controller
 
         $pendingCompanies = Company::where('status', CompanyStatus::PENDING->value)->latest()->limit(3)->get();
         $listLeft = [
-            'title'          => __('admin.companies') . ' — ' . __('dashboard.pending_approvals'),
-            'subtitle'       => __('admin.awaiting_verification'),
+            'title' => __('admin.companies').' — '.__('dashboard.pending_approvals'),
+            'subtitle' => __('admin.awaiting_verification'),
             'view_all_route' => 'admin.companies.index',
-            'items'          => $pendingCompanies->map(fn (Company $c) => [
-                'id'             => 'CO-' . $c->id,
-                'title'          => $c->name,
+            'items' => $pendingCompanies->map(fn (Company $c) => [
+                'id' => 'CO-'.$c->id,
+                'title' => $c->name,
                 'progress_label' => $c->city ?? '—',
                 // Pending companies sit at 30% in the verification funnel
                 // (registered, awaiting KYB review).
-                'progress'       => 30,
+                'progress' => 30,
             ])->all(),
         ];
 
         $activeContracts = Contract::with('buyerCompany')->where('status', 'active')->latest()->limit(3)->get();
         $listRight = [
-            'title'          => __('dashboard.active_contracts'),
-            'subtitle'       => __('admin.system_wide'),
+            'title' => __('dashboard.active_contracts'),
+            'subtitle' => __('admin.system_wide'),
             'view_all_route' => 'dashboard.contracts',
-            'items'          => $activeContracts->map(fn (Contract $c) => [
-                'id'             => $c->contract_number,
-                'title'          => $c->title,
-                'amount'         => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+            'items' => $activeContracts->map(fn (Contract $c) => [
+                'id' => $c->contract_number,
+                'title' => $c->title,
+                'amount' => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
                 'progress_label' => __('contracts.in_production'),
-                'progress'       => $c->realProgress(),
-                'href'           => route('dashboard.contracts.show', ['id' => $c->id]),
+                'progress' => $c->realProgress(),
+                'href' => route('dashboard.contracts.show', ['id' => $c->id]),
             ])->all(),
         ];
 
@@ -1266,31 +1265,31 @@ class DashboardController extends Controller
             ->get();
 
         $bottomSection = [
-            'title'          => __('disputes.open'),
-            'subtitle'       => __('admin.system_wide'),
+            'title' => __('disputes.open'),
+            'subtitle' => __('admin.system_wide'),
             'view_all_route' => 'dashboard.disputes',
-            'items'          => $openDisputes->map(fn (Dispute $d) => [
-                'id'        => 'DIS-' . $d->id,
-                'supplier'  => $d->company?->name ?? '—',
+            'items' => $openDisputes->map(fn (Dispute $d) => [
+                'id' => 'DIS-'.$d->id,
+                'supplier' => $d->company?->name ?? '—',
                 'milestone' => $d->title,
-                'amount'    => $this->money((float) ($d->contract?->total_amount ?? 0), $d->contract?->currency ?? 'AED'),
-                'date'      => optional($d->created_at)->format('M j, Y'),
-                'status'    => 'urgent',
-                'href'      => route('dashboard.disputes.show', ['id' => $d->id]),
+                'amount' => $this->money((float) ($d->contract?->total_amount ?? 0), $d->contract?->currency ?? 'AED'),
+                'date' => optional($d->created_at)->format('M j, Y'),
+                'status' => 'urgent',
+                'href' => route('dashboard.disputes.show', ['id' => $d->id]),
             ])->all(),
         ];
 
         return [
-            'headerAction'  => [
+            'headerAction' => [
                 'label' => __('dashboard.system_settings'),
                 'route' => 'admin.settings.index',
-                'icon'  => 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593',
+                'icon' => 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593',
             ],
-            'stats'         => $stats,
-            'primaryList'   => $primaryList,
+            'stats' => $stats,
+            'primaryList' => $primaryList,
             'notifications' => $this->buildNotifications(null),
-            'listLeft'      => $listLeft,
-            'listRight'     => $listRight,
+            'listLeft' => $listLeft,
+            'listRight' => $listRight,
             'bottomSection' => $bottomSection,
         ];
     }
@@ -1323,12 +1322,12 @@ class DashboardController extends Controller
         unset($companyId); // Notifications belong to the user, not the company.
 
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             return ['count' => 0, 'items' => []];
         }
 
         $unreadCount = $user->unreadNotifications()->count();
-        $latest      = $user->notifications()->latest()->limit(5)->get();
+        $latest = $user->notifications()->latest()->limit(5)->get();
 
         return [
             'count' => $unreadCount,
@@ -1339,12 +1338,12 @@ class DashboardController extends Controller
     private function shortMoney(float $value, string $currency = 'AED'): string
     {
         if ($value >= 1_000_000) {
-            return $currency . ' ' . round($value / 1_000_000, 1) . 'M';
+            return $currency.' '.round($value / 1_000_000, 1).'M';
         }
         if ($value >= 1_000) {
-            return $currency . ' ' . round($value / 1_000) . 'K';
+            return $currency.' '.round($value / 1_000).'K';
         }
 
-        return $currency . ' ' . number_format($value);
+        return $currency.' '.number_format($value);
     }
 }

@@ -16,9 +16,7 @@ use Illuminate\View\View;
  */
 class SpendAnalyticsController extends Controller
 {
-    public function __construct(private readonly SpendAnalyticsService $service)
-    {
-    }
+    public function __construct(private readonly SpendAnalyticsService $service) {}
 
     public function index(): View
     {
@@ -27,12 +25,12 @@ class SpendAnalyticsController extends Controller
         abort_unless($user->hasPermission('reports.view'), 403);
 
         $companyId = $user->company_id;
-        $branchId  = $user->isBranchManager() ? $user->branch_id : null;
+        $branchId = $user->isBranchManager() ? $user->branch_id : null;
 
-        $summary       = $this->service->summary($companyId, $branchId);
-        $topSuppliers  = $this->service->topSuppliers($companyId, 10, $branchId);
-        $monthlyTrend  = $this->service->monthlyTrend($companyId, $branchId);
-        $byCategory    = $this->service->spendByCategory($companyId, $branchId);
+        $summary = $this->service->summary($companyId, $branchId);
+        $topSuppliers = $this->service->topSuppliers($companyId, 10, $branchId);
+        $monthlyTrend = $this->service->monthlyTrend($companyId, $branchId);
+        $byCategory = $this->service->spendByCategory($companyId, $branchId);
 
         return view('dashboard.analytics.spend', compact(
             'summary',

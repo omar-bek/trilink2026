@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Bid;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,8 +13,8 @@ use Illuminate\Notifications\Notification;
 
 class NewBidNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Bid $bid,
@@ -22,8 +24,8 @@ class NewBidNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'bid_updates',
             ['database', 'mail']
         );
@@ -32,8 +34,8 @@ class NewBidNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
-        $amount    = number_format((float) $this->bid->price, 2);
-        $currency  = $this->bid->currency ?? 'AED';
+        $amount = number_format((float) $this->bid->price, 2);
+        $currency = $this->bid->currency ?? 'AED';
 
         return $this->baseMail($notifiable, 'notifications.bid.new.subject', ['rfq' => $rfqNumber])
             ->line($this->t($notifiable, 'notifications.bid.new.line1'))
@@ -48,20 +50,20 @@ class NewBidNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
-        $amount    = number_format((float) $this->bid->price, 2);
-        $currency  = $this->bid->currency ?? 'AED';
+        $amount = number_format((float) $this->bid->price, 2);
+        $currency = $this->bid->currency ?? 'AED';
 
         return [
-            'type'        => 'info',
-            'title'       => $this->t($notifiable, 'notifications.bid.new.title'),
-            'message'     => $this->t($notifiable, 'notifications.bid.new.message', [
-                'amount'   => $amount,
+            'type' => 'info',
+            'title' => $this->t($notifiable, 'notifications.bid.new.title'),
+            'message' => $this->t($notifiable, 'notifications.bid.new.message', [
+                'amount' => $amount,
                 'currency' => $currency,
-                'rfq'      => $rfqNumber,
+                'rfq' => $rfqNumber,
             ]),
             'entity_type' => 'bid',
-            'entity_id'   => $this->bid->id,
-            'rfq_id'      => $this->bid->rfq_id,
+            'entity_id' => $this->bid->id,
+            'rfq_id' => $this->bid->rfq_id,
         ];
     }
 }

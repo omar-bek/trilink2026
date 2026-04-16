@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AuditAction;
 use App\Enums\BidStatus;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
@@ -30,6 +31,7 @@ use App\Services\EInvoice\EInvoiceDispatcher;
 use App\Services\EInvoice\PintAeMapper;
 use App\Services\Procurement\IcvScoringService;
 use App\Services\Tax\TaxInvoiceService;
+use Carbon\Carbon;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -55,15 +57,15 @@ class HardeningSuiteTest extends TestCase
     private function makeCompany(string $name, CompanyType $type = CompanyType::BUYER): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => 'TRN-100200300400500',
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@t.test',
-            'address'             => '101 Sheikh Zayed Road',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => 'TRN-100200300400500',
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@t.test',
+            'address' => '101 Sheikh Zayed Road',
+            'city' => 'Dubai',
+            'country' => 'AE',
         ]);
     }
 
@@ -71,24 +73,24 @@ class HardeningSuiteTest extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => 'u-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'u-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
 
-    private function attachValidTradeLicense(Company $company, ?\Carbon\Carbon $expiresAt = null): CompanyDocument
+    private function attachValidTradeLicense(Company $company, ?Carbon $expiresAt = null): CompanyDocument
     {
         return CompanyDocument::create([
             'company_id' => $company->id,
-            'type'       => DocumentType::TRADE_LICENSE,
-            'label'      => 'Trade License',
-            'file_path'  => 'test/trade-license.pdf',
-            'status'     => CompanyDocument::STATUS_VERIFIED,
-            'issued_at'  => now()->subYear(),
+            'type' => DocumentType::TRADE_LICENSE,
+            'label' => 'Trade License',
+            'file_path' => 'test/trade-license.pdf',
+            'status' => CompanyDocument::STATUS_VERIFIED,
+            'issued_at' => now()->subYear(),
             'expires_at' => $expiresAt ?? now()->addYear(),
         ]);
     }
@@ -103,16 +105,16 @@ class HardeningSuiteTest extends TestCase
         $user = $this->makeUser($company);
 
         $log = AuditLog::create([
-            'user_id'       => $user->id,
-            'company_id'    => $company->id,
-            'action'        => \App\Enums\AuditAction::CREATE,
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'action' => AuditAction::CREATE,
             'resource_type' => 'TestResource',
-            'resource_id'   => 1,
-            'before'        => null,
-            'after'         => ['email' => 'sensitive@example.com', 'phone' => '+971501234567'],
-            'ip_address'    => '203.0.113.42',
-            'user_agent'    => 'Mozilla/5.0 (test)',
-            'status'        => 'success',
+            'resource_id' => 1,
+            'before' => null,
+            'after' => ['email' => 'sensitive@example.com', 'phone' => '+971501234567'],
+            'ip_address' => '203.0.113.42',
+            'user_agent' => 'Mozilla/5.0 (test)',
+            'status' => 'success',
         ]);
 
         $reloaded = $log->fresh();
@@ -135,16 +137,16 @@ class HardeningSuiteTest extends TestCase
         $rows = [];
         for ($i = 0; $i < 3; $i++) {
             $rows[] = AuditLog::create([
-                'user_id'       => $user->id,
-                'company_id'    => $company->id,
-                'action'        => \App\Enums\AuditAction::CREATE,
+                'user_id' => $user->id,
+                'company_id' => $company->id,
+                'action' => AuditAction::CREATE,
                 'resource_type' => 'Test',
-                'resource_id'   => $i + 1,
-                'before'        => null,
-                'after'         => ['n' => $i],
-                'ip_address'    => '10.0.0.' . ($i + 1),
-                'user_agent'    => 'agent-' . $i,
-                'status'        => 'success',
+                'resource_id' => $i + 1,
+                'before' => null,
+                'after' => ['n' => $i],
+                'ip_address' => '10.0.0.'.($i + 1),
+                'user_agent' => 'agent-'.$i,
+                'status' => 'success',
             ]);
         }
 
@@ -171,39 +173,39 @@ class HardeningSuiteTest extends TestCase
     {
         $service = $this->app->make(ContractService::class);
 
-        $buyerCompany    = $this->makeCompany('Gate Buyer', CompanyType::BUYER);
+        $buyerCompany = $this->makeCompany('Gate Buyer', CompanyType::BUYER);
         $supplierCompany = $this->makeCompany('Gate Supplier', CompanyType::SUPPLIER);
-        $supplierUser    = $this->makeUser($supplierCompany, UserRole::SUPPLIER);
+        $supplierUser = $this->makeUser($supplierCompany, UserRole::SUPPLIER);
 
         // Buyer has a valid license, supplier's is EXPIRED.
         $this->attachValidTradeLicense($buyerCompany);
         CompanyDocument::create([
             'company_id' => $supplierCompany->id,
-            'type'       => DocumentType::TRADE_LICENSE,
-            'label'      => 'Trade License',
-            'file_path'  => 'test/expired.pdf',
-            'status'     => CompanyDocument::STATUS_VERIFIED,
+            'type' => DocumentType::TRADE_LICENSE,
+            'label' => 'Trade License',
+            'file_path' => 'test/expired.pdf',
+            'status' => CompanyDocument::STATUS_VERIFIED,
             'expires_at' => now()->subDays(5), // expired
         ]);
 
         $rfq = Rfq::create([
-            'rfq_number' => 'RFQ-' . uniqid(),
-            'title'      => 'Gate Test',
+            'rfq_number' => 'RFQ-'.uniqid(),
+            'title' => 'Gate Test',
             'company_id' => $buyerCompany->id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'items'      => [['name' => 'Item', 'qty' => 1]],
-            'budget'     => 1000,
-            'currency'   => 'AED',
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'Item', 'qty' => 1]],
+            'budget' => 1000,
+            'currency' => 'AED',
         ]);
 
         $bid = Bid::create([
-            'rfq_id'      => $rfq->id,
-            'company_id'  => $supplierCompany->id,
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplierCompany->id,
             'provider_id' => $supplierUser->id,
-            'status'      => BidStatus::SUBMITTED,
-            'price'       => 900,
-            'currency'    => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => 900,
+            'currency' => 'AED',
         ]);
 
         $this->expectException(\RuntimeException::class);
@@ -215,31 +217,31 @@ class HardeningSuiteTest extends TestCase
     {
         $service = $this->app->make(ContractService::class);
 
-        $buyerCompany    = $this->makeCompany('OK Buyer', CompanyType::BUYER);
+        $buyerCompany = $this->makeCompany('OK Buyer', CompanyType::BUYER);
         $supplierCompany = $this->makeCompany('OK Supplier', CompanyType::SUPPLIER);
-        $supplierUser    = $this->makeUser($supplierCompany, UserRole::SUPPLIER);
+        $supplierUser = $this->makeUser($supplierCompany, UserRole::SUPPLIER);
 
         $this->attachValidTradeLicense($buyerCompany);
         $this->attachValidTradeLicense($supplierCompany);
 
         $rfq = Rfq::create([
-            'rfq_number' => 'RFQ-' . uniqid(),
-            'title'      => 'OK Test',
+            'rfq_number' => 'RFQ-'.uniqid(),
+            'title' => 'OK Test',
             'company_id' => $buyerCompany->id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'items'      => [['name' => 'Item', 'qty' => 1]],
-            'budget'     => 1000,
-            'currency'   => 'AED',
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'Item', 'qty' => 1]],
+            'budget' => 1000,
+            'currency' => 'AED',
         ]);
 
         $bid = Bid::create([
-            'rfq_id'      => $rfq->id,
-            'company_id'  => $supplierCompany->id,
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplierCompany->id,
             'provider_id' => $supplierUser->id,
-            'status'      => BidStatus::SUBMITTED,
-            'price'       => 900,
-            'currency'    => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => 900,
+            'currency' => 'AED',
         ]);
 
         $contract = $service->createFromBid($bid->fresh());
@@ -263,31 +265,31 @@ class HardeningSuiteTest extends TestCase
         // vat_case = reverse_charge (the Phase 3 ContractService work
         // would set this naturally for cross-zone bids).
         $contract = Contract::create([
-            'title'             => 'RC Test',
-            'buyer_company_id'  => $buyer->id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->id, 'role' => 'supplier']],
-            'terms'             => json_encode([
-                'en'           => [],
-                'ar'           => [],
+            'title' => 'RC Test',
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'terms' => json_encode([
+                'en' => [],
+                'ar' => [],
                 'jurisdiction' => 'federal',
-                'vat_case'     => 'reverse_charge',
+                'vat_case' => 'reverse_charge',
             ]),
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
             'recipient_company_id' => $supplier->id,
-            'buyer_id'             => $buyerUser->id,
-            'status'               => PaymentStatus::COMPLETED,
-            'amount'               => 1000,
-            'vat_rate'             => 0, // RC: supplier doesn't charge
-            'currency'             => 'AED',
-            'milestone'            => 'M1',
-            'approved_at'          => now(),
+            'buyer_id' => $buyerUser->id,
+            'status' => PaymentStatus::COMPLETED,
+            'amount' => 1000,
+            'vat_rate' => 0, // RC: supplier doesn't charge
+            'currency' => 'AED',
+            'milestone' => 'M1',
+            'approved_at' => now(),
         ]);
 
         // Issue directly via the service so the test isn't entangled
@@ -307,26 +309,26 @@ class HardeningSuiteTest extends TestCase
         $buyerUser = $this->makeUser($buyer, UserRole::BUYER);
 
         $contract = Contract::create([
-            'title'             => 'Std Test',
-            'buyer_company_id'  => $buyer->id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'title' => 'Std Test',
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
             // No terms — legacy contract.
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
             'recipient_company_id' => $supplier->id,
-            'buyer_id'             => $buyerUser->id,
-            'status'               => PaymentStatus::COMPLETED,
-            'amount'               => 1000,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
-            'milestone'            => 'M1',
-            'approved_at'          => now(),
+            'buyer_id' => $buyerUser->id,
+            'status' => PaymentStatus::COMPLETED,
+            'amount' => 1000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
+            'milestone' => 'M1',
+            'approved_at' => now(),
         ]);
 
         $invoice = $service->issueFor($payment->fresh());
@@ -348,25 +350,25 @@ class HardeningSuiteTest extends TestCase
         $buyerUser = $this->makeUser($buyer, UserRole::BUYER);
 
         $contract = Contract::create([
-            'title'             => 'CN Test',
-            'buyer_company_id'  => $buyer->id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'title' => 'CN Test',
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
             'recipient_company_id' => $supplier->id,
-            'buyer_id'             => $buyerUser->id,
-            'status'               => PaymentStatus::COMPLETED,
-            'amount'               => 1000,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
-            'milestone'            => 'M1',
-            'approved_at'          => now(),
+            'buyer_id' => $buyerUser->id,
+            'status' => PaymentStatus::COMPLETED,
+            'amount' => 1000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
+            'milestone' => 'M1',
+            'approved_at' => now(),
         ]);
 
         $invoice = $service->issueFor($payment->fresh());
@@ -382,46 +384,46 @@ class HardeningSuiteTest extends TestCase
         $mapper = $this->app->make(PintAeMapper::class);
 
         $supplier = $this->makeCompany('CN-XML Supplier', CompanyType::SUPPLIER);
-        $buyer    = $this->makeCompany('CN-XML Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('CN-XML Buyer', CompanyType::BUYER);
 
         $invoice = TaxInvoice::create([
-            'invoice_number'      => 'INV-2026-555000',
-            'issue_date'          => now()->toDateString(),
-            'supply_date'         => now()->toDateString(),
+            'invoice_number' => 'INV-2026-555000',
+            'issue_date' => now()->toDateString(),
+            'supply_date' => now()->toDateString(),
             'supplier_company_id' => $supplier->id,
-            'supplier_trn'        => 'TRN-100200300400500',
-            'supplier_name'       => $supplier->name,
-            'supplier_address'    => 'Dubai',
-            'supplier_country'    => 'AE',
-            'buyer_company_id'    => $buyer->id,
-            'buyer_trn'           => 'TRN-200300400500600',
-            'buyer_name'          => $buyer->name,
-            'buyer_address'       => 'Abu Dhabi',
-            'buyer_country'       => 'AE',
-            'line_items'          => [[
+            'supplier_trn' => 'TRN-100200300400500',
+            'supplier_name' => $supplier->name,
+            'supplier_address' => 'Dubai',
+            'supplier_country' => 'AE',
+            'buyer_company_id' => $buyer->id,
+            'buyer_trn' => 'TRN-200300400500600',
+            'buyer_name' => $buyer->name,
+            'buyer_address' => 'Abu Dhabi',
+            'buyer_country' => 'AE',
+            'line_items' => [[
                 'description' => 'Test', 'quantity' => 1, 'unit' => 'each',
                 'unit_price' => 1000, 'taxable_amount' => 1000,
                 'tax_rate' => 5, 'tax_amount' => 50, 'line_total' => 1050,
             ]],
-            'subtotal_excl_tax'   => 1000,
-            'total_tax'           => 50,
-            'total_inclusive'     => 1050,
-            'currency'            => 'AED',
-            'status'              => TaxInvoice::STATUS_ISSUED,
-            'issued_at'           => now(),
+            'subtotal_excl_tax' => 1000,
+            'total_tax' => 50,
+            'total_inclusive' => 1050,
+            'currency' => 'AED',
+            'status' => TaxInvoice::STATUS_ISSUED,
+            'issued_at' => now(),
         ]);
 
         $cn = TaxCreditNote::create([
-            'credit_note_number'  => 'CN-2026-555000',
+            'credit_note_number' => 'CN-2026-555000',
             'original_invoice_id' => $invoice->id,
-            'issue_date'          => now()->toDateString(),
-            'reason'              => TaxCreditNote::REASON_REFUND,
-            'line_items'          => $invoice->line_items,
-            'subtotal_excl_tax'   => 1000,
-            'total_tax'           => 50,
-            'total_inclusive'     => 1050,
-            'currency'            => 'AED',
-            'issued_at'           => now(),
+            'issue_date' => now()->toDateString(),
+            'reason' => TaxCreditNote::REASON_REFUND,
+            'line_items' => $invoice->line_items,
+            'subtotal_excl_tax' => 1000,
+            'total_tax' => 50,
+            'total_inclusive' => 1050,
+            'currency' => 'AED',
+            'issued_at' => now(),
         ]);
 
         $xml = $mapper->toCreditNoteUbl($cn->fresh(['originalInvoice']));
@@ -452,39 +454,39 @@ class HardeningSuiteTest extends TestCase
         $dispatcher = $this->app->make(EInvoiceDispatcher::class);
 
         $supplier = $this->makeCompany('Disp CN Supplier', CompanyType::SUPPLIER);
-        $buyer    = $this->makeCompany('Disp CN Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Disp CN Buyer', CompanyType::BUYER);
 
         $invoice = TaxInvoice::create([
-            'invoice_number'      => 'INV-2026-666000',
-            'issue_date'          => now()->toDateString(),
-            'supply_date'         => now()->toDateString(),
+            'invoice_number' => 'INV-2026-666000',
+            'issue_date' => now()->toDateString(),
+            'supply_date' => now()->toDateString(),
             'supplier_company_id' => $supplier->id,
-            'supplier_trn'        => 'TRN-1', 'supplier_name' => $supplier->name,
+            'supplier_trn' => 'TRN-1', 'supplier_name' => $supplier->name,
             'supplier_address' => 'Dubai', 'supplier_country' => 'AE',
-            'buyer_company_id'    => $buyer->id,
-            'buyer_trn'           => 'TRN-2', 'buyer_name' => $buyer->name,
+            'buyer_company_id' => $buyer->id,
+            'buyer_trn' => 'TRN-2', 'buyer_name' => $buyer->name,
             'buyer_address' => 'AUH', 'buyer_country' => 'AE',
-            'line_items'          => [[
+            'line_items' => [[
                 'description' => 'X', 'quantity' => 1, 'unit' => 'each',
                 'unit_price' => 100, 'taxable_amount' => 100,
                 'tax_rate' => 5, 'tax_amount' => 5, 'line_total' => 105,
             ]],
-            'subtotal_excl_tax'   => 100, 'total_tax' => 5, 'total_inclusive' => 105,
-            'currency'            => 'AED', 'status' => TaxInvoice::STATUS_ISSUED,
-            'issued_at'           => now(),
+            'subtotal_excl_tax' => 100, 'total_tax' => 5, 'total_inclusive' => 105,
+            'currency' => 'AED', 'status' => TaxInvoice::STATUS_ISSUED,
+            'issued_at' => now(),
         ]);
 
         $cn = TaxCreditNote::create([
-            'credit_note_number'  => 'CN-2026-666000',
+            'credit_note_number' => 'CN-2026-666000',
             'original_invoice_id' => $invoice->id,
-            'issue_date'          => now()->toDateString(),
-            'reason'              => TaxCreditNote::REASON_REFUND,
-            'line_items'          => $invoice->line_items,
-            'subtotal_excl_tax'   => 100,
-            'total_tax'           => 5,
-            'total_inclusive'     => 105,
-            'currency'            => 'AED',
-            'issued_at'           => now(),
+            'issue_date' => now()->toDateString(),
+            'reason' => TaxCreditNote::REASON_REFUND,
+            'line_items' => $invoice->line_items,
+            'subtotal_excl_tax' => 100,
+            'total_tax' => 5,
+            'total_inclusive' => 105,
+            'currency' => 'AED',
+            'issued_at' => now(),
         ]);
 
         $submission = $dispatcher->dispatchForCreditNote($cn->fresh(['originalInvoice']));
@@ -511,28 +513,28 @@ class HardeningSuiteTest extends TestCase
         $mapper = $this->app->make(PintAeMapper::class);
 
         $supplier = $this->makeCompany('Endpoint Supplier', CompanyType::SUPPLIER);
-        $buyer    = $this->makeCompany('Endpoint Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Endpoint Buyer', CompanyType::BUYER);
 
         $invoice = TaxInvoice::create([
-            'invoice_number'      => 'INV-2026-777000',
-            'issue_date'          => now()->toDateString(),
-            'supply_date'         => now()->toDateString(),
+            'invoice_number' => 'INV-2026-777000',
+            'issue_date' => now()->toDateString(),
+            'supply_date' => now()->toDateString(),
             'supplier_company_id' => $supplier->id,
-            'supplier_trn'        => 'TRN-AAAA1111',
-            'supplier_name'       => $supplier->name,
-            'supplier_address'    => 'Dubai', 'supplier_country' => 'AE',
-            'buyer_company_id'    => $buyer->id,
-            'buyer_trn'           => 'TRN-BBBB2222',
-            'buyer_name'          => $buyer->name,
-            'buyer_address'       => 'AUH', 'buyer_country' => 'AE',
-            'line_items'          => [[
+            'supplier_trn' => 'TRN-AAAA1111',
+            'supplier_name' => $supplier->name,
+            'supplier_address' => 'Dubai', 'supplier_country' => 'AE',
+            'buyer_company_id' => $buyer->id,
+            'buyer_trn' => 'TRN-BBBB2222',
+            'buyer_name' => $buyer->name,
+            'buyer_address' => 'AUH', 'buyer_country' => 'AE',
+            'line_items' => [[
                 'description' => 'x', 'quantity' => 1, 'unit' => 'each',
                 'unit_price' => 100, 'taxable_amount' => 100,
                 'tax_rate' => 5, 'tax_amount' => 5, 'line_total' => 105,
             ]],
-            'subtotal_excl_tax'   => 100, 'total_tax' => 5, 'total_inclusive' => 105,
-            'currency'            => 'AED', 'status' => TaxInvoice::STATUS_ISSUED,
-            'issued_at'           => now(),
+            'subtotal_excl_tax' => 100, 'total_tax' => 5, 'total_inclusive' => 105,
+            'currency' => 'AED', 'status' => TaxInvoice::STATUS_ISSUED,
+            'issued_at' => now(),
         ]);
 
         $xml = $mapper->toUbl($invoice);
@@ -556,50 +558,50 @@ class HardeningSuiteTest extends TestCase
     {
         $service = $this->app->make(IcvScoringService::class);
 
-        $buyer    = $this->makeCompany('ICV Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('ICV Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Multi-issuer Supplier', CompanyType::SUPPLIER);
 
         // Supplier has TWO certs: high MoIAT score, low ADNOC score
         IcvCertificate::create([
-            'company_id'         => $supplier->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $supplier->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'M-1',
-            'score'              => 90,
-            'issued_date'        => now()->subMonths(2),
-            'expires_date'       => now()->addMonths(10),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 90,
+            'issued_date' => now()->subMonths(2),
+            'expires_date' => now()->addMonths(10),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
         IcvCertificate::create([
-            'company_id'         => $supplier->id,
-            'issuer'             => IcvCertificate::ISSUER_ADNOC,
+            'company_id' => $supplier->id,
+            'issuer' => IcvCertificate::ISSUER_ADNOC,
             'certificate_number' => 'A-1',
-            'score'              => 25,
-            'issued_date'        => now()->subMonths(2),
-            'expires_date'       => now()->addMonths(10),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 25,
+            'issued_date' => now()->subMonths(2),
+            'expires_date' => now()->addMonths(10),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         // ADNOC-only RFQ — supplier should only score 25, not 90
         $rfq = Rfq::create([
-            'rfq_number'           => 'RFQ-' . uniqid(),
-            'title'                => 'ADNOC tender',
-            'company_id'           => $buyer->id,
-            'type'                 => RfqType::SUPPLIER,
-            'status'               => RfqStatus::OPEN,
-            'items'                => [['name' => 'X', 'qty' => 1]],
-            'budget'               => 1000,
-            'currency'             => 'AED',
-            'icv_weight_percentage'=> 30,
+            'rfq_number' => 'RFQ-'.uniqid(),
+            'title' => 'ADNOC tender',
+            'company_id' => $buyer->id,
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'X', 'qty' => 1]],
+            'budget' => 1000,
+            'currency' => 'AED',
+            'icv_weight_percentage' => 30,
             'icv_required_issuers' => ['adnoc'],
         ]);
 
         $bid = Bid::create([
-            'rfq_id'      => $rfq->id,
-            'company_id'  => $supplier->id,
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplier->id,
             'provider_id' => $this->makeUser($supplier, UserRole::SUPPLIER)->id,
-            'status'      => BidStatus::SUBMITTED,
-            'price'       => 1000,
-            'currency'    => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => 1000,
+            'currency' => 'AED',
         ]);
 
         $bids = $rfq->bids()->with('company')->get();
@@ -613,40 +615,40 @@ class HardeningSuiteTest extends TestCase
     {
         $service = $this->app->make(IcvScoringService::class);
 
-        $buyer    = $this->makeCompany('Open Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Open Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Open Supplier', CompanyType::SUPPLIER);
 
         IcvCertificate::create([
-            'company_id'         => $supplier->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $supplier->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'M-1',
-            'score'              => 80,
-            'issued_date'        => now()->subMonths(2),
-            'expires_date'       => now()->addMonths(10),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 80,
+            'issued_date' => now()->subMonths(2),
+            'expires_date' => now()->addMonths(10),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         // Open RFQ — no issuer restriction
         $rfq = Rfq::create([
-            'rfq_number'           => 'RFQ-' . uniqid(),
-            'title'                => 'Open tender',
-            'company_id'           => $buyer->id,
-            'type'                 => RfqType::SUPPLIER,
-            'status'               => RfqStatus::OPEN,
-            'items'                => [['name' => 'X', 'qty' => 1]],
-            'budget'               => 1000,
-            'currency'             => 'AED',
-            'icv_weight_percentage'=> 30,
+            'rfq_number' => 'RFQ-'.uniqid(),
+            'title' => 'Open tender',
+            'company_id' => $buyer->id,
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'X', 'qty' => 1]],
+            'budget' => 1000,
+            'currency' => 'AED',
+            'icv_weight_percentage' => 30,
             'icv_required_issuers' => null,
         ]);
 
         $bid = Bid::create([
-            'rfq_id'      => $rfq->id,
-            'company_id'  => $supplier->id,
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplier->id,
             'provider_id' => $this->makeUser($supplier, UserRole::SUPPLIER)->id,
-            'status'      => BidStatus::SUBMITTED,
-            'price'       => 1000,
-            'currency'    => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => 1000,
+            'currency' => 'AED',
         ]);
 
         $bids = $rfq->bids()->with('company')->get();
@@ -659,40 +661,40 @@ class HardeningSuiteTest extends TestCase
     {
         $service = $this->app->make(IcvScoringService::class);
 
-        $buyer    = $this->makeCompany('Picky Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Picky Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('MoIAT-only Supplier', CompanyType::SUPPLIER);
 
         IcvCertificate::create([
-            'company_id'         => $supplier->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $supplier->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'M-only',
-            'score'              => 95,
-            'issued_date'        => now()->subMonths(1),
-            'expires_date'       => now()->addMonths(11),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 95,
+            'issued_date' => now()->subMonths(1),
+            'expires_date' => now()->addMonths(11),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         // Mubadala-only RFQ — supplier has no Mubadala cert
         $rfq = Rfq::create([
-            'rfq_number'           => 'RFQ-' . uniqid(),
-            'title'                => 'Mubadala tender',
-            'company_id'           => $buyer->id,
-            'type'                 => RfqType::SUPPLIER,
-            'status'               => RfqStatus::OPEN,
-            'items'                => [['name' => 'X', 'qty' => 1]],
-            'budget'               => 1000,
-            'currency'             => 'AED',
-            'icv_weight_percentage'=> 30,
+            'rfq_number' => 'RFQ-'.uniqid(),
+            'title' => 'Mubadala tender',
+            'company_id' => $buyer->id,
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'X', 'qty' => 1]],
+            'budget' => 1000,
+            'currency' => 'AED',
+            'icv_weight_percentage' => 30,
             'icv_required_issuers' => ['mubadala'],
         ]);
 
         $bid = Bid::create([
-            'rfq_id'      => $rfq->id,
-            'company_id'  => $supplier->id,
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplier->id,
             'provider_id' => $this->makeUser($supplier, UserRole::SUPPLIER)->id,
-            'status'      => BidStatus::SUBMITTED,
-            'price'       => 1000,
-            'currency'    => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => 1000,
+            'currency' => 'AED',
         ]);
 
         $bids = $rfq->bids()->with('company')->get();

@@ -5,7 +5,9 @@ namespace App\Notifications;
 use App\Models\Contract;
 use App\Models\ContractAmendment;
 use App\Models\ContractAmendmentMessage;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -19,8 +21,8 @@ use Illuminate\Notifications\Notification;
  */
 class ContractAmendmentMessageNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Contract $contract,
@@ -33,8 +35,8 @@ class ContractAmendmentMessageNotification extends Notification implements Shoul
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'contract_milestones',
             ['database', 'mail']
         );
@@ -42,12 +44,12 @@ class ContractAmendmentMessageNotification extends Notification implements Shoul
 
     public function toMail(object $notifiable): MailMessage
     {
-        $number  = $this->contract->contract_number;
+        $number = $this->contract->contract_number;
         $excerpt = mb_substr((string) $this->message->body, 0, 140);
 
         return $this->baseMail($notifiable, 'notifications.contract.amendment_message.subject', ['number' => $number])
             ->line($this->t($notifiable, 'notifications.contract.amendment_message.line1', ['number' => $number]))
-            ->line('"' . $excerpt . '"')
+            ->line('"'.$excerpt.'"')
             ->action(
                 $this->t($notifiable, 'notifications.common.action_open'),
                 route('dashboard.contracts.show', ['id' => $this->contract->id])
@@ -57,13 +59,13 @@ class ContractAmendmentMessageNotification extends Notification implements Shoul
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'info',
-            'title'       => $this->t($notifiable, 'notifications.contract.amendment_message.title'),
-            'message'     => $this->t($notifiable, 'notifications.contract.amendment_message.message', [
+            'type' => 'info',
+            'title' => $this->t($notifiable, 'notifications.contract.amendment_message.title'),
+            'message' => $this->t($notifiable, 'notifications.contract.amendment_message.message', [
                 'number' => $this->contract->contract_number,
             ]),
             'entity_type' => 'contract',
-            'entity_id'   => $this->contract->id,
+            'entity_id' => $this->contract->id,
         ];
     }
 }

@@ -16,8 +16,10 @@ class ConflictMineralsDeclaration extends Model
     use HasFactory;
 
     public const STATUS_CONFLICT_FREE = 'conflict_free';
-    public const STATUS_IN_PROGRESS   = 'in_progress';
-    public const STATUS_UNKNOWN       = 'unknown';
+
+    public const STATUS_IN_PROGRESS = 'in_progress';
+
+    public const STATUS_UNKNOWN = 'unknown';
 
     protected $fillable = [
         'company_id',
@@ -34,7 +36,7 @@ class ConflictMineralsDeclaration extends Model
     {
         return [
             'reporting_year' => 'integer',
-            'smelters'       => 'array',
+            'smelters' => 'array',
         ];
     }
 

@@ -4,21 +4,24 @@ namespace App\Services;
 
 use App\Enums\AmendmentStatus;
 use App\Enums\ContractStatus;
+use App\Enums\LegalJurisdiction;
 use App\Enums\RfqType;
 use App\Events\ContractSigned;
 use App\Models\Bid;
 use App\Models\Cart;
 use App\Models\Company;
-use App\Models\Product;
 use App\Models\Contract;
 use App\Models\ContractAmendment;
 use App\Models\ContractVersion;
+use App\Models\Product;
 use App\Models\TaxRate;
 use App\Models\User;
 use App\Notifications\ContractCreatedNotification;
 use App\Notifications\ContractSignedNotification;
+use App\Services\Signing\SignatureGradeResolver;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
@@ -26,9 +29,8 @@ class ContractService
 {
     public function __construct(
         private readonly PaymentService $paymentService,
-        private readonly \App\Services\Signing\SignatureGradeResolver $gradeResolver,
-    ) {
-    }
+        private readonly SignatureGradeResolver $gradeResolver,
+    ) {}
 
     /**
      * Phase 6 (UAE Compliance Roadmap) — refuse the signature when the
@@ -50,11 +52,11 @@ class ContractService
         // what the platform was always producing pre-Phase-6.
         $achievedRaw = (string) ($auditContext['signature_grade'] ?? 'simple');
         $achieved = \App\Enums\SignatureGrade::tryFrom($achievedRaw);
-        if (!$achieved) {
+        if (! $achieved) {
             return "Invalid signature grade: {$achievedRaw}";
         }
 
-        if (!$achieved->satisfies($required)) {
+        if (! $achieved->satisfies($required)) {
             return sprintf(
                 'This contract requires a %s but the signature provided is only %s. %s',
                 $required->label(),
@@ -106,6 +108,7 @@ class ContractService
         $contract = Contract::findOrFail($id);
 
         $contract->update($data);
+
         return $contract->fresh('buyerCompany');
     }
 
@@ -117,9 +120,11 @@ class ContractService
     public function sign(int $id, int $userId, int $companyId, ?string $signature = null, array $auditContext = []): Contract|string
     {
         $contract = Contract::find($id);
-        if (!$contract) return 'Contract not found';
+        if (! $contract) {
+            return 'Contract not found';
+        }
 
-        if (!in_array($contract->status, [ContractStatus::DRAFT, ContractStatus::PENDING_SIGNATURES])) {
+        if (! in_array($contract->status, [ContractStatus::DRAFT, ContractStatus::PENDING_SIGNATURES])) {
             return 'Contract is not in a signable state';
         }
 
@@ -147,7 +152,7 @@ class ContractService
             ->unique()
             ->all();
 
-        if (!in_array($companyId, $partyCompanyIds, true)) {
+        if (! in_array($companyId, $partyCompanyIds, true)) {
             return 'Your company is not a party to this contract';
         }
 
@@ -168,33 +173,33 @@ class ContractService
         // any later challenge in court.
         $contractHash = hash('sha256', json_encode([
             'contract_number' => $contract->contract_number,
-            'version'         => $contract->version,
-            'terms'           => $contract->terms,
-            'amounts'         => $contract->amounts,
-            'parties'         => $contract->parties,
+            'version' => $contract->version,
+            'terms' => $contract->terms,
+            'amounts' => $contract->amounts,
+            'parties' => $contract->parties,
         ], JSON_UNESCAPED_UNICODE));
 
         $signatures[] = [
-            'user_id'        => $userId,
-            'company_id'     => $companyId,
-            'signature'      => $signature,
-            'signed_at'      => now()->toIso8601String(),
-            'ip_address'     => $auditContext['ip_address']     ?? null,
-            'user_agent'     => $auditContext['user_agent']     ?? null,
-            'consent_text'   => $auditContext['consent_text']   ?? null,
-            'consent_at'     => $auditContext['consent_at']     ?? now()->toIso8601String(),
-            'contract_hash'  => $contractHash,
+            'user_id' => $userId,
+            'company_id' => $companyId,
+            'signature' => $signature,
+            'signed_at' => now()->toIso8601String(),
+            'ip_address' => $auditContext['ip_address'] ?? null,
+            'user_agent' => $auditContext['user_agent'] ?? null,
+            'consent_text' => $auditContext['consent_text'] ?? null,
+            'consent_at' => $auditContext['consent_at'] ?? now()->toIso8601String(),
+            'contract_hash' => $contractHash,
             'contract_version' => $contract->version,
             // Phase 6 (UAE Compliance Roadmap) — grade + provider trail
             // for the public verify endpoint and any future court audit.
-            'signature_grade'    => $grade->value,
-            'uae_pass_user_id'   => $auditContext['uae_pass_user_id'] ?? null,
+            'signature_grade' => $grade->value,
+            'uae_pass_user_id' => $auditContext['uae_pass_user_id'] ?? null,
             'uae_pass_full_name' => $auditContext['uae_pass_full_name'] ?? null,
-            'tsp_provider'       => $auditContext['tsp_provider'] ?? null,
+            'tsp_provider' => $auditContext['tsp_provider'] ?? null,
             'tsp_certificate_id' => $auditContext['tsp_certificate_id'] ?? null,
-            'signature_format'   => $auditContext['signature_format'] ?? null,
-            'signature_payload'  => $auditContext['signature_payload'] ?? null,
-            'timestamp_token'    => $auditContext['timestamp_token'] ?? null,
+            'signature_format' => $auditContext['signature_format'] ?? null,
+            'signature_payload' => $auditContext['signature_payload'] ?? null,
+            'timestamp_token' => $auditContext['timestamp_token'] ?? null,
         ];
 
         $contract->update([
@@ -227,7 +232,7 @@ class ContractService
         // routes them to the contract page on click.
         $signer = User::find($userId);
         $signerName = $signer
-            ? trim(($signer->first_name ?? '') . ' ' . ($signer->last_name ?? ''))
+            ? trim(($signer->first_name ?? '').' '.($signer->last_name ?? ''))
             : 'A party';
 
         $partyCompanyIds = collect($contract->parties ?? [])
@@ -237,7 +242,7 @@ class ContractService
             ->unique()
             ->all();
 
-        if (!empty($partyCompanyIds)) {
+        if (! empty($partyCompanyIds)) {
             $recipients = User::whereIn('company_id', $partyCompanyIds)->active()->get();
             if ($recipients->isNotEmpty()) {
                 Notification::send($recipients, new ContractSignedNotification($contract, $signerName ?: 'A party'));
@@ -264,7 +269,7 @@ class ContractService
             $bid->loadMissing(['rfq.purchaseRequest', 'rfq.company', 'company']);
 
             $rfq = $bid->rfq;
-            if (!$rfq) {
+            if (! $rfq) {
                 throw new \RuntimeException('Bid has no associated RFQ.');
             }
 
@@ -275,7 +280,7 @@ class ContractService
             $rfqType = $rfq->type instanceof RfqType ? $rfq->type : RfqType::tryFrom((string) $rfq->type);
             $isSalesOffer = $rfqType?->bidderIsBuyer() ?? false;
 
-            $buyerCompanyId    = $isSalesOffer ? $bid->company_id : $rfq->company_id;
+            $buyerCompanyId = $isSalesOffer ? $bid->company_id : $rfq->company_id;
             $supplierCompanyId = $isSalesOffer ? $rfq->company_id : $bid->company_id;
 
             // Phase 3.5 (UAE Compliance Roadmap — post-implementation
@@ -306,11 +311,11 @@ class ContractService
                 return $existing;
             }
 
-            $price        = (float) $bid->price;
-            $currency     = $bid->currency ?? 'AED';
+            $price = (float) $bid->price;
+            $currency = $bid->currency ?? 'AED';
             $deliveryDays = (int) ($bid->delivery_time_days ?? 30);
-            $startDate    = Carbon::now()->startOfDay();
-            $endDate      = $startDate->copy()->addDays($deliveryDays);
+            $startDate = Carbon::now()->startOfDay();
+            $endDate = $startDate->copy()->addDays($deliveryDays);
 
             // Phase 2: prefer the bid's own pre-computed VAT snapshot when
             // it exists. The supplier filled in the form with a specific
@@ -326,14 +331,14 @@ class ContractService
             // these columns NULL, so we fall back to the old behaviour
             // (auto-resolve current rate, treat price as subtotal).
             if ($bid->subtotal_excl_tax !== null && $bid->total_incl_tax !== null) {
-                $subtotal    = (float) $bid->subtotal_excl_tax;
-                $taxRate     = (float) ($bid->tax_rate_snapshot ?? 0);
-                $taxAmount   = (float) ($bid->tax_amount ?? 0);
+                $subtotal = (float) $bid->subtotal_excl_tax;
+                $taxRate = (float) ($bid->tax_rate_snapshot ?? 0);
+                $taxAmount = (float) ($bid->tax_amount ?? 0);
                 $totalAmount = (float) $bid->total_incl_tax;
             } else {
-                $taxRate     = TaxRate::resolveFor($rfq->category_id, $rfq->company?->country);
-                $subtotal    = $price;
-                $taxAmount   = round($price * $taxRate / 100, 2);
+                $taxRate = TaxRate::resolveFor($rfq->category_id, $rfq->company?->country);
+                $subtotal = $price;
+                $taxAmount = round($price * $taxRate / 100, 2);
                 $totalAmount = round($price + $taxAmount, 2);
             }
 
@@ -351,56 +356,56 @@ class ContractService
                 : ContractStatus::PENDING_SIGNATURES;
 
             $contract = Contract::create([
-                'title'               => $rfq->title,
-                'description'         => $rfq->description,
+                'title' => $rfq->title,
+                'description' => $rfq->description,
                 'purchase_request_id' => $rfq->purchase_request_id,
-                'buyer_company_id'    => $buyerCompanyId,
-                'status'              => $initialStatus,
-                'parties'             => [
+                'buyer_company_id' => $buyerCompanyId,
+                'status' => $initialStatus,
+                'parties' => [
                     [
                         'company_id' => $buyerCompanyId,
-                        'role'       => 'buyer',
-                        'name'       => $isSalesOffer ? $bid->company?->name : $rfq->company?->name,
+                        'role' => 'buyer',
+                        'name' => $isSalesOffer ? $bid->company?->name : $rfq->company?->name,
                     ],
                     [
                         'company_id' => $supplierCompanyId,
-                        'role'       => 'supplier',
-                        'name'       => $isSalesOffer ? $rfq->company?->name : $bid->company?->name,
+                        'role' => 'supplier',
+                        'name' => $isSalesOffer ? $rfq->company?->name : $bid->company?->name,
                     ],
                 ],
                 'amounts' => [
-                    'subtotal'      => $subtotal,
-                    'tax_rate'      => $taxRate,
-                    'tax'           => $taxAmount,
-                    'total'         => $totalAmount,
+                    'subtotal' => $subtotal,
+                    'tax_rate' => $taxRate,
+                    'tax' => $taxAmount,
+                    'total' => $totalAmount,
                     // Phase 2 — preserve the supplier's declared treatment
                     // and the trade context so the contract show page can
                     // render an accurate Tax Invoice header (TRN, Incoterm,
                     // country of origin, exemption reason).
                     'tax_treatment' => $bid->tax_treatment ?? 'exclusive',
                     'tax_exemption_reason' => $bid->tax_exemption_reason,
-                    'incoterm'      => $bid->incoterm,
+                    'incoterm' => $bid->incoterm,
                     'country_of_origin' => $bid->country_of_origin,
-                    'hs_code'       => $bid->hs_code,
+                    'hs_code' => $bid->hs_code,
                 ],
-                'total_amount'     => $totalAmount,
-                'currency'         => $currency,
+                'total_amount' => $totalAmount,
+                'currency' => $currency,
                 'payment_schedule' => $this->buildPaymentScheduleFromBid($bid, $startDate, $endDate, $taxRate, $subtotal),
-                'signatures'       => [],
-                'terms'            => json_encode(
+                'signatures' => [],
+                'terms' => json_encode(
                     $this->buildContractTerms($bid, $rfq, $deliveryDays),
                     JSON_UNESCAPED_UNICODE
                 ),
-                'start_date'       => $startDate,
-                'end_date'         => $endDate,
-                'version'          => 1,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'version' => 1,
             ]);
 
             ContractVersion::create([
                 'contract_id' => $contract->id,
-                'version'     => 1,
-                'snapshot'    => $contract->toArray(),
-                'created_by'  => auth()->id() ?? $bid->provider_id,
+                'version' => 1,
+                'snapshot' => $contract->toArray(),
+                'created_by' => auth()->id() ?? $bid->provider_id,
             ]);
 
             // ContractCreatedNotification fan-out is handled by
@@ -442,7 +447,7 @@ class ContractService
             $source = Contract::findOrFail($sourceId);
 
             $newStart = Carbon::now()->startOfDay();
-            $newEnd   = $newStart->copy()->addDays(max(1, $extendDays));
+            $newEnd = $newStart->copy()->addDays(max(1, $extendDays));
 
             // Recompute payment_schedule due dates against the new
             // contract window. Milestone keys + percentages + tax
@@ -455,38 +460,38 @@ class ContractService
                 $offset = $count <= 1 ? 0 : (int) round(($totalDays * $i) / ($count - 1));
                 $row['due_date'] = $newStart->copy()->addDays($offset)->toDateString();
                 // Reset retention release date if applicable.
-                if (!empty($row['is_retention']) && !empty($row['release_after_days'])) {
+                if (! empty($row['is_retention']) && ! empty($row['release_after_days'])) {
                     $row['due_date'] = $newEnd->copy()->addDays((int) $row['release_after_days'])->toDateString();
                 }
                 $newSchedule[] = $row;
             }
 
-            $renewalNote = "[RENEWED FROM {$source->contract_number} on " . now()->toDateString() . "]";
-            $description = trim(($source->description ?? '') . "\n\n" . $renewalNote);
+            $renewalNote = "[RENEWED FROM {$source->contract_number} on ".now()->toDateString().']';
+            $description = trim(($source->description ?? '')."\n\n".$renewalNote);
 
             $contract = Contract::create([
-                'title'               => $source->title,
-                'description'         => $description,
+                'title' => $source->title,
+                'description' => $description,
                 'purchase_request_id' => $source->purchase_request_id,
-                'buyer_company_id'    => $source->buyer_company_id,
-                'status'              => ContractStatus::PENDING_SIGNATURES,
-                'parties'             => $source->parties,
-                'amounts'             => $source->amounts,
-                'total_amount'        => $source->total_amount,
-                'currency'            => $source->currency,
-                'payment_schedule'    => $newSchedule,
-                'signatures'          => [],
-                'terms'               => is_string($source->terms) ? $source->terms : json_encode($source->terms, JSON_UNESCAPED_UNICODE),
-                'start_date'          => $newStart,
-                'end_date'            => $newEnd,
-                'version'             => 1,
+                'buyer_company_id' => $source->buyer_company_id,
+                'status' => ContractStatus::PENDING_SIGNATURES,
+                'parties' => $source->parties,
+                'amounts' => $source->amounts,
+                'total_amount' => $source->total_amount,
+                'currency' => $source->currency,
+                'payment_schedule' => $newSchedule,
+                'signatures' => [],
+                'terms' => is_string($source->terms) ? $source->terms : json_encode($source->terms, JSON_UNESCAPED_UNICODE),
+                'start_date' => $newStart,
+                'end_date' => $newEnd,
+                'version' => 1,
             ]);
 
             ContractVersion::create([
                 'contract_id' => $contract->id,
-                'version'     => 1,
-                'snapshot'    => $contract->toArray(),
-                'created_by'  => auth()->id(),
+                'version' => 1,
+                'snapshot' => $contract->toArray(),
+                'created_by' => auth()->id(),
             ]);
 
             return $contract->load('buyerCompany');
@@ -511,72 +516,72 @@ class ContractService
             $product->loadMissing(['company', 'category']);
 
             $supplierCompanyId = $product->company_id;
-            $unitPrice         = (float) $product->base_price;
-            $subtotal          = round($unitPrice * $quantity, 2);
-            $currency          = $product->currency ?? 'AED';
-            $leadTime          = max(1, (int) $product->lead_time_days);
-            $startDate         = Carbon::now()->startOfDay();
-            $endDate           = $startDate->copy()->addDays($leadTime);
+            $unitPrice = (float) $product->base_price;
+            $subtotal = round($unitPrice * $quantity, 2);
+            $currency = $product->currency ?? 'AED';
+            $leadTime = max(1, (int) $product->lead_time_days);
+            $startDate = Carbon::now()->startOfDay();
+            $endDate = $startDate->copy()->addDays($leadTime);
 
             // Same tax precedence used by createFromBid — keeps Buy-Now and
             // RFQ-driven contracts taxed identically.
-            $taxRate     = TaxRate::resolveFor($product->category_id, $product->company?->country);
-            $taxAmount   = round($subtotal * $taxRate / 100, 2);
+            $taxRate = TaxRate::resolveFor($product->category_id, $product->company?->country);
+            $taxAmount = round($subtotal * $taxRate / 100, 2);
             $totalAmount = round($subtotal + $taxAmount, 2);
 
             $contract = Contract::create([
-                'title'               => $product->name,
-                'description'         => $product->description,
+                'title' => $product->name,
+                'description' => $product->description,
                 'purchase_request_id' => null,
-                'buyer_company_id'    => $buyerCompanyId,
-                'status'              => ContractStatus::PENDING_SIGNATURES,
-                'parties'             => [
+                'buyer_company_id' => $buyerCompanyId,
+                'status' => ContractStatus::PENDING_SIGNATURES,
+                'parties' => [
                     [
                         'company_id' => $buyerCompanyId,
-                        'role'       => 'buyer',
-                        'name'       => null,
+                        'role' => 'buyer',
+                        'name' => null,
                     ],
                     [
                         'company_id' => $supplierCompanyId,
-                        'role'       => 'supplier',
-                        'name'       => $product->company?->name,
+                        'role' => 'supplier',
+                        'name' => $product->company?->name,
                     ],
                 ],
                 'amounts' => [
                     'unit_price' => $unitPrice,
-                    'quantity'   => $quantity,
-                    'subtotal'   => $subtotal,
-                    'tax_rate'   => $taxRate,
-                    'tax'        => $taxAmount,
-                    'total'      => $totalAmount,
+                    'quantity' => $quantity,
+                    'subtotal' => $subtotal,
+                    'tax_rate' => $taxRate,
+                    'tax' => $taxAmount,
+                    'total' => $totalAmount,
                 ],
-                'total_amount'     => $totalAmount,
-                'currency'         => $currency,
+                'total_amount' => $totalAmount,
+                'currency' => $currency,
                 'payment_schedule' => $this->buildBuyNowSchedule($subtotal, $currency, $startDate, $endDate, $taxRate),
-                'signatures'       => [],
-                'terms'            => json_encode(
+                'signatures' => [],
+                'terms' => json_encode(
                     $this->buildBilingualUaeContractTerms(
-                        scopeTitle:       __('catalog.term_buy_now_scope', [
-                            'qty'     => $quantity,
-                            'unit'    => $product->unit,
+                        scopeTitle: __('catalog.term_buy_now_scope', [
+                            'qty' => $quantity,
+                            'unit' => $product->unit,
                             'product' => $product->name,
                         ]),
-                        totalValueLabel:  $currency . ' ' . number_format($totalAmount, 2),
+                        totalValueLabel: $currency.' '.number_format($totalAmount, 2),
                         paymentBreakdown: __('catalog.term_buy_now_payment'),
-                        deliveryDays:     $leadTime,
+                        deliveryDays: $leadTime,
                     ),
                     JSON_UNESCAPED_UNICODE
                 ),
                 'start_date' => $startDate,
-                'end_date'   => $endDate,
-                'version'    => 1,
+                'end_date' => $endDate,
+                'version' => 1,
             ]);
 
             ContractVersion::create([
                 'contract_id' => $contract->id,
-                'version'     => 1,
-                'snapshot'    => $contract->toArray(),
-                'created_by'  => $buyerUserId,
+                'version' => 1,
+                'snapshot' => $contract->toArray(),
+                'created_by' => $buyerUserId,
             ]);
 
             // Decrement stock if the supplier tracks it. Concurrent buyers
@@ -626,6 +631,7 @@ class ContractService
                     supplierCompanyId: (int) $supplierCompanyId,
                 );
             }
+
             return $contracts;
         });
     }
@@ -644,7 +650,7 @@ class ContractService
         // the maximum across the slice (delivery is constrained by the
         // slowest item).
         $currency = $items->first()->currency ?: 'AED';
-        $supplierCompany = \App\Models\Company::find($supplierCompanyId);
+        $supplierCompany = Company::find($supplierCompanyId);
         $supplierCountry = $supplierCompany?->country;
 
         // Subtotal = Σ(quantity × unit_price). VAT applies on top using
@@ -656,14 +662,14 @@ class ContractService
             $line = round($item->quantity * (float) $item->unit_price, 2);
             $subtotal += $line;
             $lineSnapshots[] = [
-                'product_id'         => $item->product_id,
+                'product_id' => $item->product_id,
                 'product_variant_id' => $item->product_variant_id,
-                'name'               => $item->name_snapshot,
-                'attributes'         => $item->attributes_snapshot,
-                'quantity'           => $item->quantity,
-                'unit_price'         => (float) $item->unit_price,
-                'currency'           => $item->currency,
-                'line_total'         => $line,
+                'name' => $item->name_snapshot,
+                'attributes' => $item->attributes_snapshot,
+                'quantity' => $item->quantity,
+                'unit_price' => (float) $item->unit_price,
+                'currency' => $item->currency,
+                'line_total' => $line,
             ];
         }
         $subtotal = round($subtotal, 2);
@@ -672,13 +678,13 @@ class ContractService
         // SKU is ready). Defaults to 7 days if a product has no lead time.
         $leadTime = max(7, $items->max(fn ($i) => (int) ($i->product?->lead_time_days ?? 7)));
         $startDate = Carbon::now()->startOfDay();
-        $endDate   = $startDate->copy()->addDays($leadTime);
+        $endDate = $startDate->copy()->addDays($leadTime);
 
         // Use the first product's category for tax lookup — fine for the
         // overwhelming majority of multi-line orders that share a category.
         $primaryCategoryId = $items->first()->product?->category_id;
-        $taxRate    = TaxRate::resolveFor($primaryCategoryId, $supplierCountry);
-        $taxAmount  = round($subtotal * $taxRate / 100, 2);
+        $taxRate = TaxRate::resolveFor($primaryCategoryId, $supplierCountry);
+        $taxAmount = round($subtotal * $taxRate / 100, 2);
         $totalAmount = round($subtotal + $taxAmount, 2);
 
         $title = $items->count() === 1
@@ -686,47 +692,47 @@ class ContractService
             : sprintf('%s + %d more', $items->first()->name_snapshot, $items->count() - 1);
 
         $contract = Contract::create([
-            'title'               => $title,
-            'description'         => null,
+            'title' => $title,
+            'description' => null,
             'purchase_request_id' => null,
-            'buyer_company_id'    => $buyerCompanyId,
-            'status'              => ContractStatus::PENDING_SIGNATURES,
-            'parties'             => [
+            'buyer_company_id' => $buyerCompanyId,
+            'status' => ContractStatus::PENDING_SIGNATURES,
+            'parties' => [
                 ['company_id' => $buyerCompanyId,    'role' => 'buyer',    'name' => null],
                 ['company_id' => $supplierCompanyId, 'role' => 'supplier', 'name' => $supplierCompany?->name],
             ],
             'amounts' => [
-                'lines'    => $lineSnapshots,
+                'lines' => $lineSnapshots,
                 'subtotal' => $subtotal,
                 'tax_rate' => $taxRate,
-                'tax'      => $taxAmount,
-                'total'    => $totalAmount,
+                'tax' => $taxAmount,
+                'total' => $totalAmount,
             ],
-            'total_amount'     => $totalAmount,
-            'currency'         => $currency,
+            'total_amount' => $totalAmount,
+            'currency' => $currency,
             'payment_schedule' => $this->buildBuyNowSchedule($subtotal, $currency, $startDate, $endDate, $taxRate),
-            'signatures'       => [],
-            'terms'            => json_encode(
+            'signatures' => [],
+            'terms' => json_encode(
                 $this->buildBilingualUaeContractTerms(
-                    scopeTitle:       collect($lineSnapshots)
+                    scopeTitle: collect($lineSnapshots)
                         ->map(fn ($l) => sprintf('%d × %s', $l['quantity'], $l['name']))
                         ->implode(' • '),
-                    totalValueLabel:  $currency . ' ' . number_format($totalAmount, 2),
+                    totalValueLabel: $currency.' '.number_format($totalAmount, 2),
                     paymentBreakdown: __('catalog.term_buy_now_payment'),
-                    deliveryDays:     $leadTime,
+                    deliveryDays: $leadTime,
                 ),
                 JSON_UNESCAPED_UNICODE
             ),
             'start_date' => $startDate,
-            'end_date'   => $endDate,
-            'version'    => 1,
+            'end_date' => $endDate,
+            'version' => 1,
         ]);
 
         ContractVersion::create([
             'contract_id' => $contract->id,
-            'version'     => 1,
-            'snapshot'    => $contract->toArray(),
-            'created_by'  => $buyerUserId,
+            'version' => 1,
+            'snapshot' => $contract->toArray(),
+            'created_by' => $buyerUserId,
         ]);
 
         // Decrement stock per line, mirroring the single-product Buy-Now
@@ -754,26 +760,26 @@ class ContractService
     {
         return [
             [
-                'milestone'         => 'advance',
-                'percentage'        => 30,
-                'amount'            => round($subtotal * 0.30, 2),
-                'tax_rate'          => $taxRate,
-                'tax_amount'        => round($subtotal * 0.30 * $taxRate / 100, 2),
-                'currency'          => $currency,
-                'due_date'          => $startDate->toDateString(),
+                'milestone' => 'advance',
+                'percentage' => 30,
+                'amount' => round($subtotal * 0.30, 2),
+                'tax_rate' => $taxRate,
+                'tax_amount' => round($subtotal * 0.30 * $taxRate / 100, 2),
+                'currency' => $currency,
+                'due_date' => $startDate->toDateString(),
                 // Phase 3 / Sprint 13 / task 3.10 — escrow release rule.
                 // Buy-Now advances always release the moment all parties
                 // sign so the supplier sees money immediately.
                 'release_condition' => 'on_signature',
             ],
             [
-                'milestone'         => 'delivery',
-                'percentage'        => 70,
-                'amount'            => round($subtotal * 0.70, 2),
-                'tax_rate'          => $taxRate,
-                'tax_amount'        => round($subtotal * 0.70 * $taxRate / 100, 2),
-                'currency'          => $currency,
-                'due_date'          => $endDate->toDateString(),
+                'milestone' => 'delivery',
+                'percentage' => 70,
+                'amount' => round($subtotal * 0.70, 2),
+                'tax_rate' => $taxRate,
+                'tax_amount' => round($subtotal * 0.70 * $taxRate / 100, 2),
+                'currency' => $currency,
+                'due_date' => $endDate->toDateString(),
                 'release_condition' => 'on_delivery',
             ],
         ];
@@ -797,7 +803,7 @@ class ContractService
         // routinely retain 5-10% for a warranty period (typically
         // 12 months) before releasing the final tranche. Pattern:
         //   "10% retention", "5% holdback for 12 months", etc.
-        $retentionPct  = 0;
+        $retentionPct = 0;
         $retentionDays = 365; // default: 12-month warranty period
         if (preg_match('/(\d+)\s*%[^,;.]*\b(retention|holdback)\b/iu', $terms, $rm)) {
             $retentionPct = max(0, min(20, (int) $rm[1]));
@@ -856,7 +862,7 @@ class ContractService
 
         $schedule = [];
         foreach ($percentages as $i => $pct) {
-            $key = $milestoneKeys[$i] ?? 'milestone_' . ($i + 1);
+            $key = $milestoneKeys[$i] ?? 'milestone_'.($i + 1);
 
             // Spread milestone due dates evenly across the contract window:
             // first one due at start, last one at end, the rest interpolated.
@@ -870,24 +876,24 @@ class ContractService
             // this on the contract show page before activating escrow if
             // they want a different cadence (e.g. require inspection).
             $releaseCondition = match ($key) {
-                'advance'    => 'on_signature',
+                'advance' => 'on_signature',
                 'production' => 'on_inspection_pass',
-                'delivery'   => 'on_delivery',
-                'final'      => 'manual',
-                default      => 'manual',
+                'delivery' => 'on_delivery',
+                'final' => 'manual',
+                default => 'manual',
             };
 
             $schedule[] = [
-                'milestone'           => $key,
-                'percentage'          => $pct,
-                'amount'              => $amount,
-                'tax_rate'            => $taxRate,
-                'tax_amount'          => round($amount * $taxRate / 100, 2),
-                'currency'            => $currency,
-                'due_date'            => $dueDate->toDateString(),
-                'release_condition'   => $releaseCondition,
-                'is_retention'        => false,
-                'release_after_days'  => 0,
+                'milestone' => $key,
+                'percentage' => $pct,
+                'amount' => $amount,
+                'tax_rate' => $taxRate,
+                'tax_amount' => round($amount * $taxRate / 100, 2),
+                'currency' => $currency,
+                'due_date' => $dueDate->toDateString(),
+                'release_condition' => $releaseCondition,
+                'is_retention' => false,
+                'release_after_days' => 0,
             ];
         }
 
@@ -898,16 +904,16 @@ class ContractService
         if ($retentionPct > 0) {
             $retentionAmount = round($price * $retentionPct / 100, 2);
             $schedule[] = [
-                'milestone'           => 'retention',
-                'percentage'          => $retentionPct,
-                'amount'              => $retentionAmount,
-                'tax_rate'            => $taxRate,
-                'tax_amount'          => round($retentionAmount * $taxRate / 100, 2),
-                'currency'            => $currency,
-                'due_date'            => $endDate->copy()->addDays($retentionDays)->toDateString(),
-                'release_condition'   => 'retention_period_elapsed',
-                'is_retention'        => true,
-                'release_after_days'  => $retentionDays,
+                'milestone' => 'retention',
+                'percentage' => $retentionPct,
+                'amount' => $retentionAmount,
+                'tax_rate' => $taxRate,
+                'tax_amount' => round($retentionAmount * $taxRate / 100, 2),
+                'currency' => $currency,
+                'due_date' => $endDate->copy()->addDays($retentionDays)->toDateString(),
+                'release_condition' => 'retention_period_elapsed',
+                'is_retention' => true,
+                'release_after_days' => $retentionDays,
             ];
         }
 
@@ -931,9 +937,9 @@ class ContractService
      */
     private function buildContractTerms(Bid $bid, $rfq, int $deliveryDays): array
     {
-        $price    = number_format((float) $bid->price, 2);
+        $price = number_format((float) $bid->price, 2);
         $currency = $bid->currency ?? 'AED';
-        $totalRef = $currency . ' ' . $price;
+        $totalRef = $currency.' '.$price;
 
         // Phase 3 (UAE Compliance Roadmap) — pull the buyer + supplier
         // companies so the bilingual builder can pick the right
@@ -941,16 +947,16 @@ class ContractService
         // (mainland / designated-zone supply / cross-zone reverse charge).
         $rfq->loadMissing('company');
         $bid->loadMissing('company');
-        $buyerCompany    = $rfq->company;
+        $buyerCompany = $rfq->company;
         $supplierCompany = $bid->company;
 
         return $this->buildBilingualUaeContractTerms(
-            scopeTitle:       (string) $rfq->title,
-            totalValueLabel:  $totalRef,
+            scopeTitle: (string) $rfq->title,
+            totalValueLabel: $totalRef,
             paymentBreakdown: (string) ($bid->payment_terms ?? '—'),
-            deliveryDays:     $deliveryDays,
-            buyerCompany:     $buyerCompany,
-            supplierCompany:  $supplierCompany,
+            deliveryDays: $deliveryDays,
+            buyerCompany: $buyerCompany,
+            supplierCompany: $supplierCompany,
         );
     }
 
@@ -979,7 +985,7 @@ class ContractService
         ?Company $buyerCompany = null,
         ?Company $supplierCompany = null,
     ): array {
-        $jurisdiction = \App\Enums\LegalJurisdiction::resolveForPair(
+        $jurisdiction = LegalJurisdiction::resolveForPair(
             $buyerCompany?->jurisdiction(),
             $supplierCompany?->jurisdiction()
         );
@@ -998,7 +1004,7 @@ class ContractService
             // PDF, and admin reviews can read it without re-running
             // the resolution logic.
             'jurisdiction' => $jurisdiction->value,
-            'vat_case'     => $vatCase,
+            'vat_case' => $vatCase,
         ];
     }
 
@@ -1019,11 +1025,11 @@ class ContractService
      */
     private function resolveVatCase(?Company $buyer, ?Company $supplier): string
     {
-        if (!$buyer || !$supplier) {
+        if (! $buyer || ! $supplier) {
             return 'standard';
         }
 
-        $buyerDz    = $buyer->isInDesignatedZone();
+        $buyerDz = $buyer->isInDesignatedZone();
         $supplierDz = $supplier->isInDesignatedZone();
 
         if ($buyerDz && $supplierDz) {
@@ -1056,22 +1062,22 @@ class ContractService
             ->get()
             ->keyBy('id');
 
-        $buyer    = $companies->get($buyerCompanyId);
+        $buyer = $companies->get($buyerCompanyId);
         $supplier = $companies->get($supplierCompanyId);
 
         $missing = [];
-        if ($buyer && !$buyer->hasValidTradeLicense()) {
-            $missing[] = $buyer->name . ' (buyer)';
+        if ($buyer && ! $buyer->hasValidTradeLicense()) {
+            $missing[] = $buyer->name.' (buyer)';
         }
-        if ($supplier && !$supplier->hasValidTradeLicense()) {
-            $missing[] = $supplier->name . ' (supplier)';
+        if ($supplier && ! $supplier->hasValidTradeLicense()) {
+            $missing[] = $supplier->name.' (supplier)';
         }
 
         if ($missing !== []) {
             throw new \RuntimeException(
                 'Cannot create contract — trade license missing, expired or unverified for: '
-                . implode(', ', $missing)
-                . '. Renew the trade license document in the company profile before retrying.'
+                .implode(', ', $missing)
+                .'. Renew the trade license document in the company profile before retrying.'
             );
         }
     }
@@ -1083,12 +1089,13 @@ class ContractService
      */
     private function withLocale(string $locale, callable $fn)
     {
-        $previous = \Illuminate\Support\Facades\App::getLocale();
+        $previous = App::getLocale();
         try {
-            \Illuminate\Support\Facades\App::setLocale($locale);
+            App::setLocale($locale);
+
             return $fn();
         } finally {
-            \Illuminate\Support\Facades\App::setLocale($previous);
+            App::setLocale($previous);
         }
     }
 
@@ -1110,17 +1117,17 @@ class ContractService
             : 30;
 
         $currency = $contract->currency ?? 'AED';
-        $totalLabel = $currency . ' ' . number_format((float) $contract->total_amount, 2);
+        $totalLabel = $currency.' '.number_format((float) $contract->total_amount, 2);
 
         // Best-effort payment breakdown reconstructed from the schedule.
         $breakdown = '—';
-        if (!empty($contract->payment_schedule)) {
+        if (! empty($contract->payment_schedule)) {
             $parts = [];
             foreach ((array) $contract->payment_schedule as $row) {
                 $pct = $row['percentage'] ?? null;
                 $milestone = $row['milestone'] ?? null;
                 if ($pct !== null && $milestone) {
-                    $parts[] = ((int) $pct) . '% ' . $milestone;
+                    $parts[] = ((int) $pct).'% '.$milestone;
                 }
             }
             if ($parts) {
@@ -1155,10 +1162,11 @@ class ContractService
         string $totalValueLabel,
         string $paymentBreakdown,
         int $deliveryDays,
-        ?\App\Enums\LegalJurisdiction $jurisdiction = null,
+        ?LegalJurisdiction $jurisdiction = null,
         string $vatCase = 'standard',
     ): array {
-        $jurisdiction = $jurisdiction ?? \App\Enums\LegalJurisdiction::FEDERAL;
+        $jurisdiction = $jurisdiction ?? LegalJurisdiction::FEDERAL;
+
         return [
             [
                 'title' => __('contracts.scope_of_work'),
@@ -1278,14 +1286,14 @@ class ContractService
                     // DIFC operates under its own English-style common law
                     // (DIFC Contract Law No. 6 of 2004 + DIFC Law No. 7
                     // of 2005). Disputes go to DIFC Courts.
-                    \App\Enums\LegalJurisdiction::DIFC => [
+                    LegalJurisdiction::DIFC => [
                         __('contracts.term_governing_law_difc_1'),
                         __('contracts.term_governing_law_difc_2'),
                     ],
                     // ADGM Application Regulations 2015 incorporate
                     // English common law and equity directly. Disputes
                     // go to ADGM Courts.
-                    \App\Enums\LegalJurisdiction::ADGM => [
+                    LegalJurisdiction::ADGM => [
                         __('contracts.term_governing_law_adgm_1'),
                         __('contracts.term_governing_law_adgm_2'),
                     ],
@@ -1298,11 +1306,11 @@ class ContractService
             [
                 'title' => __('contracts.dispute_resolution'),
                 'items' => match ($jurisdiction) {
-                    \App\Enums\LegalJurisdiction::DIFC => [
+                    LegalJurisdiction::DIFC => [
                         __('contracts.term_disputes_negotiation'),
                         __('contracts.term_disputes_difc_courts'),
                     ],
-                    \App\Enums\LegalJurisdiction::ADGM => [
+                    LegalJurisdiction::ADGM => [
                         __('contracts.term_disputes_negotiation'),
                         __('contracts.term_disputes_adgm_courts'),
                     ],

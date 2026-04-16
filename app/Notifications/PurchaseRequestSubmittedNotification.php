@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\PurchaseRequest;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,8 +18,8 @@ use Illuminate\Notifications\Notification;
  */
 class PurchaseRequestSubmittedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly PurchaseRequest $pr,
@@ -27,8 +29,8 @@ class PurchaseRequestSubmittedNotification extends Notification implements Shoul
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'bid_updates',
             ['database', 'mail']
         );
@@ -49,13 +51,13 @@ class PurchaseRequestSubmittedNotification extends Notification implements Shoul
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'info',
-            'title'       => $this->t($notifiable, 'notifications.purchase_request.submitted.title'),
-            'message'     => $this->t($notifiable, 'notifications.purchase_request.submitted.message', [
+            'type' => 'info',
+            'title' => $this->t($notifiable, 'notifications.purchase_request.submitted.title'),
+            'message' => $this->t($notifiable, 'notifications.purchase_request.submitted.message', [
                 'ref' => (string) $this->pr->title,
             ]),
             'entity_type' => 'purchase_request',
-            'entity_id'   => $this->pr->id,
+            'entity_id' => $this->pr->id,
         ];
     }
 }

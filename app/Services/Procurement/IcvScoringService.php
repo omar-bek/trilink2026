@@ -46,7 +46,7 @@ class IcvScoringService
      * The "all bids" collection is needed for the price normalisation
      * — the lowest price gets 100% on the price axis.
      *
-     * @param  \Illuminate\Support\Collection<int, Bid>  $allBidsOnRfq
+     * @param  Collection<int, Bid>  $allBidsOnRfq
      */
     public function scoreBid(Bid $bid, Collection $allBidsOnRfq, ?Rfq $rfq = null): array
     {
@@ -57,7 +57,7 @@ class IcvScoringService
         // Phase 4.5 — pass the RFQ down so the issuer allowlist can be
         // honoured. A supplier holding an MoIAT certificate gets ICV=0
         // on an ADNOC-only RFQ even if their MoIAT score is 90%.
-        $icvScore   = $this->icvScoreFor($bid, $rfq);
+        $icvScore = $this->icvScoreFor($bid, $rfq);
 
         // composite = (1-w) * price + w * icv
         // When w = 0 we still want the composite to equal the price
@@ -65,11 +65,11 @@ class IcvScoringService
         $composite = round((1 - $weight) * $priceScore + $weight * $icvScore, 2);
 
         return [
-            'price_score'    => $priceScore,
-            'icv_score'      => $icvScore,
-            'composite'      => $composite,
-            'icv_weight'     => $weight,
-            'meets_minimum'  => $this->meetsMinimum($icvScore, $rfq),
+            'price_score' => $priceScore,
+            'icv_score' => $icvScore,
+            'composite' => $composite,
+            'icv_weight' => $weight,
+            'meets_minimum' => $this->meetsMinimum($icvScore, $rfq),
         ];
     }
 
@@ -79,7 +79,7 @@ class IcvScoringService
      * bottom of the list with a `disqualified = true` flag — buyers
      * still see them, just not at the top.
      *
-     * @param  \Illuminate\Support\Collection<int, Bid>  $bids
+     * @param  Collection<int, Bid>  $bids
      * @return array<int, array<string, mixed>>
      */
     public function rankBids(Collection $bids, ?Rfq $rfq = null): array
@@ -92,17 +92,18 @@ class IcvScoringService
         $rows = $bids->map(function (Bid $bid) use ($bids, $rfq) {
             $bid->loadMissing('company');
             $score = $this->scoreBid($bid, $bids, $rfq);
+
             return [
-                'bid_id'        => $bid->id,
-                'company_id'    => $bid->company_id,
-                'company_name'  => $bid->company?->name ?? '—',
-                'price'         => (float) $bid->price,
-                'currency'      => $bid->currency ?? 'AED',
-                'price_score'   => $score['price_score'],
-                'icv_score'     => $score['icv_score'],
-                'composite'     => $score['composite'],
+                'bid_id' => $bid->id,
+                'company_id' => $bid->company_id,
+                'company_name' => $bid->company?->name ?? '—',
+                'price' => (float) $bid->price,
+                'currency' => $bid->currency ?? 'AED',
+                'price_score' => $score['price_score'],
+                'icv_score' => $score['icv_score'],
+                'composite' => $score['composite'],
                 'meets_minimum' => $score['meets_minimum'],
-                'disqualified'  => !$score['meets_minimum'],
+                'disqualified' => ! $score['meets_minimum'],
             ];
         })->all();
 
@@ -114,6 +115,7 @@ class IcvScoringService
                 return $a['disqualified'] ? 1 : -1;
             }
             $cmp = $b['composite'] <=> $a['composite'];
+
             return $cmp !== 0 ? $cmp : ($a['price'] <=> $b['price']);
         });
 
@@ -129,12 +131,13 @@ class IcvScoringService
 
     private function normalizedWeight(?Rfq $rfq): float
     {
-        if (!$rfq) {
+        if (! $rfq) {
             return 0.0;
         }
         $w = (int) ($rfq->icv_weight_percentage ?? 0);
         // Clamp to the safe 0..50 range — anything outside that is a bug.
         $w = max(0, min(50, $w));
+
         return $w / 100;
     }
 
@@ -151,6 +154,7 @@ class IcvScoringService
         if ($lowest <= 0 || $thisPrice <= 0) {
             return 0.0;
         }
+
         return round(($lowest / $thisPrice) * 100, 2);
     }
 
@@ -169,7 +173,7 @@ class IcvScoringService
     {
         $bid->loadMissing('company');
         $company = $bid->company;
-        if (!$company) {
+        if (! $company) {
             return 0.0;
         }
 
@@ -179,23 +183,26 @@ class IcvScoringService
             // count. Without this, the platform falsely qualifies a
             // MoIAT-only supplier for an ADNOC tender they can't enter.
             $cert = $company->icvCertificates()
-                ->where('status', \App\Models\IcvCertificate::STATUS_VERIFIED)
+                ->where('status', IcvCertificate::STATUS_VERIFIED)
                 ->where('expires_date', '>=', now()->toDateString())
                 ->whereIn('issuer', $allowedIssuers)
                 ->orderByDesc('score')
                 ->first();
+
             return $cert ? (float) $cert->score : 0.0;
         }
 
         $score = $company->latestActiveIcvScore();
+
         return $score !== null ? (float) $score : 0.0;
     }
 
     private function meetsMinimum(float $icvScore, ?Rfq $rfq): bool
     {
-        if (!$rfq || $rfq->icv_minimum_score === null) {
+        if (! $rfq || $rfq->icv_minimum_score === null) {
             return true;
         }
+
         return $icvScore >= (float) $rfq->icv_minimum_score;
     }
 }

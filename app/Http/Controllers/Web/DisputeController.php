@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Web;
 
+use App\Enums\ContractStatus;
 use App\Enums\DisputeStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Http\Requests\Dispute\StoreDisputeRequest;
+use App\Models\Company;
+use App\Models\Contract;
 use App\Models\Dispute;
 use App\Services\DisputeService;
 use Illuminate\Http\RedirectResponse;
@@ -16,9 +19,7 @@ class DisputeController extends Controller
 {
     use FormatsForViews;
 
-    public function __construct(private readonly DisputeService $service)
-    {
-    }
+    public function __construct(private readonly DisputeService $service) {}
 
     public function index(Request $request): View
     {
@@ -35,27 +36,27 @@ class DisputeController extends Controller
         }
         $search = trim((string) $request->query('q', ''));
 
-        $total    = (clone $base)->count();
+        $total = (clone $base)->count();
         $resolved = (clone $base)->where('status', DisputeStatus::RESOLVED->value)->count();
 
         $stats = [
-            'open'            => (clone $base)->where('status', DisputeStatus::OPEN->value)->count(),
-            'in_mediation'    => (clone $base)->whereIn('status', [DisputeStatus::UNDER_REVIEW->value, DisputeStatus::ESCALATED->value])->count(),
-            'resolved'        => $resolved,
-            'resolution_rate' => $total > 0 ? round(($resolved / $total) * 100) . '%' : '0%',
+            'open' => (clone $base)->where('status', DisputeStatus::OPEN->value)->count(),
+            'in_mediation' => (clone $base)->whereIn('status', [DisputeStatus::UNDER_REVIEW->value, DisputeStatus::ESCALATED->value])->count(),
+            'resolved' => $resolved,
+            'resolution_rate' => $total > 0 ? round(($resolved / $total) * 100).'%' : '0%',
         ];
 
         $listing = (clone $base);
 
         match ($statusFilter) {
-            'open'         => $listing->where('status', DisputeStatus::OPEN->value),
+            'open' => $listing->where('status', DisputeStatus::OPEN->value),
             'in_mediation' => $listing->whereIn('status', [DisputeStatus::UNDER_REVIEW->value, DisputeStatus::ESCALATED->value]),
-            'resolved'     => $listing->where('status', DisputeStatus::RESOLVED->value),
-            default        => null,
+            'resolved' => $listing->where('status', DisputeStatus::RESOLVED->value),
+            default => null,
         };
 
         if ($search !== '') {
-            $like = '%' . $search . '%';
+            $like = '%'.$search.'%';
             $listing->where(function ($q) use ($like) {
                 $q->where('title', 'like', $like)
                     ->orWhere('description', 'like', $like)
@@ -72,25 +73,25 @@ class DisputeController extends Controller
                 $resolvedAt = $d->resolved_at;
 
                 return [
-                    'id'          => $this->disputeDisplayNumber($d),
-                    'numeric_id'  => $d->id,
-                    'status'      => $statusKey,
-                    'priority'    => $this->priorityFor($d),
-                    'title'       => $d->title,
-                    'desc'        => $d->description ?? '',
-                    'contract'    => $d->contract?->contract_number ?? '—',
-                    'supplier'    => $d->againstCompany?->name ?? '—',
-                    'type'        => $this->typeLabel($this->statusValue($d->type)),
-                    'opened'      => $this->longDate($d->created_at),
-                    'mediator'    => $d->assignedTo
-                        ? trim(($d->assignedTo->first_name ?? '') . ' ' . ($d->assignedTo->last_name ?? ''))
+                    'id' => $this->disputeDisplayNumber($d),
+                    'numeric_id' => $d->id,
+                    'status' => $statusKey,
+                    'priority' => $this->priorityFor($d),
+                    'title' => $d->title,
+                    'desc' => $d->description ?? '',
+                    'contract' => $d->contract?->contract_number ?? '—',
+                    'supplier' => $d->againstCompany?->name ?? '—',
+                    'type' => $this->typeLabel($this->statusValue($d->type)),
+                    'opened' => $this->longDate($d->created_at),
+                    'mediator' => $d->assignedTo
+                        ? trim(($d->assignedTo->first_name ?? '').' '.($d->assignedTo->last_name ?? ''))
                         : null,
                     // No `dispute_messages` table yet — surface null so the
                     // view's @if hides the badge instead of showing "0 msgs".
-                    'messages'    => null,
-                    'amount'      => $this->money((float) ($d->contract?->total_amount ?? 0), $d->contract?->currency ?? 'AED'),
+                    'messages' => null,
+                    'amount' => $this->money((float) ($d->contract?->total_amount ?? 0), $d->contract?->currency ?? 'AED'),
                     'resolved_at' => $resolvedAt ? $this->longDate($resolvedAt) : null,
-                    'resolution'  => $d->resolution,
+                    'resolution' => $d->resolution,
                 ];
             })
             ->toArray();
@@ -103,15 +104,15 @@ class DisputeController extends Controller
         // `against_company_id` directly without an extra round-trip.
         $disputableContracts = [];
         if ($companyId) {
-            $contracts = \App\Models\Contract::query()
+            $contracts = Contract::query()
                 ->where(function ($q) use ($companyId) {
                     $q->whereJsonContains('parties', ['company_id' => $companyId])
-                      ->orWhere('buyer_company_id', $companyId);
+                        ->orWhere('buyer_company_id', $companyId);
                 })
                 ->whereIn('status', [
-                    \App\Enums\ContractStatus::ACTIVE->value,
-                    \App\Enums\ContractStatus::SIGNED->value,
-                    \App\Enums\ContractStatus::COMPLETED->value,
+                    ContractStatus::ACTIVE->value,
+                    ContractStatus::SIGNED->value,
+                    ContractStatus::COMPLETED->value,
                 ])
                 ->latest()
                 ->limit(50)
@@ -122,7 +123,7 @@ class DisputeController extends Controller
                 ->push(...$contracts->pluck('buyer_company_id'))
                 ->filter()
                 ->unique();
-            $partyNames = \App\Models\Company::whereIn('id', $partyIds)->pluck('name', 'id');
+            $partyNames = Company::whereIn('id', $partyIds)->pluck('name', 'id');
 
             foreach ($contracts as $c) {
                 // Pick the OTHER party (not the current company) as the
@@ -134,11 +135,11 @@ class DisputeController extends Controller
                     ->first();
 
                 $disputableContracts[] = [
-                    'id'                 => $c->id,
-                    'contract_number'    => $c->contract_number,
-                    'title'              => $c->title,
+                    'id' => $c->id,
+                    'contract_number' => $c->contract_number,
+                    'title' => $c->title,
                     'against_company_id' => $against,
-                    'against_name'       => $against ? ($partyNames[$against] ?? '—') : '—',
+                    'against_name' => $against ? ($partyNames[$against] ?? '—') : '—',
                 ];
             }
         }
@@ -167,26 +168,26 @@ class DisputeController extends Controller
         $statusKey = $this->mapDisputeStatus($this->statusValue($d->status));
 
         $dispute = [
-            'id'          => $this->disputeDisplayNumber($d),
-            'numeric_id'  => $d->id,
-            'status'      => $statusKey,
-            'priority'    => $this->priorityFor($d),
-            'title'       => $d->title,
-            'desc'        => $d->description ?? '',
-            'contract'    => $d->contract?->contract_number ?? '—',
-            'amount'      => $this->money((float) ($d->contract?->total_amount ?? 0), $d->contract?->currency ?? 'AED'),
-            'type'        => $this->typeLabel($this->statusValue($d->type)),
-            'opened'      => $this->longDate($d->created_at),
-            'opened_by'   => $d->raisedByUser
-                ? trim(($d->raisedByUser->first_name ?? '') . ' ' . ($d->raisedByUser->last_name ?? ''))
+            'id' => $this->disputeDisplayNumber($d),
+            'numeric_id' => $d->id,
+            'status' => $statusKey,
+            'priority' => $this->priorityFor($d),
+            'title' => $d->title,
+            'desc' => $d->description ?? '',
+            'contract' => $d->contract?->contract_number ?? '—',
+            'amount' => $this->money((float) ($d->contract?->total_amount ?? 0), $d->contract?->currency ?? 'AED'),
+            'type' => $this->typeLabel($this->statusValue($d->type)),
+            'opened' => $this->longDate($d->created_at),
+            'opened_by' => $d->raisedByUser
+                ? trim(($d->raisedByUser->first_name ?? '').' '.($d->raisedByUser->last_name ?? ''))
                 : '—',
-            'against'     => $d->againstCompany?->name ?? '—',
-            'mediator'    => $d->assignedTo
-                ? trim(($d->assignedTo->first_name ?? '') . ' ' . ($d->assignedTo->last_name ?? ''))
+            'against' => $d->againstCompany?->name ?? '—',
+            'mediator' => $d->assignedTo
+                ? trim(($d->assignedTo->first_name ?? '').' '.($d->assignedTo->last_name ?? ''))
                 : null,
-            'sla_due'     => $d->sla_due_date ? $this->longDate($d->sla_due_date) : null,
-            'escalated'   => (bool) $d->escalated_to_government,
-            'resolution'  => $d->resolution,
+            'sla_due' => $d->sla_due_date ? $this->longDate($d->sla_due_date) : null,
+            'escalated' => (bool) $d->escalated_to_government,
+            'resolution' => $d->resolution,
             'resolved_at' => $d->resolved_at ? $this->longDate($d->resolved_at) : null,
         ];
 
@@ -199,14 +200,14 @@ class DisputeController extends Controller
         abort_unless($user?->hasPermission('dispute.open'), 403, 'Forbidden: missing disputes.create permission.');
 
         $dispute = $this->service->create([
-            'contract_id'        => $request->input('contract_id'),
-            'company_id'         => $user->company_id,
-            'raised_by'          => $user->id,
+            'contract_id' => $request->input('contract_id'),
+            'company_id' => $user->company_id,
+            'raised_by' => $user->id,
             'against_company_id' => $request->input('against_company_id'),
-            'type'               => $request->input('type'),
-            'status'             => DisputeStatus::OPEN,
-            'title'              => $request->input('title'),
-            'description'        => $request->input('description'),
+            'type' => $request->input('type'),
+            'status' => DisputeStatus::OPEN,
+            'title' => $request->input('title'),
+            'description' => $request->input('description'),
         ]);
 
         return redirect()
@@ -250,11 +251,11 @@ class DisputeController extends Controller
     private function mapDisputeStatus(string $status): string
     {
         return match ($status) {
-            'open'         => 'open',
+            'open' => 'open',
             'under_review' => 'in_mediation',
-            'escalated'    => 'in_mediation',
-            'resolved'     => 'resolved',
-            default        => 'open',
+            'escalated' => 'in_mediation',
+            'resolved' => 'resolved',
+            default => 'open',
         };
     }
 
@@ -266,19 +267,19 @@ class DisputeController extends Controller
 
         return match ($this->statusValue($d->type)) {
             'quality', 'contract_breach' => 'high',
-            'delivery'                   => 'medium',
-            default                      => 'low',
+            'delivery' => 'medium',
+            default => 'low',
         };
     }
 
     private function typeLabel(string $type): string
     {
         return match ($type) {
-            'quality'         => 'Quality Issue',
-            'delivery'        => 'Late Delivery',
-            'payment'         => 'Payment Dispute',
+            'quality' => 'Quality Issue',
+            'delivery' => 'Late Delivery',
+            'payment' => 'Payment Dispute',
             'contract_breach' => 'Contract Violation',
-            default           => 'Other',
+            default => 'Other',
         };
     }
 }

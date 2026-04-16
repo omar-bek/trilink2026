@@ -16,8 +16,8 @@ use Illuminate\Notifications\Notification;
  */
 class CompanyInfoRequestedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Company $company,
@@ -49,13 +49,13 @@ class CompanyInfoRequestedNotification extends Notification implements ShouldQue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'         => 'company_info_requested',
-            'title'        => $this->t($notifiable, 'notifications.company.info_requested.title'),
-            'message'      => $this->t($notifiable, 'notifications.company.info_requested.message', ['name' => $this->company->name]),
-            'entity_type'  => 'company',
-            'entity_id'    => $this->company->id,
-            'note'         => $this->note,
-            'action_url'   => route('register.success'),
+            'type' => 'company_info_requested',
+            'title' => $this->t($notifiable, 'notifications.company.info_requested.title'),
+            'message' => $this->t($notifiable, 'notifications.company.info_requested.message', ['name' => $this->company->name]),
+            'entity_type' => 'company',
+            'entity_id' => $this->company->id,
+            'note' => $this->note,
+            'action_url' => route('register.success'),
         ];
     }
 }

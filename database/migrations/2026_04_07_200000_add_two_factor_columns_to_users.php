@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Schema;
  * The columns are encrypted at the model level (cast to 'encrypted' on
  * User) so a DB leak still protects the secret and recovery codes.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {

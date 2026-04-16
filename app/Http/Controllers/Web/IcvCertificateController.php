@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Web\Admin\IcvCertificateAdminController;
 use App\Models\IcvCertificate;
+use App\Rules\SafeUpload;
+use App\Services\Procurement\IcvScoringService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -14,10 +18,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * Phase 4 (UAE Compliance Roadmap) — supplier-side ICV certificate
  * management. The supplier uploads their MoIAT/ADNOC/etc. certificate
  * along with the published score, an admin verifies, and bid evaluation
- * picks it up automatically (see {@see \App\Services\Procurement\IcvScoringService}).
+ * picks it up automatically (see {@see IcvScoringService}).
  *
  * Admin-side verification (approve / reject) lives in
- * {@see \App\Http\Controllers\Web\Admin\IcvCertificateAdminController}
+ * {@see IcvCertificateAdminController}
  * — kept in a separate controller so the supplier-facing routes stay
  * focused on self-service.
  */
@@ -34,11 +38,11 @@ class IcvCertificateController extends Controller
             ->get();
 
         $stats = [
-            'total'    => $certificates->count(),
-            'active'   => $certificates->filter(fn (IcvCertificate $c) => $c->isActive())->count(),
-            'pending'  => $certificates->where('status', IcvCertificate::STATUS_PENDING)->count(),
-            'expired'  => $certificates->filter(fn (IcvCertificate $c) => $c->isExpired())->count(),
-            'best'     => $certificates
+            'total' => $certificates->count(),
+            'active' => $certificates->filter(fn (IcvCertificate $c) => $c->isActive())->count(),
+            'pending' => $certificates->where('status', IcvCertificate::STATUS_PENDING)->count(),
+            'expired' => $certificates->filter(fn (IcvCertificate $c) => $c->isExpired())->count(),
+            'best' => $certificates
                 ->filter(fn (IcvCertificate $c) => $c->isActive())
                 ->map(fn (IcvCertificate $c) => (float) $c->score)
                 ->max(),
@@ -50,6 +54,7 @@ class IcvCertificateController extends Controller
     public function create(): View
     {
         abort_unless(auth()->user()?->company_id, 403);
+
         return view('dashboard.icv-certificates.upload', [
             'issuers' => IcvCertificate::ALL_ISSUERS,
         ]);
@@ -61,12 +66,12 @@ class IcvCertificateController extends Controller
         abort_unless($user?->company_id, 403);
 
         $data = $request->validate([
-            'issuer'             => ['required', 'string', \Illuminate\Validation\Rule::in(IcvCertificate::ALL_ISSUERS)],
+            'issuer' => ['required', 'string', Rule::in(IcvCertificate::ALL_ISSUERS)],
             'certificate_number' => ['required', 'string', 'max:64'],
-            'score'              => ['required', 'numeric', 'min:0', 'max:100'],
-            'issued_date'        => ['required', 'date', 'before_or_equal:today'],
-            'expires_date'       => ['required', 'date', 'after:issued_date'],
-            'file'               => ['required', 'file', 'max:10240', ...\App\Rules\SafeUpload::pdfOrImage()],
+            'score' => ['required', 'numeric', 'min:0', 'max:100'],
+            'issued_date' => ['required', 'date', 'before_or_equal:today'],
+            'expires_date' => ['required', 'date', 'after:issued_date'],
+            'file' => ['required', 'file', 'max:10240', ...SafeUpload::pdfOrImage()],
         ]);
 
         // Reject duplicate uploads of the same certificate (same
@@ -89,18 +94,18 @@ class IcvCertificateController extends Controller
         $path = $file->store("icv-certificates/{$user->company_id}", 'local');
 
         IcvCertificate::create([
-            'company_id'         => $user->company_id,
-            'issuer'             => $data['issuer'],
+            'company_id' => $user->company_id,
+            'issuer' => $data['issuer'],
             'certificate_number' => $data['certificate_number'],
-            'score'              => $data['score'],
-            'issued_date'        => $data['issued_date'],
-            'expires_date'       => $data['expires_date'],
-            'file_path'          => $path,
-            'file_sha256'        => $sha,
-            'file_size'          => $file->getSize(),
-            'original_filename'  => $file->getClientOriginalName(),
-            'status'             => IcvCertificate::STATUS_PENDING,
-            'uploaded_by'        => $user->id,
+            'score' => $data['score'],
+            'issued_date' => $data['issued_date'],
+            'expires_date' => $data['expires_date'],
+            'file_path' => $path,
+            'file_sha256' => $sha,
+            'file_size' => $file->getSize(),
+            'original_filename' => $file->getClientOriginalName(),
+            'status' => IcvCertificate::STATUS_PENDING,
+            'uploaded_by' => $user->id,
         ]);
 
         return redirect()
@@ -133,13 +138,13 @@ class IcvCertificateController extends Controller
         $user = $request->user();
         $cert = IcvCertificate::where('company_id', $user->company_id)->findOrFail($id);
 
-        if (!$cert->file_path || !Storage::disk('local')->exists($cert->file_path)) {
+        if (! $cert->file_path || ! Storage::disk('local')->exists($cert->file_path)) {
             return back()->withErrors(['file' => __('icv.file_missing')]);
         }
 
         return Storage::disk('local')->download(
             $cert->file_path,
-            ($cert->original_filename ?: ('icv-' . $cert->id . '.pdf'))
+            ($cert->original_filename ?: ('icv-'.$cert->id.'.pdf'))
         );
     }
 }

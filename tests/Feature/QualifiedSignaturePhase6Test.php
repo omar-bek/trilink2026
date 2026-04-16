@@ -45,15 +45,15 @@ class QualifiedSignaturePhase6Test extends TestCase
     private function makeCompany(string $name, CompanyType $type = CompanyType::BUYER): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => 'TRN-' . random_int(100000, 999999),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@t.test',
-            'address'             => '101 Sheikh Zayed Road',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => 'TRN-'.random_int(100000, 999999),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@t.test',
+            'address' => '101 Sheikh Zayed Road',
+            'city' => 'Dubai',
+            'country' => 'AE',
         ]);
     }
 
@@ -61,11 +61,11 @@ class QualifiedSignaturePhase6Test extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => 'u-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'u-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -74,10 +74,10 @@ class QualifiedSignaturePhase6Test extends TestCase
     {
         CompanyDocument::create([
             'company_id' => $company->id,
-            'type'       => DocumentType::TRADE_LICENSE,
-            'label'      => 'License',
-            'file_path'  => 'test/license.pdf',
-            'status'     => CompanyDocument::STATUS_VERIFIED,
+            'type' => DocumentType::TRADE_LICENSE,
+            'label' => 'License',
+            'file_path' => 'test/license.pdf',
+            'status' => CompanyDocument::STATUS_VERIFIED,
             'expires_at' => now()->addYear(),
         ]);
     }
@@ -89,13 +89,13 @@ class QualifiedSignaturePhase6Test extends TestCase
         float $amount = 100000
     ): Contract {
         return Contract::create([
-            'title'             => $title,
-            'buyer_company_id'  => $buyer->id,
-            'status'            => ContractStatus::PENDING_SIGNATURES,
-            'total_amount'      => $amount,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->id, 'role' => 'supplier']],
-            'version'           => 1,
+            'title' => $title,
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::PENDING_SIGNATURES,
+            'total_amount' => $amount,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'version' => 1,
         ]);
     }
 
@@ -211,9 +211,9 @@ class QualifiedSignaturePhase6Test extends TestCase
         $contract = $this->makeContract($buyer, $supplier, 'Big project', 1_000_000);
 
         $result = $service->sign($contract->id, $supplierUser->id, $supplier->id, null, [
-            'ip_address'         => '1.2.3.4',
-            'signature_grade'    => 'advanced',
-            'uae_pass_user_id'   => 'UP-XYZ',
+            'ip_address' => '1.2.3.4',
+            'signature_grade' => 'advanced',
+            'uae_pass_user_id' => 'UP-XYZ',
             'uae_pass_full_name' => 'Test User',
         ]);
 
@@ -307,7 +307,7 @@ class QualifiedSignaturePhase6Test extends TestCase
 
         // Verify with the same signer context
         $verifyEnvelope = array_merge($envelope, [
-            'signer_user_id'    => 1,
+            'signer_user_id' => 1,
             'signer_company_id' => 2,
         ]);
         $result = $tsp->verify($contractHash, $verifyEnvelope);
@@ -320,7 +320,7 @@ class QualifiedSignaturePhase6Test extends TestCase
         $envelope = $tsp->signHash(hash('sha256', 'original'), ['user_id' => 1, 'company_id' => 2]);
 
         $verifyEnvelope = array_merge($envelope, [
-            'signer_user_id'    => 1,
+            'signer_user_id' => 1,
             'signer_company_id' => 2,
         ]);
         $result = $tsp->verify(hash('sha256', 'tampered'), $verifyEnvelope);

@@ -33,7 +33,7 @@ class AuthController extends Controller
         unset($credentials['remember']);
         $credentials['status'] = UserStatus::ACTIVE->value;
 
-        if (!Auth::attempt($credentials, $remember)) {
+        if (! Auth::attempt($credentials, $remember)) {
             return back()->withErrors([
                 'email' => 'The provided credentials are invalid or your account is inactive.',
             ])->onlyInput('email');
@@ -54,9 +54,9 @@ class AuthController extends Controller
         $value = $role instanceof UserRole ? $role->value : (string) $role;
 
         return match ($value) {
-            'admin'      => route('admin.index'),
+            'admin' => route('admin.index'),
             'government' => route('gov.index'),
-            default      => route('dashboard'),
+            default => route('dashboard'),
         };
     }
 

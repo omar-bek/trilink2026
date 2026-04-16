@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Web\Contract;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Models\Contract;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -36,16 +37,16 @@ class AnalyticsController extends Controller
             $base->forCompany($companyId);
         }
 
-        $now           = now();
+        $now = now();
         $thisMonthFrom = $now->copy()->startOfMonth();
-        $thisQtrFrom   = $now->copy()->firstOfQuarter();
-        $thisYearFrom  = $now->copy()->startOfYear();
+        $thisQtrFrom = $now->copy()->firstOfQuarter();
+        $thisYearFrom = $now->copy()->startOfYear();
 
         // Spend KPIs.
-        $totalAll       = (float) (clone $base)->sum('total_amount');
+        $totalAll = (float) (clone $base)->sum('total_amount');
         $totalThisMonth = (float) (clone $base)->where('created_at', '>=', $thisMonthFrom)->sum('total_amount');
-        $totalThisQtr   = (float) (clone $base)->where('created_at', '>=', $thisQtrFrom)->sum('total_amount');
-        $totalThisYear  = (float) (clone $base)->where('created_at', '>=', $thisYearFrom)->sum('total_amount');
+        $totalThisQtr = (float) (clone $base)->where('created_at', '>=', $thisQtrFrom)->sum('total_amount');
+        $totalThisYear = (float) (clone $base)->where('created_at', '>=', $thisYearFrom)->sum('total_amount');
 
         $statusCounts = (clone $base)
             ->selectRaw('status, COUNT(*) as cnt')
@@ -68,18 +69,18 @@ class AnalyticsController extends Controller
                 continue;
             }
             $firstAt = collect($sigs)->pluck('signed_at')->filter()->sort()->first();
-            if (!$firstAt) {
+            if (! $firstAt) {
                 continue;
             }
             try {
-                $diff = $c->created_at?->diffInDays(\Carbon\Carbon::parse($firstAt));
+                $diff = $c->created_at?->diffInDays(Carbon::parse($firstAt));
                 if ($diff !== null) {
                     $velocityDays[] = (float) $diff;
                 }
             } catch (\Throwable) {
             }
         }
-        $avgVelocity = !empty($velocityDays) ? round(array_sum($velocityDays) / count($velocityDays), 1) : null;
+        $avgVelocity = ! empty($velocityDays) ? round(array_sum($velocityDays) / count($velocityDays), 1) : null;
 
         // Top 5 suppliers by aggregated contract value — uses the indexed
         // contract_parties junction with a SQL GROUP BY rather than a
@@ -97,9 +98,9 @@ class AnalyticsController extends Controller
 
         $topSuppliers = $topSupplierRows
             ->map(fn ($r) => [
-                'name'  => $r->name ?? '—',
+                'name' => $r->name ?? '—',
                 'value' => $this->money((float) $r->total, 'AED'),
-                'raw'   => (float) $r->total,
+                'raw' => (float) $r->total,
             ])
             ->all();
 
@@ -123,16 +124,16 @@ class AnalyticsController extends Controller
 
         return view('dashboard.contracts.analytics', [
             'kpis' => [
-                'total_all'    => $this->money($totalAll, 'AED'),
-                'this_month'   => $this->money($totalThisMonth, 'AED'),
-                'this_qtr'     => $this->money($totalThisQtr, 'AED'),
-                'this_year'    => $this->money($totalThisYear, 'AED'),
+                'total_all' => $this->money($totalAll, 'AED'),
+                'this_month' => $this->money($totalThisMonth, 'AED'),
+                'this_qtr' => $this->money($totalThisQtr, 'AED'),
+                'this_year' => $this->money($totalThisYear, 'AED'),
                 'avg_velocity' => $avgVelocity,
             ],
             'status_counts' => $statusCounts,
             'top_suppliers' => $topSuppliers,
-            'monthly'       => array_values($monthly),
-            'monthly_max'   => $monthlyMax,
+            'monthly' => array_values($monthly),
+            'monthly_max' => $monthlyMax,
         ]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\UserRole;
 use App\Models\CompanyDocument;
 use App\Models\User;
 use App\Notifications\DocumentExpiringSoonNotification;
@@ -52,7 +53,7 @@ class ExpireCompanyDocuments extends Command
         $notifiedCount = 0;
         foreach ($expiringSoon as $doc) {
             $managers = User::where('company_id', $doc->company_id)
-                ->where('role', \App\Enums\UserRole::COMPANY_MANAGER->value)
+                ->where('role', UserRole::COMPANY_MANAGER->value)
                 ->get();
 
             if ($managers->isNotEmpty()) {

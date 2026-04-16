@@ -33,11 +33,11 @@ class Category extends Model
     protected function casts(): array
     {
         return [
-            'is_active'        => 'boolean',
-            'level'            => 'integer',
-            'unspsc_segment'   => 'integer',
-            'unspsc_family'    => 'integer',
-            'unspsc_class'     => 'integer',
+            'is_active' => 'boolean',
+            'level' => 'integer',
+            'unspsc_segment' => 'integer',
+            'unspsc_family' => 'integer',
+            'unspsc_class' => 'integer',
             'unspsc_commodity' => 'integer',
         ];
     }
@@ -77,7 +77,7 @@ class Category extends Model
         static::saving(function (Category $category) {
             if ($category->parent_id) {
                 $parent = Category::find($category->parent_id);
-                $category->path = $parent ? $parent->path . '/' . $category->name : $category->name;
+                $category->path = $parent ? $parent->path.'/'.$category->name : $category->name;
                 $category->level = $parent ? $parent->level + 1 : 0;
             } else {
                 $category->path = $category->name;

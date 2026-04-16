@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\DocumentType;
 use App\Models\Company;
 use App\Models\CompanyDocument;
 use App\Models\ErpConnector;
@@ -9,7 +10,7 @@ use App\Models\Product;
 use App\Models\PurchaseRequest;
 use App\Models\Rfq;
 use App\Models\User;
-use App\Enums\DocumentType;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Sprint B.6 — onboarding checklist for newly-registered companies.
@@ -41,12 +42,12 @@ class OnboardingChecklistService
      */
     public function for(?User $user): array
     {
-        if (!$user || !$user->company_id) {
+        if (! $user || ! $user->company_id) {
             return $this->empty();
         }
 
         $company = Company::find($user->company_id);
-        if (!$company) {
+        if (! $company) {
             return $this->empty();
         }
 
@@ -58,95 +59,96 @@ class OnboardingChecklistService
 
         $steps = [
             [
-                'key'         => 'company_info',
-                'title'       => __('onboarding.step_company_info_title'),
+                'key' => 'company_info',
+                'title' => __('onboarding.step_company_info_title'),
                 'description' => __('onboarding.step_company_info_desc'),
-                'done'        => $this->companyInfoComplete($company),
-                'route'       => route('dashboard.company.profile'),
-                'cta'         => __('onboarding.step_company_info_cta'),
-                'optional'    => false,
+                'done' => $this->companyInfoComplete($company),
+                'route' => route('dashboard.company.profile'),
+                'cta' => __('onboarding.step_company_info_cta'),
+                'optional' => false,
             ],
             [
-                'key'         => 'trade_license',
-                'title'       => __('onboarding.step_trade_license_title'),
+                'key' => 'trade_license',
+                'title' => __('onboarding.step_trade_license_title'),
                 'description' => __('onboarding.step_trade_license_desc'),
-                'done'        => $this->tradeLicenseUploaded($company),
-                'route'       => route('dashboard.documents.index'),
-                'cta'         => __('onboarding.step_trade_license_cta'),
-                'optional'    => false,
+                'done' => $this->tradeLicenseUploaded($company),
+                'route' => route('dashboard.documents.index'),
+                'cta' => __('onboarding.step_trade_license_cta'),
+                'optional' => false,
             ],
             [
-                'key'         => 'first_action',
-                'title'       => $isSupplier
+                'key' => 'first_action',
+                'title' => $isSupplier
                     ? __('onboarding.step_first_product_title')
                     : __('onboarding.step_first_pr_title'),
                 'description' => $isSupplier
                     ? __('onboarding.step_first_product_desc')
                     : __('onboarding.step_first_pr_desc'),
-                'done'        => $isSupplier
+                'done' => $isSupplier
                     ? $this->hasAnyProduct($company)
                     : $this->hasAnyPurchaseRequestOrRfq($company),
-                'route'       => $isSupplier
+                'route' => $isSupplier
                     ? route('dashboard.products.create')
                     : route('dashboard.purchase-requests.create'),
-                'cta'         => $isSupplier
+                'cta' => $isSupplier
                     ? __('onboarding.step_first_product_cta')
                     : __('onboarding.step_first_pr_cta'),
-                'optional'    => false,
+                'optional' => false,
             ],
             [
-                'key'         => 'invite_team',
-                'title'       => __('onboarding.step_invite_team_title'),
+                'key' => 'invite_team',
+                'title' => __('onboarding.step_invite_team_title'),
                 'description' => __('onboarding.step_invite_team_desc'),
-                'done'        => $this->teamInvited($company),
-                'route'       => route('company.users'),
-                'cta'         => __('onboarding.step_invite_team_cta'),
-                'optional'    => false,
+                'done' => $this->teamInvited($company),
+                'route' => route('company.users'),
+                'cta' => __('onboarding.step_invite_team_cta'),
+                'optional' => false,
             ],
             [
-                'key'         => 'connect_erp',
-                'title'       => __('onboarding.step_erp_title'),
+                'key' => 'connect_erp',
+                'title' => __('onboarding.step_erp_title'),
                 'description' => __('onboarding.step_erp_desc'),
-                'done'        => $this->erpConnected($company),
-                'route'       => route('dashboard.integrations.index'),
-                'cta'         => __('onboarding.step_erp_cta'),
+                'done' => $this->erpConnected($company),
+                'route' => route('dashboard.integrations.index'),
+                'cta' => __('onboarding.step_erp_cta'),
                 // ERP integration is optional. Marked so the UI can
                 // render the badge differently and the "all done"
                 // hide rule treats this step as already complete.
-                'optional'    => true,
+                'optional' => true,
             ],
         ];
 
-        $required  = array_filter($steps, fn ($s) => !$s['optional']);
+        $required = array_filter($steps, fn ($s) => ! $s['optional']);
         $completed = array_filter($required, fn ($s) => $s['done']);
-        $total     = count($required);
-        $count     = count($completed);
-        $percent   = $total > 0 ? (int) round(($count / $total) * 100) : 100;
+        $total = count($required);
+        $count = count($completed);
+        $percent = $total > 0 ? (int) round(($count / $total) * 100) : 100;
 
         return [
             // Hide the whole widget once every required step is done.
             // Optional steps don't gate visibility — a user who skips
             // ERP forever shouldn't see the checklist forever.
-            'visible'   => $count < $total,
+            'visible' => $count < $total,
             'completed' => $count,
-            'total'     => $total,
-            'percent'   => $percent,
-            'steps'     => $steps,
+            'total' => $total,
+            'percent' => $percent,
+            'steps' => $steps,
         ];
     }
 
     private function companyInfoComplete(Company $company): bool
     {
-        return !empty($company->name)
-            && !empty($company->tax_number)
-            && !empty($company->country);
+        return ! empty($company->name)
+            && ! empty($company->tax_number)
+            && ! empty($company->country);
     }
 
     private function tradeLicenseUploaded(Company $company): bool
     {
-        if (!\Illuminate\Support\Facades\Schema::hasTable('company_documents')) {
+        if (! Schema::hasTable('company_documents')) {
             return false;
         }
+
         return CompanyDocument::query()
             ->where('company_id', $company->id)
             ->where('type', DocumentType::TRADE_LICENSE)
@@ -155,9 +157,10 @@ class OnboardingChecklistService
 
     private function hasAnyProduct(Company $company): bool
     {
-        if (!\Illuminate\Support\Facades\Schema::hasTable('products')) {
+        if (! Schema::hasTable('products')) {
             return false;
         }
+
         return Product::query()->where('company_id', $company->id)->exists();
     }
 
@@ -166,6 +169,7 @@ class OnboardingChecklistService
         if (PurchaseRequest::query()->where('company_id', $company->id)->exists()) {
             return true;
         }
+
         return Rfq::query()->where('company_id', $company->id)->exists();
     }
 
@@ -176,20 +180,21 @@ class OnboardingChecklistService
 
     private function erpConnected(Company $company): bool
     {
-        if (!\Illuminate\Support\Facades\Schema::hasTable('erp_connectors')) {
+        if (! Schema::hasTable('erp_connectors')) {
             return false;
         }
+
         return ErpConnector::query()->where('company_id', $company->id)->exists();
     }
 
     private function empty(): array
     {
         return [
-            'visible'   => false,
+            'visible' => false,
             'completed' => 0,
-            'total'     => 0,
-            'percent'   => 0,
-            'steps'     => [],
+            'total' => 0,
+            'percent' => 0,
+            'steps' => [],
         ];
     }
 }

@@ -15,8 +15,8 @@ use App\Models\Branch;
 use App\Models\Cart;
 use App\Models\Category;
 use App\Models\Company;
-use App\Models\CompanyDocument;
 use App\Models\CompanyCategoryRequest;
+use App\Models\CompanyDocument;
 use App\Models\CompanyInsurance;
 use App\Models\CompanySupplier;
 use App\Models\Contract;
@@ -116,43 +116,43 @@ class SidebarBadgeService
     {
         return [
             // Procurement
-            'purchase-requests'  => 0,
-            'rfqs'               => 0,
-            'bids'               => 0,
-            'contracts'          => 0,
-            'catalog'            => 0,
-            'suppliers-directory'=> 0,
-            'products'           => 0,
+            'purchase-requests' => 0,
+            'rfqs' => 0,
+            'bids' => 0,
+            'contracts' => 0,
+            'catalog' => 0,
+            'suppliers-directory' => 0,
+            'products' => 0,
 
             // Operations
-            'shipments'          => 0,
-            'payments'           => 0,
-            'escrow'             => 0,
-            'cart'               => 0,
-            'disputes'           => 0,
-            'esg'                => 0,
-            'integrations'       => 0,
+            'shipments' => 0,
+            'payments' => 0,
+            'escrow' => 0,
+            'cart' => 0,
+            'disputes' => 0,
+            'esg' => 0,
+            'integrations' => 0,
 
             // Management
-            'pending-requests'   => 0,
-            'company-users'      => 0,
-            'branches'           => 0,
-            'suppliers'          => 0,
-            'documents'          => 0,
-            'beneficial-owners'  => 0,
-            'insurances'         => 0,
+            'pending-requests' => 0,
+            'company-users' => 0,
+            'branches' => 0,
+            'suppliers' => 0,
+            'documents' => 0,
+            'beneficial-owners' => 0,
+            'insurances' => 0,
 
             // Settings
-            'api-tokens'         => 0,
+            'api-tokens' => 0,
 
             // Admin (system-wide)
-            'admin-users'        => 0,
-            'admin-companies'    => 0,
+            'admin-users' => 0,
+            'admin-companies' => 0,
             'admin-verification' => 0,
-            'admin-categories'   => 0,
-            'admin-tax-rates'    => 0,
-            'admin-settings'     => 0,
-            'admin-audit'        => 0,
+            'admin-categories' => 0,
+            'admin-tax-rates' => 0,
+            'admin-settings' => 0,
+            'admin-audit' => 0,
         ];
     }
 
@@ -166,7 +166,7 @@ class SidebarBadgeService
     private function compute(User $user, string $role): array
     {
         $badges = $this->empty();
-        $cid    = $user->company_id;
+        $cid = $user->company_id;
 
         // Procurement workflow ────────────────────────────────────────
         //
@@ -179,14 +179,14 @@ class SidebarBadgeService
         // buyer-side (only the company that created them sees them).
         $this->safe(function () use (&$badges, $cid) {
             $badges['purchase-requests'] = PurchaseRequest::where('company_id', $cid)->count();
-            $badges['pending-requests']  = PurchaseRequest::where('company_id', $cid)
+            $badges['pending-requests'] = PurchaseRequest::where('company_id', $cid)
                 ->where('status', PurchaseRequestStatus::PENDING_APPROVAL->value)
                 ->count();
 
             // RFQs: show the count for the default tab. Whichever side
             // has more rows wins the badge — consistent with the unified
             // index default-tab logic.
-            $mineCount        = Rfq::where('company_id', $cid)->count();
+            $mineCount = Rfq::where('company_id', $cid)->count();
             $marketplaceCount = Rfq::query()
                 ->where('status', RfqStatus::OPEN->value)
                 ->where('company_id', '!=', $cid)
@@ -197,7 +197,7 @@ class SidebarBadgeService
         $this->safe(function () use (&$badges, $cid) {
             // Bids: show the count for the default tab. Same logic as
             // BidController::index() — whichever side is "busier".
-            $receivedCount  = Bid::whereHas('rfq', fn ($q) => $q->where('company_id', $cid))->count();
+            $receivedCount = Bid::whereHas('rfq', fn ($q) => $q->where('company_id', $cid))->count();
             $submittedCount = Bid::where('company_id', $cid)->count();
             $badges['bids'] = max($receivedCount, $submittedCount);
         });
@@ -210,7 +210,7 @@ class SidebarBadgeService
             $badges['contracts'] = Contract::query()
                 ->where(function ($q) use ($cid) {
                     $q->where('buyer_company_id', $cid)
-                      ->orWhereJsonContains('parties', ['company_id' => $cid]);
+                        ->orWhereJsonContains('parties', ['company_id' => $cid]);
                 })
                 ->count();
         });
@@ -274,13 +274,13 @@ class SidebarBadgeService
 
         $this->safe(function () use (&$badges, $cid) {
             $badges['disputes'] = Dispute::where(function ($q) use ($cid) {
-                    $q->where('company_id', $cid)->orWhere('against_company_id', $cid);
-                })
+                $q->where('company_id', $cid)->orWhere('against_company_id', $cid);
+            })
                 ->whereIn('status', [
-                    DisputeStatus::OPEN->value,
-                    DisputeStatus::UNDER_REVIEW->value,
-                    DisputeStatus::ESCALATED->value,
-                ])
+                DisputeStatus::OPEN->value,
+                DisputeStatus::UNDER_REVIEW->value,
+                DisputeStatus::ESCALATED->value,
+            ])
                 ->count();
         });
 
@@ -290,8 +290,8 @@ class SidebarBadgeService
 
         // Integrations — webhook endpoints + ERP connectors.
         $this->safe(function () use (&$badges, $cid) {
-            $webhooks  = WebhookEndpoint::where('company_id', $cid)->count();
-            $erp       = ErpConnector::where('company_id', $cid)->count();
+            $webhooks = WebhookEndpoint::where('company_id', $cid)->count();
+            $erp = ErpConnector::where('company_id', $cid)->count();
             $badges['integrations'] = $webhooks + $erp;
         });
 
@@ -382,14 +382,14 @@ class SidebarBadgeService
                     DisputeStatus::ESCALATED->value,
                 ])
                 ->count();
-            $badges['esg']           = EsgQuestionnaire::query()->count();
-            $badges['integrations']  = WebhookEndpoint::query()->count() + ErpConnector::query()->count();
+            $badges['esg'] = EsgQuestionnaire::query()->count();
+            $badges['integrations'] = WebhookEndpoint::query()->count() + ErpConnector::query()->count();
             $badges['company-users'] = User::query()->count();
-            $badges['branches']      = Branch::query()->count();
-            $badges['suppliers']     = CompanySupplier::query()->count();
-            $badges['documents']     = CompanyDocument::query()->count();
+            $badges['branches'] = Branch::query()->count();
+            $badges['suppliers'] = CompanySupplier::query()->count();
+            $badges['documents'] = CompanyDocument::query()->count();
             $badges['beneficial-owners'] = BeneficialOwner::query()->count();
-            $badges['insurances']    = CompanyInsurance::query()->count();
+            $badges['insurances'] = CompanyInsurance::query()->count();
         });
 
         $this->safe(function () use (&$badges, $user) {
@@ -403,15 +403,15 @@ class SidebarBadgeService
 
         // Admin section — system-wide meta counts only meaningful for admins.
         $this->safe(function () use (&$badges) {
-            $badges['admin-users']       = User::query()->count();
-            $badges['admin-companies']   = Company::query()->count();
-            $badges['admin-verification']= CompanyDocument::where('status', CompanyDocument::STATUS_PENDING)->count()
+            $badges['admin-users'] = User::query()->count();
+            $badges['admin-companies'] = Company::query()->count();
+            $badges['admin-verification'] = CompanyDocument::where('status', CompanyDocument::STATUS_PENDING)->count()
                                          + SanctionsScreening::query()->where('status', 'review')->count();
-            $badges['admin-categories']  = Category::query()->count();
+            $badges['admin-categories'] = Category::query()->count();
             $badges['admin-category-requests'] = CompanyCategoryRequest::where('status', CompanyCategoryRequest::STATUS_PENDING)->count();
-            $badges['admin-tax-rates']   = TaxRate::query()->count();
-            $badges['admin-settings']    = Setting::query()->count();
-            $badges['admin-audit']       = AuditLog::query()->where('created_at', '>=', now()->subDay())->count();
+            $badges['admin-tax-rates'] = TaxRate::query()->count();
+            $badges['admin-settings'] = Setting::query()->count();
+            $badges['admin-audit'] = AuditLog::query()->where('created_at', '>=', now()->subDay())->count();
         });
 
         return $badges;
@@ -430,5 +430,4 @@ class SidebarBadgeService
             report($e);
         }
     }
-
 }

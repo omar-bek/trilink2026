@@ -29,7 +29,7 @@ class ScimUser extends Model
     protected function casts(): array
     {
         return [
-            'is_active'    => 'boolean',
+            'is_active' => 'boolean',
             'scim_payload' => 'array',
         ];
     }

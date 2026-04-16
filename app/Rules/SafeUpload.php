@@ -18,7 +18,8 @@ namespace App\Rules;
  */
 final class SafeUpload
 {
-    private const DOCUMENT_MIMES      = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+    private const DOCUMENT_MIMES = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'];
+
     private const DOCUMENT_MIME_TYPES = [
         'application/pdf',
         'application/msword',
@@ -29,33 +30,35 @@ final class SafeUpload
         'image/jpeg',
     ];
 
-    private const PDF_IMAGE_MIMES      = ['pdf', 'jpg', 'jpeg', 'png'];
+    private const PDF_IMAGE_MIMES = ['pdf', 'jpg', 'jpeg', 'png'];
+
     private const PDF_IMAGE_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
 
-    private const IMAGE_MIMES      = ['jpg', 'jpeg', 'png', 'webp'];
+    private const IMAGE_MIMES = ['jpg', 'jpeg', 'png', 'webp'];
+
     private const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
     public static function documents(): array
     {
         return [
-            'mimes:' . implode(',', self::DOCUMENT_MIMES),
-            'mimetypes:' . implode(',', self::DOCUMENT_MIME_TYPES),
+            'mimes:'.implode(',', self::DOCUMENT_MIMES),
+            'mimetypes:'.implode(',', self::DOCUMENT_MIME_TYPES),
         ];
     }
 
     public static function pdfOrImage(): array
     {
         return [
-            'mimes:' . implode(',', self::PDF_IMAGE_MIMES),
-            'mimetypes:' . implode(',', self::PDF_IMAGE_MIME_TYPES),
+            'mimes:'.implode(',', self::PDF_IMAGE_MIMES),
+            'mimetypes:'.implode(',', self::PDF_IMAGE_MIME_TYPES),
         ];
     }
 
     public static function image(): array
     {
         return [
-            'mimes:' . implode(',', self::IMAGE_MIMES),
-            'mimetypes:' . implode(',', self::IMAGE_MIME_TYPES),
+            'mimes:'.implode(',', self::IMAGE_MIMES),
+            'mimetypes:'.implode(',', self::IMAGE_MIME_TYPES),
         ];
     }
 }

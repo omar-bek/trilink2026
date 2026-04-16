@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,8 +18,8 @@ use Illuminate\Notifications\Notification;
  */
 class EscrowEventNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         public readonly int $contractId,
@@ -30,8 +32,8 @@ class EscrowEventNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'payment_updates',
             ['database', 'mail']
         );
@@ -43,7 +45,7 @@ class EscrowEventNotification extends Notification implements ShouldQueue
 
         return $this->baseMail($notifiable, 'notifications.escrow.event.subject', ['event' => $event])
             ->line($this->t($notifiable, 'notifications.escrow.event.line1'))
-            ->line($event . ($this->amount ? ' — ' . $this->currency . ' ' . number_format((float) $this->amount, 2) : ''))
+            ->line($event.($this->amount ? ' — '.$this->currency.' '.number_format((float) $this->amount, 2) : ''))
             ->action(
                 $this->t($notifiable, 'notifications.common.action_view_contract'),
                 route('dashboard.contracts.show', ['id' => $this->contractId])
@@ -54,25 +56,26 @@ class EscrowEventNotification extends Notification implements ShouldQueue
     {
         $type = match ($this->action) {
             'release', 'deposit', 'activated' => 'success',
-            'refund'                          => 'warning',
-            default                           => 'info',
+            'refund' => 'warning',
+            default => 'info',
         };
 
         return [
-            'type'        => $type,
-            'title'       => $this->t($notifiable, 'notifications.escrow.event.title'),
-            'message'     => $this->t($notifiable, 'notifications.escrow.event.message', [
+            'type' => $type,
+            'title' => $this->t($notifiable, 'notifications.escrow.event.title'),
+            'message' => $this->t($notifiable, 'notifications.escrow.event.message', [
                 'event' => $this->localisedEvent($notifiable),
             ]),
             'entity_type' => 'contract',
-            'entity_id'   => $this->contractId,
+            'entity_id' => $this->contractId,
         ];
     }
 
     private function localisedEvent(object $notifiable): string
     {
-        $key = 'notifications.escrow.events.' . $this->action;
+        $key = 'notifications.escrow.events.'.$this->action;
         $value = trans($key, [], $this->localeFor($notifiable));
+
         return $value === $key ? $this->action : $value;
     }
 }

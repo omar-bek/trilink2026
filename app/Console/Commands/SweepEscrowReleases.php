@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\Log;
 class SweepEscrowReleases extends Command
 {
     protected $signature = 'escrow:sweep';
+
     protected $description = 'Auto-release escrow milestones whose release conditions are met (Phase 3 / task 3.11).';
 
     public function handle(EscrowService $service): int
@@ -41,7 +42,7 @@ class SweepEscrowReleases extends Command
         $released = 0;
         foreach ($accounts as $account) {
             $contract = $account->contract;
-            if (!$contract) {
+            if (! $contract) {
                 continue;
             }
 
@@ -63,6 +64,7 @@ class SweepEscrowReleases extends Command
         }
 
         $this->info("Sweep complete: {$released} releases dispatched.");
+
         return self::SUCCESS;
     }
 
@@ -91,9 +93,9 @@ class SweepEscrowReleases extends Command
             } catch (BankPartnerException $e) {
                 Log::warning('Sweeper release failed', [
                     'contract_id' => $contract->id,
-                    'payment_id'  => $payment->id,
-                    'condition'   => $condition,
-                    'error'       => $e->getMessage(),
+                    'payment_id' => $payment->id,
+                    'condition' => $condition,
+                    'error' => $e->getMessage(),
                 ]);
             }
         }

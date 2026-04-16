@@ -23,8 +23,11 @@ use Livewire\Component;
 class BidComparison extends Component
 {
     public int $rfqId;
+
     public string $sortBy = 'price';      // price | delivery | ai_score
+
     public string $sortDir = 'asc';
+
     /** @var array<int> */
     public array $selected = [];
 
@@ -37,6 +40,7 @@ class BidComparison extends Component
     {
         if (in_array($bidId, $this->selected, true)) {
             $this->selected = array_values(array_diff($this->selected, [$bidId]));
+
             return;
         }
 
@@ -52,6 +56,7 @@ class BidComparison extends Component
     {
         if ($this->sortBy === $field) {
             $this->sortDir = $this->sortDir === 'asc' ? 'desc' : 'asc';
+
             return;
         }
         $this->sortBy = $field;
@@ -94,7 +99,7 @@ class BidComparison extends Component
         $column = match ($this->sortBy) {
             'delivery' => 'delivery_time_days',
             'ai_score' => 'ai_score',
-            default    => 'price',
+            default => 'price',
         };
 
         return Bid::with('company')

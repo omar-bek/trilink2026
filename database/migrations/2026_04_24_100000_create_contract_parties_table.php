@@ -21,7 +21,8 @@ use Illuminate\Support\Facades\Schema;
  * The migration backfills the junction from existing JSON rows so
  * a freshly-migrated database is immediately queryable.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('contract_parties', function (Blueprint $table) {
@@ -60,22 +61,22 @@ return new class extends Migration {
                         if ($c->buyer_company_id) {
                             $rows[] = [
                                 'contract_id' => $c->id,
-                                'company_id'  => (int) $c->buyer_company_id,
-                                'role'        => 'buyer',
-                                'created_at'  => now(),
-                                'updated_at'  => now(),
+                                'company_id' => (int) $c->buyer_company_id,
+                                'role' => 'buyer',
+                                'created_at' => now(),
+                                'updated_at' => now(),
                             ];
                         }
 
                         // Counterparties from the JSON column.
                         $parties = is_string($c->parties) ? json_decode($c->parties, true) : ($c->parties ?? []);
-                        if (!is_array($parties)) {
+                        if (! is_array($parties)) {
                             continue;
                         }
                         foreach ($parties as $party) {
-                            $cid  = $party['company_id'] ?? null;
+                            $cid = $party['company_id'] ?? null;
                             $role = $party['role'] ?? null;
-                            if (!$cid || !$role) {
+                            if (! $cid || ! $role) {
                                 continue;
                             }
                             // Skip the buyer if it's already covered above.
@@ -84,10 +85,10 @@ return new class extends Migration {
                             }
                             $rows[] = [
                                 'contract_id' => $c->id,
-                                'company_id'  => (int) $cid,
-                                'role'        => $role,
-                                'created_at'  => now(),
-                                'updated_at'  => now(),
+                                'company_id' => (int) $cid,
+                                'role' => $role,
+                                'created_at' => now(),
+                                'updated_at' => now(),
                             ];
                         }
                     }

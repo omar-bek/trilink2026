@@ -3,9 +3,11 @@
 namespace App\Services\Privacy;
 
 use App\Models\Consent;
+use App\Models\PrivacyPolicyVersion;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 /**
  * The only legitimate writer for the `consents` table.
@@ -27,8 +29,7 @@ class ConsentLedger
 {
     public function __construct(
         private readonly ?Request $request = null,
-    ) {
-    }
+    ) {}
 
     /**
      * Record that the user granted (or re-granted) a consent. The latest
@@ -39,7 +40,7 @@ class ConsentLedger
      */
     public function grant(User $user, string $type, string $version): Consent
     {
-        if (!in_array($type, Consent::ALL_TYPES, true)) {
+        if (! in_array($type, Consent::ALL_TYPES, true)) {
             throw new \InvalidArgumentException("Unknown consent type: {$type}");
         }
 
@@ -51,22 +52,22 @@ class ConsentLedger
         // (cookies_essential, marketing_email — those are toggle-style
         // and don't have a policy text behind them).
         $policyVersionId = null;
-        if ($type === \App\Models\Consent::TYPE_PRIVACY_POLICY
-            || $type === \App\Models\Consent::TYPE_DATA_PROCESSING) {
-            $policyVersionId = \App\Models\PrivacyPolicyVersion::query()
+        if ($type === Consent::TYPE_PRIVACY_POLICY
+            || $type === Consent::TYPE_DATA_PROCESSING) {
+            $policyVersionId = PrivacyPolicyVersion::query()
                 ->where('version', $version)
                 ->value('id');
         }
 
         return Consent::create([
-            'user_id'                   => $user->id,
-            'consent_type'              => $type,
-            'version'                   => $version,
+            'user_id' => $user->id,
+            'consent_type' => $type,
+            'version' => $version,
             'privacy_policy_version_id' => $policyVersionId,
-            'granted_at'                => CarbonImmutable::now(),
-            'withdrawn_at'              => null,
-            'ip_address'                => $this->captureIp(),
-            'user_agent'                => $this->captureUserAgent(),
+            'granted_at' => CarbonImmutable::now(),
+            'withdrawn_at' => null,
+            'ip_address' => $this->captureIp(),
+            'user_agent' => $this->captureUserAgent(),
         ]);
     }
 
@@ -80,7 +81,7 @@ class ConsentLedger
      */
     public function withdraw(User $user, string $type): int
     {
-        if (!in_array($type, Consent::ALL_TYPES, true)) {
+        if (! in_array($type, Consent::ALL_TYPES, true)) {
             throw new \InvalidArgumentException("Unknown consent type: {$type}");
         }
 
@@ -93,7 +94,7 @@ class ConsentLedger
             ->whereNull('withdrawn_at')
             ->update([
                 'withdrawn_at' => $now,
-                'updated_at'   => $now,
+                'updated_at' => $now,
             ]);
 
         if ($affected > 0) {
@@ -102,13 +103,13 @@ class ConsentLedger
             // 14:32 from IP X" only on the original grant row, which
             // looks like the original grant was tampered with.
             Consent::create([
-                'user_id'      => $user->id,
+                'user_id' => $user->id,
                 'consent_type' => $type,
-                'version'      => 'withdrawal',
-                'granted_at'   => null,
+                'version' => 'withdrawal',
+                'granted_at' => null,
                 'withdrawn_at' => $now,
-                'ip_address'   => $this->captureIp(),
-                'user_agent'   => $this->captureUserAgent(),
+                'ip_address' => $this->captureIp(),
+                'user_agent' => $this->captureUserAgent(),
             ]);
         }
 
@@ -135,9 +136,9 @@ class ConsentLedger
      * history" panel and by the DSAR export to bundle the consent log
      * into the user's data archive.
      *
-     * @return \Illuminate\Support\Collection<int, Consent>
+     * @return Collection<int, Consent>
      */
-    public function ledgerFor(User $user): \Illuminate\Support\Collection
+    public function ledgerFor(User $user): Collection
     {
         return Consent::query()
             ->where('user_id', $user->id)

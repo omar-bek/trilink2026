@@ -4,7 +4,9 @@ namespace App\Notifications;
 
 use App\Models\Contract;
 use App\Models\ContractAmendment;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -19,8 +21,8 @@ use Illuminate\Notifications\Notification;
  */
 class ContractAmendmentProposedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Contract $contract,
@@ -32,8 +34,8 @@ class ContractAmendmentProposedNotification extends Notification implements Shou
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'contract_milestones',
             ['database', 'mail']
         );
@@ -54,13 +56,13 @@ class ContractAmendmentProposedNotification extends Notification implements Shou
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'warning',
-            'title'       => $this->t($notifiable, 'notifications.contract.amendment_proposed.title'),
-            'message'     => $this->t($notifiable, 'notifications.contract.amendment_proposed.message', [
+            'type' => 'warning',
+            'title' => $this->t($notifiable, 'notifications.contract.amendment_proposed.title'),
+            'message' => $this->t($notifiable, 'notifications.contract.amendment_proposed.message', [
                 'number' => $this->contract->contract_number,
             ]),
             'entity_type' => 'contract',
-            'entity_id'   => $this->contract->id,
+            'entity_id' => $this->contract->id,
         ];
     }
 }

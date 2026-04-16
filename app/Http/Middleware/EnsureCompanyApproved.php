@@ -26,7 +26,7 @@ class EnsureCompanyApproved
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return $next($request);
         }
 
@@ -36,7 +36,7 @@ class EnsureCompanyApproved
         }
 
         $company = $user->company;
-        if (!$company) {
+        if (! $company) {
             return $next($request);
         }
 

@@ -16,9 +16,7 @@ use Illuminate\Support\Str;
  */
 class CustomConnector implements ErpConnectorInterface
 {
-    public function __construct(private readonly string $type)
-    {
-    }
+    public function __construct(private readonly string $type) {}
 
     public function key(): string
     {
@@ -33,18 +31,18 @@ class CustomConnector implements ErpConnectorInterface
     public function pushContract(ErpConnector $connector, Contract $contract): array
     {
         return [
-            'success'     => true,
-            'external_id' => strtoupper($this->type) . '-CONTRACT-' . strtoupper(Str::random(10)),
-            'mode'        => 'stub',
+            'success' => true,
+            'external_id' => strtoupper($this->type).'-CONTRACT-'.strtoupper(Str::random(10)),
+            'mode' => 'stub',
         ];
     }
 
     public function pushPayment(ErpConnector $connector, Payment $payment): array
     {
         return [
-            'success'     => true,
-            'external_id' => strtoupper($this->type) . '-PAYMENT-' . strtoupper(Str::random(10)),
-            'mode'        => 'stub',
+            'success' => true,
+            'external_id' => strtoupper($this->type).'-PAYMENT-'.strtoupper(Str::random(10)),
+            'mode' => 'stub',
         ];
     }
 }

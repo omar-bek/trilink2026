@@ -19,7 +19,7 @@ class UserController extends Controller
     {
         $filters = $request->only(['company_id', 'role', 'status', 'search', 'per_page']);
 
-        if (!auth()->user()->isAdmin()) {
+        if (! auth()->user()->isAdmin()) {
             $filters['company_id'] = auth()->user()->company_id;
         }
 
@@ -29,6 +29,7 @@ class UserController extends Controller
     public function show(int $id): JsonResponse
     {
         $user = $this->service->find($id);
+
         return $user ? $this->success($user) : $this->notFound();
     }
 
@@ -59,6 +60,7 @@ class UserController extends Controller
         ]);
 
         $user = $this->service->update($id, $data);
+
         return $user ? $this->success($user) : $this->notFound();
     }
 
@@ -76,6 +78,7 @@ class UserController extends Controller
         ]);
 
         $user = $this->service->updatePermissions($id, $data['permissions']);
+
         return $user ? $this->success($user, 'Permissions updated') : $this->notFound();
     }
 
@@ -87,7 +90,9 @@ class UserController extends Controller
         ]);
 
         $user = $this->service->find($id);
-        if (!$user) return $this->notFound();
+        if (! $user) {
+            return $this->notFound();
+        }
 
         $success = $this->authService->changePassword($user, $data['current_password'], $data['password']);
 
@@ -105,6 +110,7 @@ class UserController extends Controller
         ]);
 
         $user = $this->service->updateProfile(auth()->user(), $data);
+
         return $this->success($user);
     }
 

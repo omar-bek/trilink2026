@@ -17,11 +17,11 @@ namespace App\Enums;
  */
 enum MilestoneType: string
 {
-    case ADVANCE    = 'advance';
+    case ADVANCE = 'advance';
     case PRODUCTION = 'production';
-    case DELIVERY   = 'delivery';
-    case FINAL      = 'final';
-    case OTHER      = 'other';
+    case DELIVERY = 'delivery';
+    case FINAL = 'final';
+    case OTHER = 'other';
 
     /**
      * Classify a free-text milestone label into a canonical type.
@@ -41,14 +41,10 @@ enum MilestoneType: string
         // FINAL bucket to win over the deposit/advance heuristic that
         // follows. Order matters here: most specific wins.
         return match (true) {
-            str_contains($key, 'final') || str_contains($key, 'settlement')
-                => self::FINAL,
-            str_contains($key, 'deliver') || str_contains($key, 'shipment')
-                => self::DELIVERY,
-            str_contains($key, 'production')
-                => self::PRODUCTION,
-            $key === 'advance' || str_contains($key, 'advance') || str_contains($key, 'deposit')
-                => self::ADVANCE,
+            str_contains($key, 'final') || str_contains($key, 'settlement') => self::FINAL,
+            str_contains($key, 'deliver') || str_contains($key, 'shipment') => self::DELIVERY,
+            str_contains($key, 'production') => self::PRODUCTION,
+            $key === 'advance' || str_contains($key, 'advance') || str_contains($key, 'deposit') => self::ADVANCE,
             default => self::OTHER,
         };
     }
@@ -56,11 +52,11 @@ enum MilestoneType: string
     public function translationKey(): string
     {
         return match ($this) {
-            self::ADVANCE    => 'contracts.advance_payment',
+            self::ADVANCE => 'contracts.advance_payment',
             self::PRODUCTION => 'contracts.production_completion',
-            self::DELIVERY   => 'contracts.delivery_payment',
-            self::FINAL      => 'contracts.final_settlement',
-            self::OTHER      => 'contracts.milestone',
+            self::DELIVERY => 'contracts.delivery_payment',
+            self::FINAL => 'contracts.final_settlement',
+            self::OTHER => 'contracts.milestone',
         };
     }
 }

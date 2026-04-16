@@ -8,27 +8,32 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\ExportsCsv;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Http\Requests\PurchaseRequest\StorePurchaseRequestRequest;
+use App\Models\Category;
 use App\Models\PurchaseRequest;
+use App\Models\Rfq;
 use App\Models\User;
+use App\Notifications\PurchaseRequestApprovedNotification;
+use App\Notifications\PurchaseRequestRejectedNotification;
 use App\Notifications\PurchaseRequestSubmittedNotification;
 use App\Services\PurchaseRequestService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PurchaseRequestController extends Controller
 {
-    use FormatsForViews, ExportsCsv;
+    use ExportsCsv, FormatsForViews;
 
-    public function __construct(private readonly PurchaseRequestService $service)
-    {
-    }
+    public function __construct(private readonly PurchaseRequestService $service) {}
 
-    public function index(\Illuminate\Http\Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function index(Request $request): View|StreamedResponse
     {
         abort_unless(auth()->user()?->hasPermission('pr.view'), 403);
 
-        $user      = auth()->user();
+        $user = auth()->user();
         $companyId = $this->currentCompanyId();
 
         // Optional ?status= filter — clicking a sidebar shortcut like
@@ -50,14 +55,14 @@ class PurchaseRequestController extends Controller
         if ($this->isCsvExport($request)) {
             $rows = (clone $base)->with(['buyer', 'category'])->latest()->get()
                 ->map(fn (PurchaseRequest $pr) => [
-                    'id'         => $pr->id,
-                    'pr_number'  => $this->prDisplayNumber($pr),
-                    'title'      => $pr->title,
-                    'status'     => $this->statusValue($pr->status),
-                    'category'   => $pr->category?->name ?? '',
-                    'budget'     => (float) $pr->budget,
-                    'currency'   => $pr->currency,
-                    'buyer'      => trim(($pr->buyer?->first_name ?? '') . ' ' . ($pr->buyer?->last_name ?? '')),
+                    'id' => $pr->id,
+                    'pr_number' => $this->prDisplayNumber($pr),
+                    'title' => $pr->title,
+                    'status' => $this->statusValue($pr->status),
+                    'category' => $pr->category?->name ?? '',
+                    'budget' => (float) $pr->budget,
+                    'currency' => $pr->currency,
+                    'buyer' => trim(($pr->buyer?->first_name ?? '').' '.($pr->buyer?->last_name ?? '')),
                     'created_at' => $pr->created_at?->toDateTimeString(),
                 ]);
 
@@ -65,11 +70,11 @@ class PurchaseRequestController extends Controller
         }
 
         $stats = [
-            'total'    => (clone $base)->count(),
-            'pending'  => (clone $base)->where('status', PurchaseRequestStatus::PENDING_APPROVAL->value)->count(),
+            'total' => (clone $base)->count(),
+            'pending' => (clone $base)->where('status', PurchaseRequestStatus::PENDING_APPROVAL->value)->count(),
             'approved' => (clone $base)->where('status', PurchaseRequestStatus::APPROVED->value)->count(),
             'progress' => (clone $base)->where('status', PurchaseRequestStatus::SUBMITTED->value)->count(),
-            'closed'   => (clone $base)->where('status', PurchaseRequestStatus::REJECTED->value)->count(),
+            'closed' => (clone $base)->where('status', PurchaseRequestStatus::REJECTED->value)->count(),
         ];
 
         $requests = (clone $base)
@@ -81,18 +86,18 @@ class PurchaseRequestController extends Controller
                 $bidsCount = $pr->rfqs->sum(fn ($r) => $r->bids->count());
 
                 return [
-                    'id'         => $this->prDisplayNumber($pr),
+                    'id' => $this->prDisplayNumber($pr),
                     'numeric_id' => $pr->id,
-                    'status'     => $this->mapPrStatus($this->statusValue($pr->status)),
-                    'tag'        => $pr->category?->name ?? 'General',
-                    'title'      => $pr->title,
-                    'desc'       => $pr->description ?? '',
-                    'creator'    => trim(($pr->buyer?->first_name ?? '') . ' ' . ($pr->buyer?->last_name ?? '')) ?: 'Unknown',
-                    'date'       => $this->date($pr->created_at),
-                    'amount'     => $this->money((float) $pr->budget, $pr->currency),
-                    'rfqs'       => $rfqsCount,
-                    'bids'       => $bidsCount,
-                    'progress'   => $rfqsCount > 0
+                    'status' => $this->mapPrStatus($this->statusValue($pr->status)),
+                    'tag' => $pr->category?->name ?? 'General',
+                    'title' => $pr->title,
+                    'desc' => $pr->description ?? '',
+                    'creator' => trim(($pr->buyer?->first_name ?? '').' '.($pr->buyer?->last_name ?? '')) ?: 'Unknown',
+                    'date' => $this->date($pr->created_at),
+                    'amount' => $this->money((float) $pr->budget, $pr->currency),
+                    'rfqs' => $rfqsCount,
+                    'bids' => $bidsCount,
+                    'progress' => $rfqsCount > 0
                         ? ['done' => $rfqsCount, 'total' => max($rfqsCount, 4)]
                         : null,
                 ];
@@ -125,23 +130,23 @@ class PurchaseRequestController extends Controller
         $currency = $pr->currency ?? 'AED';
 
         $items = collect($pr->items ?? [])->values()->map(function ($item, $i) use ($currency) {
-            $qty   = (float) ($item['qty'] ?? $item['quantity'] ?? 0);
-            $unit  = $item['unit'] ?? __('pr.unit_default');
+            $qty = (float) ($item['qty'] ?? $item['quantity'] ?? 0);
+            $unit = $item['unit'] ?? __('pr.unit_default');
             $price = isset($item['price']) ? (float) $item['price'] : null;
 
             return [
-                'n'         => $i + 1,
-                'name'      => $item['name'] ?? __('pr.item'),
-                'desc'      => $item['spec'] ?? $item['description'] ?? '',
-                'qty'       => trim($qty . ' ' . $unit),
+                'n' => $i + 1,
+                'name' => $item['name'] ?? __('pr.item'),
+                'desc' => $item['spec'] ?? $item['description'] ?? '',
+                'qty' => trim($qty.' '.$unit),
                 'qty_value' => $qty,
-                'unit'      => $unit,
-                'price'     => $price !== null ? $this->money($price * max($qty, 1), $currency) : '—',
+                'unit' => $unit,
+                'price' => $price !== null ? $this->money($price * max($qty, 1), $currency) : '—',
                 'has_price' => $price !== null,
             ];
         })->toArray();
 
-        $relatedRfqs = $pr->rfqs->map(function (\App\Models\Rfq $rfq) {
+        $relatedRfqs = $pr->rfqs->map(function (Rfq $rfq) {
             $statusValue = $this->statusValue($rfq->status);
             $statusKey = match ($statusValue) {
                 'open' => $rfq->deadline && $rfq->deadline->isPast() ? 'expired' : 'open',
@@ -151,14 +156,14 @@ class PurchaseRequestController extends Controller
             };
 
             return [
-                'id'         => $rfq->rfq_number,
+                'id' => $rfq->rfq_number,
                 'numeric_id' => $rfq->id,
-                'status'     => $statusKey,
-                'tag'        => $this->mapRfqTypeLabel($this->statusValue($rfq->type)),
-                'title'      => $rfq->title,
-                'created'    => $this->date($rfq->created_at),
-                'deadline'   => $this->date($rfq->deadline),
-                'bids'       => $rfq->bids->count(),
+                'status' => $statusKey,
+                'tag' => $this->mapRfqTypeLabel($this->statusValue($rfq->type)),
+                'title' => $rfq->title,
+                'created' => $this->date($rfq->created_at),
+                'deadline' => $this->date($rfq->deadline),
+                'bids' => $rfq->bids->count(),
             ];
         })->toArray();
 
@@ -191,41 +196,41 @@ class PurchaseRequestController extends Controller
         // owner cannot approve their own request UNLESS they're the only
         // manager in the company (solo-manager fallback).
         $isSelfRequest = $user && $user->id === $pr->buyer_id;
-        $soloManager = $isSelfRequest && !User::where('company_id', $pr->company_id)
+        $soloManager = $isSelfRequest && ! User::where('company_id', $pr->company_id)
             ->where('id', '!=', $user->id)
-            ->where('role', \App\Enums\UserRole::COMPANY_MANAGER->value)
+            ->where('role', UserRole::COMPANY_MANAGER->value)
             ->exists();
 
         $canApprove = $user
             && $user->hasPermission('pr.approve')
             && $user->company_id === $pr->company_id
-            && (!$isSelfRequest || $soloManager)
+            && (! $isSelfRequest || $soloManager)
             && in_array($statusValue, ['pending_approval', 'submitted'], true);
 
         $prData = [
-            'id'                   => $this->prDisplayNumber($pr),
-            'numeric_id'           => $pr->id,
-            'title'                => $pr->title,
-            'status'               => $this->mapPrStatus($statusValue),
-            'priority'             => $priority,
-            'priority_label'       => __('pr.priority_' . $priority),
-            'created_by'           => trim(($pr->buyer?->first_name ?? '') . ' ' . ($pr->buyer?->last_name ?? '')) ?: __('common.system'),
-            'created_date'         => $this->date($pr->created_at),
-            'department'           => $pr->category?->name ?? __('pr.department_default'),
-            'budget'               => $this->money((float) $pr->budget, $currency),
-            'delivery'             => $this->longDate($pr->required_date),
-            'location'             => $location ?: '—',
-            'items'                => $items,
-            'related_rfqs'         => $relatedRfqs,
-            'rfq_count'            => count($relatedRfqs),
-            'bid_count'            => $bidCount,
-            'timeline'             => $timeline,
-            'description'          => $pr->description ?? '',
-            'rfq_generated'        => (bool) $pr->rfq_generated,
-            'additional_services'  => $additionalServices,
-            'can_delete'           => $isOwner && $statusValue === 'draft' && $user?->hasPermission('pr.delete'),
-            'can_edit'             => $isOwner && $statusValue === 'draft',
-            'can_approve'          => $canApprove,
+            'id' => $this->prDisplayNumber($pr),
+            'numeric_id' => $pr->id,
+            'title' => $pr->title,
+            'status' => $this->mapPrStatus($statusValue),
+            'priority' => $priority,
+            'priority_label' => __('pr.priority_'.$priority),
+            'created_by' => trim(($pr->buyer?->first_name ?? '').' '.($pr->buyer?->last_name ?? '')) ?: __('common.system'),
+            'created_date' => $this->date($pr->created_at),
+            'department' => $pr->category?->name ?? __('pr.department_default'),
+            'budget' => $this->money((float) $pr->budget, $currency),
+            'delivery' => $this->longDate($pr->required_date),
+            'location' => $location ?: '—',
+            'items' => $items,
+            'related_rfqs' => $relatedRfqs,
+            'rfq_count' => count($relatedRfqs),
+            'bid_count' => $bidCount,
+            'timeline' => $timeline,
+            'description' => $pr->description ?? '',
+            'rfq_generated' => (bool) $pr->rfq_generated,
+            'additional_services' => $additionalServices,
+            'can_delete' => $isOwner && $statusValue === 'draft' && $user?->hasPermission('pr.delete'),
+            'can_edit' => $isOwner && $statusValue === 'draft',
+            'can_approve' => $canApprove,
         ];
 
         return view('dashboard.purchase-requests.show', ['pr' => $prData]);
@@ -238,11 +243,11 @@ class PurchaseRequestController extends Controller
     private function mapRfqTypeLabel(string $type): string
     {
         return match ($type) {
-            'supplier'         => __('pr.rfq_type_products'),
-            'logistics'        => __('pr.rfq_type_logistics'),
-            'clearance'        => __('pr.rfq_type_clearance'),
+            'supplier' => __('pr.rfq_type_products'),
+            'logistics' => __('pr.rfq_type_logistics'),
+            'clearance' => __('pr.rfq_type_clearance'),
             'service_provider' => __('pr.rfq_type_services'),
-            default            => __('pr.rfq_type_general'),
+            default => __('pr.rfq_type_general'),
         };
     }
 
@@ -252,11 +257,11 @@ class PurchaseRequestController extends Controller
      */
     private function derivePriority($requiredDate): string
     {
-        if (!$requiredDate) {
+        if (! $requiredDate) {
             return 'standard';
         }
 
-        $days = \Illuminate\Support\Carbon::parse($requiredDate)->startOfDay()
+        $days = Carbon::parse($requiredDate)->startOfDay()
             ->diffInDays(now()->startOfDay(), false) * -1;
 
         if ($days <= 7) {
@@ -277,58 +282,58 @@ class PurchaseRequestController extends Controller
     {
         $events = [];
 
-        $creatorName = trim(($pr->buyer?->first_name ?? '') . ' ' . ($pr->buyer?->last_name ?? '')) ?: __('common.system');
+        $creatorName = trim(($pr->buyer?->first_name ?? '').' '.($pr->buyer?->last_name ?? '')) ?: __('common.system');
 
         $events[] = [
-            'done'  => true,
+            'done' => true,
             'title' => __('pr.timeline_created'),
-            'who'   => $creatorName,
-            'when'  => $pr->created_at?->format('M j, Y g:i A') ?? '',
+            'who' => $creatorName,
+            'when' => $pr->created_at?->format('M j, Y g:i A') ?? '',
         ];
 
         foreach ((array) ($pr->approval_history ?? []) as $entry) {
             $events[] = [
-                'done'  => true,
+                'done' => true,
                 'title' => $entry['action'] ?? __('pr.timeline_status_change'),
-                'who'   => $entry['by'] ?? __('common.system'),
-                'when'  => isset($entry['at']) ? \Illuminate\Support\Carbon::parse($entry['at'])->format('M j, Y g:i A') : '',
+                'who' => $entry['by'] ?? __('common.system'),
+                'when' => isset($entry['at']) ? Carbon::parse($entry['at'])->format('M j, Y g:i A') : '',
             ];
         }
 
         $statusValue = $this->statusValue($pr->status);
         if (in_array($statusValue, ['submitted', 'pending_approval', 'approved', 'rejected'], true)) {
             $events[] = [
-                'done'  => true,
+                'done' => true,
                 'title' => __('pr.timeline_submitted'),
-                'who'   => $creatorName,
-                'when'  => $pr->updated_at?->format('M j, Y g:i A') ?? '',
+                'who' => $creatorName,
+                'when' => $pr->updated_at?->format('M j, Y g:i A') ?? '',
             ];
         }
 
         if ($statusValue === 'approved') {
             $events[] = [
-                'done'  => true,
+                'done' => true,
                 'title' => __('pr.timeline_approved'),
-                'who'   => __('common.system'),
-                'when'  => $pr->updated_at?->format('M j, Y g:i A') ?? '',
+                'who' => __('common.system'),
+                'when' => $pr->updated_at?->format('M j, Y g:i A') ?? '',
             ];
         }
 
         foreach ($pr->rfqs as $rfq) {
             $events[] = [
-                'done'  => true,
+                'done' => true,
                 'title' => __('pr.timeline_rfq_created', ['number' => $rfq->rfq_number]),
-                'who'   => __('common.system'),
-                'when'  => $rfq->created_at?->format('M j, Y g:i A') ?? '',
+                'who' => __('common.system'),
+                'when' => $rfq->created_at?->format('M j, Y g:i A') ?? '',
             ];
         }
 
-        if (!$pr->rfq_generated && in_array($statusValue, ['approved', 'submitted'], true)) {
+        if (! $pr->rfq_generated && in_array($statusValue, ['approved', 'submitted'], true)) {
             $events[] = [
-                'done'  => false,
+                'done' => false,
                 'title' => __('pr.timeline_rfq_pending'),
-                'who'   => __('common.system'),
-                'when'  => __('common.pending'),
+                'who' => __('common.system'),
+                'when' => __('common.pending'),
             ];
         }
 
@@ -339,7 +344,7 @@ class PurchaseRequestController extends Controller
     {
         abort_unless(auth()->user()?->hasPermission('pr.create'), 403);
 
-        $categories = \App\Models\Category::query()
+        $categories = Category::query()
             ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name']);
@@ -384,7 +389,7 @@ class PurchaseRequestController extends Controller
      */
     private function notifyManagersOfPendingApproval(PurchaseRequest $pr): void
     {
-        if (!$pr->company_id) {
+        if (! $pr->company_id) {
             return;
         }
 
@@ -408,9 +413,9 @@ class PurchaseRequestController extends Controller
 
         return view('dashboard.purchase-requests.success', [
             'pr' => [
-                'id'         => $this->prDisplayNumber($pr),
+                'id' => $this->prDisplayNumber($pr),
                 'numeric_id' => $pr->id,
-                'title'      => $pr->title,
+                'title' => $pr->title,
             ],
         ]);
     }
@@ -466,14 +471,14 @@ class PurchaseRequestController extends Controller
         if ($user->id === $pr->buyer_id) {
             $otherApprovers = User::where('company_id', $pr->company_id)
                 ->where('id', '!=', $user->id)
-                ->where('role', \App\Enums\UserRole::COMPANY_MANAGER->value)
+                ->where('role', UserRole::COMPANY_MANAGER->value)
                 ->exists();
             abort_if($otherApprovers, 422, 'You cannot approve your own purchase request — another manager in your company should review it.');
         }
 
         $approved = $this->service->approve($pr->id, $user->id);
 
-        if (!$approved) {
+        if (! $approved) {
             return back()->withErrors(['status' => __('pr.approve_failed_status')]);
         }
 
@@ -481,7 +486,7 @@ class PurchaseRequestController extends Controller
         // RFQ has been created for their request).
         $pr->loadMissing('buyer');
         if ($pr->buyer) {
-            $pr->buyer->notify(new \App\Notifications\PurchaseRequestApprovedNotification($pr));
+            $pr->buyer->notify(new PurchaseRequestApprovedNotification($pr));
         }
 
         return redirect()
@@ -492,7 +497,7 @@ class PurchaseRequestController extends Controller
     /**
      * Manager rejects a pending PR with an optional reason.
      */
-    public function reject(string $id, \Illuminate\Http\Request $request): RedirectResponse
+    public function reject(string $id, Request $request): RedirectResponse
     {
         $pr = $this->findOrFail($id);
         $user = auth()->user();
@@ -505,13 +510,13 @@ class PurchaseRequestController extends Controller
         $reason = (string) $request->input('reason', '');
         $rejected = $this->service->reject($pr->id, $user->id, $reason !== '' ? $reason : null);
 
-        if (!$rejected) {
+        if (! $rejected) {
             return back()->withErrors(['status' => __('pr.reject_failed_status')]);
         }
 
         $pr->loadMissing('buyer');
         if ($pr->buyer) {
-            $pr->buyer->notify(new \App\Notifications\PurchaseRequestRejectedNotification($pr, $reason !== '' ? $reason : null));
+            $pr->buyer->notify(new PurchaseRequestRejectedNotification($pr, $reason !== '' ? $reason : null));
         }
 
         return redirect()
@@ -525,19 +530,19 @@ class PurchaseRequestController extends Controller
      * a single bad row doesn't kill the whole batch. Returns a status
      * summary on the redirect.
      */
-    public function bulkApprove(\Illuminate\Http\Request $request): RedirectResponse
+    public function bulkApprove(Request $request): RedirectResponse
     {
         $user = auth()->user();
         abort_unless($user?->hasPermission('pr.approve'), 403);
 
         $data = $request->validate([
-            'ids'   => ['required', 'array', 'min:1'],
+            'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer'],
         ]);
 
         $approved = 0;
-        $skipped  = 0;
-        $errors   = 0;
+        $skipped = 0;
+        $errors = 0;
 
         $prs = PurchaseRequest::whereIn('id', $data['ids'])->get();
 
@@ -545,10 +550,12 @@ class PurchaseRequestController extends Controller
             // Same authorisation rules as the single-item approve action.
             if ($user->company_id !== $pr->company_id) {
                 $skipped++;
+
                 continue;
             }
             if ($user->isBranchManager() && $user->branch_id !== $pr->branch_id) {
                 $skipped++;
+
                 continue;
             }
             if ($user->id === $pr->buyer_id) {
@@ -556,16 +563,18 @@ class PurchaseRequestController extends Controller
                 // there's no other manager in the company who could review.
                 $otherApprovers = User::where('company_id', $pr->company_id)
                     ->where('id', '!=', $user->id)
-                    ->where('role', \App\Enums\UserRole::COMPANY_MANAGER->value)
+                    ->where('role', UserRole::COMPANY_MANAGER->value)
                     ->exists();
                 if ($otherApprovers) {
                     $skipped++;
+
                     continue;
                 }
             }
             // Only PRs awaiting approval are eligible.
             if ($this->statusValue($pr->status) !== 'pending_approval') {
                 $skipped++;
+
                 continue;
             }
 
@@ -575,7 +584,7 @@ class PurchaseRequestController extends Controller
                     $approved++;
                     $pr->loadMissing('buyer');
                     if ($pr->buyer) {
-                        $pr->buyer->notify(new \App\Notifications\PurchaseRequestApprovedNotification($pr));
+                        $pr->buyer->notify(new PurchaseRequestApprovedNotification($pr));
                     }
                 } else {
                     $errors++;
@@ -587,8 +596,8 @@ class PurchaseRequestController extends Controller
 
         return back()->with('status', __('pr.bulk_approve_summary', [
             'approved' => $approved,
-            'skipped'  => $skipped,
-            'errors'   => $errors,
+            'skipped' => $skipped,
+            'errors' => $errors,
         ]));
     }
 
@@ -612,11 +621,11 @@ class PurchaseRequestController extends Controller
     {
         return match ($status) {
             'pending_approval' => 'pending',
-            'submitted'        => 'submitted',
-            'approved'         => 'approved',
-            'rejected'         => 'closed',
-            'draft'            => 'draft',
-            default            => 'draft',
+            'submitted' => 'submitted',
+            'approved' => 'approved',
+            'rejected' => 'closed',
+            'draft' => 'draft',
+            default => 'draft',
         };
     }
 }

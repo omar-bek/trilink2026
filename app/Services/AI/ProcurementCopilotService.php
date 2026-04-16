@@ -22,9 +22,7 @@ use App\Models\User;
  */
 class ProcurementCopilotService
 {
-    public function __construct(private readonly AnthropicClient $client)
-    {
-    }
+    public function __construct(private readonly AnthropicClient $client) {}
 
     /**
      * Reply to the user's latest message. `$history` is an array of
@@ -41,7 +39,7 @@ class ProcurementCopilotService
 
         $system = $this->buildSystemPrompt($user);
 
-        if ($this->client->isConfigured() && !empty($history)) {
+        if ($this->client->isConfigured() && ! empty($history)) {
             $reply = $this->client->chat($system, $history, maxTokens: 800);
             if ($reply) {
                 return ['source' => 'claude', 'reply' => $reply];
@@ -50,7 +48,7 @@ class ProcurementCopilotService
 
         return [
             'source' => 'mock',
-            'reply'  => $this->mockReply($user, $latestText),
+            'reply' => $this->mockReply($user, $latestText),
         ];
     }
 
@@ -65,9 +63,9 @@ class ProcurementCopilotService
         $companyId = $user->company_id;
 
         $stats = [
-            'open_rfqs'        => Rfq::where('company_id', $companyId)->where('status', 'published')->count(),
+            'open_rfqs' => Rfq::where('company_id', $companyId)->where('status', 'published')->count(),
             'active_contracts' => Contract::where('buyer_company_id', $companyId)->where('status', 'active')->count(),
-            'pending_signature'=> Contract::where('buyer_company_id', $companyId)->where('status', 'pending_signatures')->count(),
+            'pending_signature' => Contract::where('buyer_company_id', $companyId)->where('status', 'pending_signatures')->count(),
         ];
 
         return <<<TXT
@@ -98,12 +96,14 @@ TXT;
 
         if (str_contains($lower, 'rfq') || str_contains($lower, 'request')) {
             $count = Rfq::where('company_id', $companyId)->where('status', 'published')->count();
+
             return "You currently have {$count} open RFQ(s). View them at /dashboard/rfqs.";
         }
 
         if (str_contains($lower, 'contract') || str_contains($lower, 'sign')) {
             $pending = Contract::where('buyer_company_id', $companyId)->where('status', 'pending_signatures')->count();
-            $active  = Contract::where('buyer_company_id', $companyId)->where('status', 'active')->count();
+            $active = Contract::where('buyer_company_id', $companyId)->where('status', 'active')->count();
+
             return "You have {$active} active contract(s) and {$pending} awaiting signature. Manage them at /dashboard/contracts.";
         }
 

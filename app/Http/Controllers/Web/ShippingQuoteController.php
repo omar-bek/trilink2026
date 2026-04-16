@@ -21,9 +21,7 @@ use Illuminate\View\View;
  */
 class ShippingQuoteController extends Controller
 {
-    public function __construct(private readonly ShippingService $service)
-    {
-    }
+    public function __construct(private readonly ShippingService $service) {}
 
     public function form(): View
     {
@@ -33,25 +31,25 @@ class ShippingQuoteController extends Controller
     public function quote(Request $request): View
     {
         $data = $request->validate([
-            'origin_city'         => ['required', 'string', 'max:100'],
-            'origin_country'      => ['required', 'string', 'size:2'],
-            'destination_city'    => ['required', 'string', 'max:100'],
+            'origin_city' => ['required', 'string', 'max:100'],
+            'origin_country' => ['required', 'string', 'size:2'],
+            'destination_city' => ['required', 'string', 'max:100'],
             'destination_country' => ['required', 'string', 'size:2'],
-            'weight_kg'           => ['required', 'numeric', 'min:0.1'],
-            'parcels'             => ['required', 'integer', 'min:1'],
+            'weight_kg' => ['required', 'numeric', 'min:0.1'],
+            'parcels' => ['required', 'integer', 'min:1'],
         ]);
 
         $payload = [
-            'origin'      => ['city' => $data['origin_city'], 'country' => strtoupper($data['origin_country'])],
+            'origin' => ['city' => $data['origin_city'], 'country' => strtoupper($data['origin_country'])],
             'destination' => ['city' => $data['destination_city'], 'country' => strtoupper($data['destination_country'])],
-            'weight_kg'   => (float) $data['weight_kg'],
-            'parcels'     => (int) $data['parcels'],
+            'weight_kg' => (float) $data['weight_kg'],
+            'parcels' => (int) $data['parcels'],
         ];
 
         $rates = $this->service->quoteAll($payload);
 
         return view('dashboard.shipping.quotes', [
-            'rates'   => $rates,
+            'rates' => $rates,
             'request' => $payload,
         ]);
     }
@@ -64,7 +62,7 @@ class ShippingQuoteController extends Controller
     public function syncTracking(Request $request, int $shipmentId): RedirectResponse
     {
         $shipment = Shipment::findOrFail($shipmentId);
-        $user     = $request->user();
+        $user = $request->user();
 
         // Tenant guard: only the buyer or supplier on the underlying contract
         // can sync tracking. Avoids letting random users hit the carrier API.

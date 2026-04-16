@@ -44,28 +44,28 @@ class IcvScoringPhase4Test extends TestCase
     private function makeCompany(string $name, CompanyType $type = CompanyType::SUPPLIER, ?float $icvScore = null): Company
     {
         $company = Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => 'TRN-' . random_int(100000, 999999),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'verification_level'  => VerificationLevel::BRONZE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@t.test',
-            'address'             => '101 Sheikh Zayed Road',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => 'TRN-'.random_int(100000, 999999),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'verification_level' => VerificationLevel::BRONZE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@t.test',
+            'address' => '101 Sheikh Zayed Road',
+            'city' => 'Dubai',
+            'country' => 'AE',
         ]);
 
         if ($icvScore !== null) {
             IcvCertificate::create([
-                'company_id'         => $company->id,
-                'issuer'             => IcvCertificate::ISSUER_MOIAT,
-                'certificate_number' => 'CERT-' . uniqid(),
-                'score'              => $icvScore,
-                'issued_date'        => now()->subMonths(6),
-                'expires_date'       => now()->addMonths(6),
-                'status'             => IcvCertificate::STATUS_VERIFIED,
-                'verified_at'        => now(),
+                'company_id' => $company->id,
+                'issuer' => IcvCertificate::ISSUER_MOIAT,
+                'certificate_number' => 'CERT-'.uniqid(),
+                'score' => $icvScore,
+                'issued_date' => now()->subMonths(6),
+                'expires_date' => now()->addMonths(6),
+                'status' => IcvCertificate::STATUS_VERIFIED,
+                'verified_at' => now(),
             ]);
         }
 
@@ -76,11 +76,11 @@ class IcvScoringPhase4Test extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => 'u-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'u-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -88,28 +88,28 @@ class IcvScoringPhase4Test extends TestCase
     private function makeRfq(Company $buyer, int $icvWeight = 0, ?float $icvMinimum = null): Rfq
     {
         return Rfq::create([
-            'rfq_number'            => 'RFQ-' . uniqid(),
-            'title'                 => 'Test RFQ',
-            'company_id'            => $buyer->id,
-            'type'                  => RfqType::SUPPLIER,
-            'status'                => RfqStatus::OPEN,
-            'items'                 => [['name' => 'Widget', 'qty' => 10]],
-            'budget'                => 100000,
-            'currency'              => 'AED',
+            'rfq_number' => 'RFQ-'.uniqid(),
+            'title' => 'Test RFQ',
+            'company_id' => $buyer->id,
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'Widget', 'qty' => 10]],
+            'budget' => 100000,
+            'currency' => 'AED',
             'icv_weight_percentage' => $icvWeight,
-            'icv_minimum_score'     => $icvMinimum,
+            'icv_minimum_score' => $icvMinimum,
         ]);
     }
 
     private function makeBid(Rfq $rfq, Company $supplier, float $price): Bid
     {
         return Bid::create([
-            'rfq_id'      => $rfq->id,
-            'company_id'  => $supplier->id,
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplier->id,
             'provider_id' => $this->makeUser($supplier)->id,
-            'status'      => BidStatus::SUBMITTED,
-            'price'       => $price,
-            'currency'    => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => $price,
+            'currency' => 'AED',
         ]);
     }
 
@@ -121,16 +121,16 @@ class IcvScoringPhase4Test extends TestCase
     {
         $service = $this->app->make(IcvScoringService::class);
 
-        $buyer    = $this->makeCompany('Z-Weight Buyer', CompanyType::BUYER);
-        $cheap    = $this->makeCompany('Cheap Supplier', CompanyType::SUPPLIER, icvScore: 90);
-        $pricey   = $this->makeCompany('Pricey Supplier', CompanyType::SUPPLIER, icvScore: 10);
+        $buyer = $this->makeCompany('Z-Weight Buyer', CompanyType::BUYER);
+        $cheap = $this->makeCompany('Cheap Supplier', CompanyType::SUPPLIER, icvScore: 90);
+        $pricey = $this->makeCompany('Pricey Supplier', CompanyType::SUPPLIER, icvScore: 10);
 
         $rfq = $this->makeRfq($buyer, icvWeight: 0);
-        $cheapBid  = $this->makeBid($rfq, $cheap, 1000);
+        $cheapBid = $this->makeBid($rfq, $cheap, 1000);
         $priceyBid = $this->makeBid($rfq, $pricey, 1500);
 
         $bids = $rfq->bids()->with('company')->get();
-        $cheapScore  = $service->scoreBid($cheapBid->fresh(), $bids, $rfq);
+        $cheapScore = $service->scoreBid($cheapBid->fresh(), $bids, $rfq);
         $priceyScore = $service->scoreBid($priceyBid->fresh(), $bids, $rfq);
 
         // Pure price scoring: cheap = 100, pricey = 1000/1500*100 = 66.67
@@ -145,13 +145,13 @@ class IcvScoringPhase4Test extends TestCase
     {
         $service = $this->app->make(IcvScoringService::class);
 
-        $buyer    = $this->makeCompany('Buyer X', CompanyType::BUYER);
-        $cheap    = $this->makeCompany('Low ICV Cheap', CompanyType::SUPPLIER, icvScore: 20);
-        $highIcv  = $this->makeCompany('High ICV Pricey', CompanyType::SUPPLIER, icvScore: 80);
+        $buyer = $this->makeCompany('Buyer X', CompanyType::BUYER);
+        $cheap = $this->makeCompany('Low ICV Cheap', CompanyType::SUPPLIER, icvScore: 20);
+        $highIcv = $this->makeCompany('High ICV Pricey', CompanyType::SUPPLIER, icvScore: 80);
 
         $rfq = $this->makeRfq($buyer, icvWeight: 30);
-        $cheapBid    = $this->makeBid($rfq, $cheap, 1000);
-        $highIcvBid  = $this->makeBid($rfq, $highIcv, 1200);
+        $cheapBid = $this->makeBid($rfq, $cheap, 1000);
+        $highIcvBid = $this->makeBid($rfq, $highIcv, 1200);
 
         $bids = $rfq->bids()->with('company')->get();
         $a = $service->scoreBid($cheapBid->fresh(), $bids, $rfq);
@@ -175,10 +175,10 @@ class IcvScoringPhase4Test extends TestCase
     {
         $service = $this->app->make(IcvScoringService::class);
 
-        $buyer    = $this->makeCompany('Buyer Y', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Y', CompanyType::BUYER);
         $supplier = $this->makeCompany('No Cert Supplier', CompanyType::SUPPLIER); // no ICV
-        $rfq      = $this->makeRfq($buyer, icvWeight: 30);
-        $bid      = $this->makeBid($rfq, $supplier, 1000);
+        $rfq = $this->makeRfq($buyer, icvWeight: 30);
+        $bid = $this->makeBid($rfq, $supplier, 1000);
 
         $bids = $rfq->bids()->with('company')->get();
         $score = $service->scoreBid($bid->fresh(), $bids, $rfq);
@@ -196,9 +196,9 @@ class IcvScoringPhase4Test extends TestCase
     {
         $service = $this->app->make(IcvScoringService::class);
 
-        $buyer  = $this->makeCompany('Picky Buyer', CompanyType::BUYER);
-        $low    = $this->makeCompany('Low ICV Cheap', CompanyType::SUPPLIER, icvScore: 25);
-        $okIcv  = $this->makeCompany('OK ICV Pricey', CompanyType::SUPPLIER, icvScore: 55);
+        $buyer = $this->makeCompany('Picky Buyer', CompanyType::BUYER);
+        $low = $this->makeCompany('Low ICV Cheap', CompanyType::SUPPLIER, icvScore: 25);
+        $okIcv = $this->makeCompany('OK ICV Pricey', CompanyType::SUPPLIER, icvScore: 55);
 
         // Minimum 40 — `low` is below cutoff
         $rfq = $this->makeRfq($buyer, icvWeight: 30, icvMinimum: 40);
@@ -228,8 +228,8 @@ class IcvScoringPhase4Test extends TestCase
 
         $buyer = $this->makeCompany('Buyer R', CompanyType::BUYER);
         $a = $this->makeCompany('A — high icv', CompanyType::SUPPLIER, icvScore: 90);
-        $b = $this->makeCompany('B — low icv',  CompanyType::SUPPLIER, icvScore: 10);
-        $c = $this->makeCompany('C — no cert',  CompanyType::SUPPLIER);
+        $b = $this->makeCompany('B — low icv', CompanyType::SUPPLIER, icvScore: 10);
+        $c = $this->makeCompany('C — no cert', CompanyType::SUPPLIER);
 
         $rfq = $this->makeRfq($buyer, icvWeight: 50);
         $this->makeBid($rfq, $a, 1000);
@@ -254,22 +254,22 @@ class IcvScoringPhase4Test extends TestCase
         $company = $this->makeCompany('Multi-issuer Supplier');
 
         IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'M-1',
-            'score'              => 30,
-            'issued_date'        => now()->subYear(),
-            'expires_date'       => now()->addMonths(3),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 30,
+            'issued_date' => now()->subYear(),
+            'expires_date' => now()->addMonths(3),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
         IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => IcvCertificate::ISSUER_ADNOC,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_ADNOC,
             'certificate_number' => 'A-1',
-            'score'              => 65,
-            'issued_date'        => now()->subMonths(3),
-            'expires_date'       => now()->addMonths(9),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 65,
+            'issued_date' => now()->subMonths(3),
+            'expires_date' => now()->addMonths(9),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         $this->assertEquals(65.0, $company->latestActiveIcvScore());
@@ -280,13 +280,13 @@ class IcvScoringPhase4Test extends TestCase
         $company = $this->makeCompany('Expired Supplier');
 
         IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'EXP-1',
-            'score'              => 80,
-            'issued_date'        => now()->subYears(2),
-            'expires_date'       => now()->subDays(1), // expired yesterday
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 80,
+            'issued_date' => now()->subYears(2),
+            'expires_date' => now()->subDays(1), // expired yesterday
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         $this->assertNull($company->latestActiveIcvScore());
@@ -297,13 +297,13 @@ class IcvScoringPhase4Test extends TestCase
         $company = $this->makeCompany('Pending Supplier');
 
         IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'PEND-1',
-            'score'              => 75,
-            'issued_date'        => now()->subDays(5),
-            'expires_date'       => now()->addMonths(11),
-            'status'             => IcvCertificate::STATUS_PENDING, // not yet verified
+            'score' => 75,
+            'issued_date' => now()->subDays(5),
+            'expires_date' => now()->addMonths(11),
+            'status' => IcvCertificate::STATUS_PENDING, // not yet verified
         ]);
 
         $this->assertNull($company->latestActiveIcvScore());
@@ -317,22 +317,22 @@ class IcvScoringPhase4Test extends TestCase
     {
         Storage::fake('local');
         $company = $this->makeCompany('Uploader Co');
-        $user    = $this->makeUser($company, UserRole::COMPANY_MANAGER);
+        $user = $this->makeUser($company, UserRole::COMPANY_MANAGER);
 
         $response = $this->actingAs($user)->post(route('dashboard.icv-certificates.store'), [
-            'issuer'             => 'moiat',
+            'issuer' => 'moiat',
             'certificate_number' => 'ICV-2026-99999',
-            'score'              => 42.50,
-            'issued_date'        => now()->subDay()->toDateString(),
-            'expires_date'       => now()->addYear()->toDateString(),
-            'file'               => UploadedFile::fake()->create('cert.pdf', 200, 'application/pdf'),
+            'score' => 42.50,
+            'issued_date' => now()->subDay()->toDateString(),
+            'expires_date' => now()->addYear()->toDateString(),
+            'file' => UploadedFile::fake()->create('cert.pdf', 200, 'application/pdf'),
         ]);
 
         $response->assertRedirect(route('dashboard.icv-certificates.index'));
         $this->assertDatabaseHas('icv_certificates', [
-            'company_id'         => $company->id,
+            'company_id' => $company->id,
             'certificate_number' => 'ICV-2026-99999',
-            'status'             => 'pending',
+            'status' => 'pending',
         ]);
     }
 
@@ -340,41 +340,41 @@ class IcvScoringPhase4Test extends TestCase
     {
         Storage::fake('local');
         $company = $this->makeCompany('Dup Co');
-        $user    = $this->makeUser($company, UserRole::COMPANY_MANAGER);
+        $user = $this->makeUser($company, UserRole::COMPANY_MANAGER);
 
         IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => 'moiat',
+            'company_id' => $company->id,
+            'issuer' => 'moiat',
             'certificate_number' => 'DUP-1',
-            'score'              => 50,
-            'issued_date'        => now()->subDays(10),
-            'expires_date'       => now()->addMonths(11),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 50,
+            'issued_date' => now()->subDays(10),
+            'expires_date' => now()->addMonths(11),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         $this->actingAs($user)->post(route('dashboard.icv-certificates.store'), [
-            'issuer'             => 'moiat',
+            'issuer' => 'moiat',
             'certificate_number' => 'DUP-1',
-            'score'              => 60,
-            'issued_date'        => now()->toDateString(),
-            'expires_date'       => now()->addYear()->toDateString(),
-            'file'               => UploadedFile::fake()->create('cert.pdf', 100),
+            'score' => 60,
+            'issued_date' => now()->toDateString(),
+            'expires_date' => now()->addYear()->toDateString(),
+            'file' => UploadedFile::fake()->create('cert.pdf', 100),
         ])->assertSessionHasErrors('certificate_number');
     }
 
     public function test_admin_can_approve_pending_certificate(): void
     {
         $company = $this->makeCompany('To-Approve Co');
-        $admin   = $this->makeUser($this->makeCompany('Admin Co', CompanyType::BUYER), UserRole::ADMIN);
+        $admin = $this->makeUser($this->makeCompany('Admin Co', CompanyType::BUYER), UserRole::ADMIN);
 
         $cert = IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => 'moiat',
+            'company_id' => $company->id,
+            'issuer' => 'moiat',
             'certificate_number' => 'APPROVE-1',
-            'score'              => 55,
-            'issued_date'        => now()->subDays(2),
-            'expires_date'       => now()->addYear(),
-            'status'             => IcvCertificate::STATUS_PENDING,
+            'score' => 55,
+            'issued_date' => now()->subDays(2),
+            'expires_date' => now()->addYear(),
+            'status' => IcvCertificate::STATUS_PENDING,
         ]);
 
         $this->actingAs($admin)
@@ -388,16 +388,16 @@ class IcvScoringPhase4Test extends TestCase
     public function test_admin_can_reject_pending_certificate_with_reason(): void
     {
         $company = $this->makeCompany('To-Reject Co');
-        $admin   = $this->makeUser($this->makeCompany('Admin Co', CompanyType::BUYER), UserRole::ADMIN);
+        $admin = $this->makeUser($this->makeCompany('Admin Co', CompanyType::BUYER), UserRole::ADMIN);
 
         $cert = IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => 'moiat',
+            'company_id' => $company->id,
+            'issuer' => 'moiat',
             'certificate_number' => 'REJECT-1',
-            'score'              => 99,
-            'issued_date'        => now()->subDays(2),
-            'expires_date'       => now()->addYear(),
-            'status'             => IcvCertificate::STATUS_PENDING,
+            'score' => 99,
+            'issued_date' => now()->subDays(2),
+            'expires_date' => now()->addYear(),
+            'status' => IcvCertificate::STATUS_PENDING,
         ]);
 
         $this->actingAs($admin)
@@ -413,7 +413,7 @@ class IcvScoringPhase4Test extends TestCase
     public function test_supplier_dashboard_renders(): void
     {
         $company = $this->makeCompany('Dashboard Co');
-        $user    = $this->makeUser($company, UserRole::COMPANY_MANAGER);
+        $user = $this->makeUser($company, UserRole::COMPANY_MANAGER);
 
         $this->actingAs($user)
             ->get(route('dashboard.icv-certificates.index'))

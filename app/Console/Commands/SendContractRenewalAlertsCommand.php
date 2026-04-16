@@ -92,10 +92,11 @@ class SendContractRenewalAlertsCommand extends Command
                 Cache::put($cacheKey, true, now()->addDays(200));
             }
 
-            $this->info("Bucket {$daysOut}d: processed " . $contracts->count() . " contract(s).");
+            $this->info("Bucket {$daysOut}d: processed ".$contracts->count().' contract(s).');
         }
 
         $this->info("Sent {$totalNotified} renewal notification(s).");
+
         return self::SUCCESS;
     }
 }

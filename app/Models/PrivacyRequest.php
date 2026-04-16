@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\Privacy\DataErasureService;
+use App\Services\Privacy\DataExportService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,8 +18,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * blockers exist (e.g. active contracts that prevent erasure), then
  * `approved` once any blockers are cleared. Approved requests are
  * picked up by the queue worker and run through the appropriate
- * service ({@see \App\Services\Privacy\DataExportService} for exports,
- * {@see \App\Services\Privacy\DataErasureService} for erasures).
+ * service ({@see DataExportService} for exports,
+ * {@see DataErasureService} for erasures).
  *
  * Withdrawal: the user can `withdraw` a pending or approved request
  * any time before completion (Article 11 — withdrawal of consent /
@@ -27,10 +29,13 @@ class PrivacyRequest extends Model
 {
     use HasFactory;
 
-    public const TYPE_DATA_EXPORT   = 'data_export';
-    public const TYPE_ERASURE       = 'erasure';
+    public const TYPE_DATA_EXPORT = 'data_export';
+
+    public const TYPE_ERASURE = 'erasure';
+
     public const TYPE_RECTIFICATION = 'rectification';
-    public const TYPE_RESTRICTION   = 'restriction';
+
+    public const TYPE_RESTRICTION = 'restriction';
 
     public const ALL_TYPES = [
         self::TYPE_DATA_EXPORT,
@@ -39,11 +44,16 @@ class PrivacyRequest extends Model
         self::TYPE_RESTRICTION,
     ];
 
-    public const STATUS_PENDING   = 'pending';
+    public const STATUS_PENDING = 'pending';
+
     public const STATUS_IN_REVIEW = 'in_review';
-    public const STATUS_APPROVED  = 'approved';
-    public const STATUS_REJECTED  = 'rejected';
+
+    public const STATUS_APPROVED = 'approved';
+
+    public const STATUS_REJECTED = 'rejected';
+
     public const STATUS_COMPLETED = 'completed';
+
     public const STATUS_WITHDRAWN = 'withdrawn';
 
     public const ALL_STATUSES = [
@@ -70,9 +80,9 @@ class PrivacyRequest extends Model
     protected function casts(): array
     {
         return [
-            'requested_at'         => 'datetime',
-            'scheduled_for'        => 'datetime',
-            'completed_at'         => 'datetime',
+            'requested_at' => 'datetime',
+            'scheduled_for' => 'datetime',
+            'completed_at' => 'datetime',
             'fulfillment_metadata' => 'array',
         ];
     }

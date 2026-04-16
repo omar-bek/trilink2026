@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Contract;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -20,8 +22,8 @@ use Illuminate\Notifications\Notification;
  */
 class ContractExpiringNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Contract $contract,
@@ -32,8 +34,8 @@ class ContractExpiringNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'contract_milestones',
             ['database', 'mail']
         );
@@ -41,17 +43,17 @@ class ContractExpiringNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $number   = $this->contract->contract_number;
-        $title    = (string) $this->contract->title;
-        $endDate  = $this->contract->end_date?->toDateString() ?? '—';
+        $number = $this->contract->contract_number;
+        $title = (string) $this->contract->title;
+        $endDate = $this->contract->end_date?->toDateString() ?? '—';
 
         return $this->baseMail($notifiable, 'notifications.contract.expiring.subject', [
-                'number' => $number,
-                'days'   => $this->daysUntilExpiry,
-            ])
+            'number' => $number,
+            'days' => $this->daysUntilExpiry,
+        ])
             ->line($this->t($notifiable, 'notifications.contract.expiring.line1', [
                 'number' => $number,
-                'title'  => $title,
+                'title' => $title,
             ]))
             ->line($this->t($notifiable, 'notifications.contract.expiring.line_date', ['date' => $endDate]))
             ->action(
@@ -63,14 +65,14 @@ class ContractExpiringNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'warning',
-            'title'       => $this->t($notifiable, 'notifications.contract.expiring.title'),
-            'message'     => $this->t($notifiable, 'notifications.contract.expiring.message', [
+            'type' => 'warning',
+            'title' => $this->t($notifiable, 'notifications.contract.expiring.title'),
+            'message' => $this->t($notifiable, 'notifications.contract.expiring.message', [
                 'number' => $this->contract->contract_number,
-                'days'   => $this->daysUntilExpiry,
+                'days' => $this->daysUntilExpiry,
             ]),
             'entity_type' => 'contract',
-            'entity_id'   => $this->contract->id,
+            'entity_id' => $this->contract->id,
         ];
     }
 }

@@ -41,8 +41,7 @@ class SanctionsScreeningService
 
     public function __construct(
         private readonly SanctionsProviderInterface $provider,
-    ) {
-    }
+    ) {}
 
     /**
      * Run a screening for the given company. Persists the verdict on the
@@ -51,8 +50,8 @@ class SanctionsScreeningService
      */
     public function screenCompany(Company $company, ?int $triggeredBy = null, bool $useCache = true): SanctionsScreening
     {
-        $query    = trim((string) $company->name);
-        $cacheKey = 'sanctions:' . $this->provider->code() . ':' . md5($query . '|' . ($company->country ?? ''));
+        $query = trim((string) $company->name);
+        $cacheKey = 'sanctions:'.$this->provider->code().':'.md5($query.'|'.($company->country ?? ''));
 
         $result = $useCache
             ? Cache::remember(
@@ -63,14 +62,14 @@ class SanctionsScreeningService
             : $this->provider->screen($query, $company->country);
 
         $screening = SanctionsScreening::create([
-            'company_id'       => $company->id,
-            'provider'         => $this->provider->code(),
-            'query'            => $query,
-            'result'           => $result['result'],
-            'match_count'      => $result['match_count'],
+            'company_id' => $company->id,
+            'provider' => $this->provider->code(),
+            'query' => $query,
+            'result' => $result['result'],
+            'match_count' => $result['match_count'],
             'matched_entities' => $result['matched_entities'],
-            'triggered_by'     => $triggeredBy,
-            'notes'            => $result['notes'] ?? null,
+            'triggered_by' => $triggeredBy,
+            'notes' => $result['notes'] ?? null,
         ]);
 
         // Only update the company status when the call succeeded with a
@@ -82,7 +81,7 @@ class SanctionsScreeningService
         // still persisted so the audit trail captures the failed attempt
         // and a future re-screen job can pick it up.
         $unreliable = [SanctionsScreening::RESULT_ERROR, SanctionsScreening::RESULT_RATE_LIMITED];
-        if (!in_array($result['result'], $unreliable, true)) {
+        if (! in_array($result['result'], $unreliable, true)) {
             $this->applyVerdict($company, $result['result']);
 
             if (in_array($result['result'], [SanctionsScreening::RESULT_HIT, SanctionsScreening::RESULT_REVIEW], true)) {
@@ -110,7 +109,7 @@ class SanctionsScreeningService
     private function applyVerdict(Company $company, string $verdict): void
     {
         $update = [
-            'sanctions_status'      => $verdict,
+            'sanctions_status' => $verdict,
             'sanctions_screened_at' => now(),
         ];
 

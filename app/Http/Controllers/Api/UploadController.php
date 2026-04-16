@@ -33,6 +33,7 @@ class UploadController extends Controller
     public function show(int $id): JsonResponse
     {
         $upload = $this->service->find($id);
+
         return $upload ? $this->success($upload) : $this->notFound();
     }
 

@@ -21,10 +21,13 @@ class CompanyInsurance extends Model
 {
     use HasFactory, SoftDeletes;
 
-    public const STATUS_PENDING  = 'pending';
+    public const STATUS_PENDING = 'pending';
+
     public const STATUS_VERIFIED = 'verified';
+
     public const STATUS_REJECTED = 'rejected';
-    public const STATUS_EXPIRED  = 'expired';
+
+    public const STATUS_EXPIRED = 'expired';
 
     public const TYPES = [
         'cargo',
@@ -59,10 +62,10 @@ class CompanyInsurance extends Model
     {
         return [
             'coverage_amount' => 'decimal:2',
-            'starts_at'       => 'date',
-            'expires_at'      => 'date',
-            'verified_at'     => 'datetime',
-            'file_size'       => 'integer',
+            'starts_at' => 'date',
+            'expires_at' => 'date',
+            'verified_at' => 'datetime',
+            'file_size' => 'integer',
         ];
     }
 

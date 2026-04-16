@@ -2,8 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AuditAction;
+use App\Enums\CompanyStatus;
+use App\Enums\CompanyType;
+use App\Models\AuditLog;
+use App\Models\Company;
 use App\Services\Sanctions\UaeLocalListProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -28,7 +34,7 @@ class CrossCuttingPhase9Test extends TestCase
     public function test_uae_local_list_returns_clean_when_no_fixture(): void
     {
         Storage::fake('local');
-        $provider = new UaeLocalListProvider();
+        $provider = new UaeLocalListProvider;
         $this->assertSame('clean', $provider->screen('Innocent Company LLC'));
     }
 
@@ -42,7 +48,7 @@ class CrossCuttingPhase9Test extends TestCase
             ],
         ]));
 
-        $provider = new UaeLocalListProvider();
+        $provider = new UaeLocalListProvider;
         $this->assertSame('hit', $provider->screen('Totally Different Name', 'REG-999'));
     }
 
@@ -56,7 +62,7 @@ class CrossCuttingPhase9Test extends TestCase
             ],
         ]));
 
-        $provider = new UaeLocalListProvider();
+        $provider = new UaeLocalListProvider;
         // Levenshtein ≤ 3 on normalised name: "mohammad rashid" vs "mohammed rashid" = dist 1
         $this->assertSame('review', $provider->screenPerson('Mohammad Rashid'));
     }
@@ -71,7 +77,7 @@ class CrossCuttingPhase9Test extends TestCase
             ],
         ]));
 
-        $provider = new UaeLocalListProvider();
+        $provider = new UaeLocalListProvider;
         $this->assertSame('clean', $provider->screen('Totally Different Company', 'REG-123'));
     }
 
@@ -82,8 +88,8 @@ class CrossCuttingPhase9Test extends TestCase
     public function test_anchor_command_persists_to_db_table(): void
     {
         // Seed an audit log row so the chain has something to anchor.
-        \App\Models\AuditLog::create([
-            'action' => \App\Enums\AuditAction::CREATE,
+        AuditLog::create([
+            'action' => AuditAction::CREATE,
             'resource_type' => 'Test', 'resource_id' => 1,
             'status' => 'success',
         ]);
@@ -102,11 +108,11 @@ class CrossCuttingPhase9Test extends TestCase
     public function test_rescreen_command_runs_dry_run(): void
     {
         // Create one active company to be "screened"
-        \App\Models\Company::create([
+        Company::create([
             'name' => 'Rescreen Co',
-            'registration_number' => 'REG-' . uniqid(),
-            'type' => \App\Enums\CompanyType::SUPPLIER,
-            'status' => \App\Enums\CompanyStatus::ACTIVE,
+            'registration_number' => 'REG-'.uniqid(),
+            'type' => CompanyType::SUPPLIER,
+            'status' => CompanyStatus::ACTIVE,
             'email' => 'rs@t.test', 'city' => 'Dubai', 'country' => 'AE',
         ]);
 
@@ -120,12 +126,12 @@ class CrossCuttingPhase9Test extends TestCase
 
     public function test_trc_columns_exist_on_companies(): void
     {
-        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasColumn('companies', 'trc_path'));
-        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasColumn('companies', 'trc_expires_at'));
+        $this->assertTrue(Schema::hasColumn('companies', 'trc_path'));
+        $this->assertTrue(Schema::hasColumn('companies', 'trc_expires_at'));
     }
 
     public function test_audit_chain_anchors_table_exists(): void
     {
-        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasTable('audit_chain_anchors'));
+        $this->assertTrue(Schema::hasTable('audit_chain_anchors'));
     }
 }

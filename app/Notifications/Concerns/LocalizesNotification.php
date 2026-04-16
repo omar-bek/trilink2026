@@ -72,6 +72,7 @@ trait LocalizesNotification
         if ($name) {
             return $this->t($notifiable, 'notifications.common.greeting_named', ['name' => $name]);
         }
+
         return $this->t($notifiable, 'notifications.common.greeting');
     }
 

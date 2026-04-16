@@ -16,9 +16,7 @@ class ShipmentController extends Controller
 {
     use FormatsForViews;
 
-    public function __construct(private readonly ShipmentService $service)
-    {
-    }
+    public function __construct(private readonly ShipmentService $service) {}
 
     public function index(Request $request): View
     {
@@ -33,7 +31,7 @@ class ShipmentController extends Controller
         // index used to silently hide shipments from logistics providers.
         $base = Shipment::query()->when($companyId, fn ($q) => $q->where(function ($qq) use ($companyId) {
             $qq->where('company_id', $companyId)
-               ->orWhere('logistics_company_id', $companyId);
+                ->orWhere('logistics_company_id', $companyId);
         }));
 
         // Filters from query string. The status filter maps to the same UI
@@ -48,20 +46,20 @@ class ShipmentController extends Controller
         $listing = (clone $base);
 
         match ($statusFilter) {
-            'preparing'  => $listing->whereIn('status', [
+            'preparing' => $listing->whereIn('status', [
                 ShipmentStatus::IN_PRODUCTION->value,
                 ShipmentStatus::READY_FOR_PICKUP->value,
             ]),
             'in_transit' => $listing->where('status', ShipmentStatus::IN_TRANSIT->value),
             'at_customs' => $listing->where('status', ShipmentStatus::IN_CLEARANCE->value),
-            'delivered'  => $listing->where('status', ShipmentStatus::DELIVERED->value),
-            'delayed'    => $listing->where('estimated_delivery', '<', now())
+            'delivered' => $listing->where('status', ShipmentStatus::DELIVERED->value),
+            'delayed' => $listing->where('estimated_delivery', '<', now())
                 ->whereNotIn('status', [ShipmentStatus::DELIVERED->value, ShipmentStatus::CANCELLED->value]),
-            default      => null,
+            default => null,
         };
 
         if ($search !== '') {
-            $like = '%' . $search . '%';
+            $like = '%'.$search.'%';
             $listing->where(function ($q) use ($like) {
                 $q->where('tracking_number', 'like', $like)
                     ->orWhereHas('contract', fn ($c) => $c->where('contract_number', 'like', $like)
@@ -70,14 +68,14 @@ class ShipmentController extends Controller
         }
 
         $stats = [
-            'total'      => (clone $base)->count(),
+            'total' => (clone $base)->count(),
             'in_transit' => (clone $base)->where('status', ShipmentStatus::IN_TRANSIT->value)->count(),
             'at_customs' => (clone $base)->where('status', ShipmentStatus::IN_CLEARANCE->value)->count(),
-            'delayed'    => (clone $base)
+            'delayed' => (clone $base)
                 ->where('estimated_delivery', '<', now())
                 ->whereNotIn('status', [ShipmentStatus::DELIVERED->value, ShipmentStatus::CANCELLED->value])
                 ->count(),
-            'delivered'  => (clone $base)->where('status', ShipmentStatus::DELIVERED->value)->count(),
+            'delivered' => (clone $base)->where('status', ShipmentStatus::DELIVERED->value)->count(),
         ];
 
         $shipments = (clone $listing)
@@ -88,17 +86,17 @@ class ShipmentController extends Controller
                 $statusKey = $this->mapShipmentStatus($this->statusValue($sh->status));
 
                 return [
-                    'id'         => $sh->tracking_number,
+                    'id' => $sh->tracking_number,
                     'numeric_id' => $sh->id,
-                    'status'     => $statusKey,
-                    'title'      => $sh->contract?->title ?? (__('shipments.shipment') . ' ' . $sh->tracking_number),
-                    'contract'   => $sh->contract?->contract_number ?? '—',
-                    'from'       => $this->locationLabel($sh->origin),
-                    'to'         => $this->locationLabel($sh->destination),
-                    'progress'   => $sh->realProgress(),
-                    'eta'        => $this->longDate($sh->estimated_delivery),
-                    'carrier'    => $sh->logisticsCompany?->name ?? '—',
-                    'time'       => $sh->updated_at?->diffForHumans(null, true) ?? '',
+                    'status' => $statusKey,
+                    'title' => $sh->contract?->title ?? (__('shipments.shipment').' '.$sh->tracking_number),
+                    'contract' => $sh->contract?->contract_number ?? '—',
+                    'from' => $this->locationLabel($sh->origin),
+                    'to' => $this->locationLabel($sh->destination),
+                    'progress' => $sh->realProgress(),
+                    'eta' => $this->longDate($sh->estimated_delivery),
+                    'carrier' => $sh->logisticsCompany?->name ?? '—',
+                    'time' => $sh->updated_at?->diffForHumans(null, true) ?? '',
                 ];
             })
             ->toArray();
@@ -127,10 +125,11 @@ class ShipmentController extends Controller
         $timeline = $this->buildTimeline($sh, $events, $statusKey);
         $gpsUpdates = $events->take(5)->map(function ($event) {
             $loc = $event->location ?? [];
+
             return [
-                'title'    => $event->description ?: ucfirst(str_replace('_', ' ', $event->status)),
+                'title' => $event->description ?: ucfirst(str_replace('_', ' ', $event->status)),
                 'location' => $this->locationLabel($loc),
-                'time'     => $event->event_at?->format('M j, g:i A') ?? '',
+                'time' => $event->event_at?->format('M j, g:i A') ?? '',
             ];
         })->all();
 
@@ -143,24 +142,24 @@ class ShipmentController extends Controller
         $logistics = $sh->logisticsCompany;
 
         $shipment = [
-            'id'              => $sh->tracking_number,
-            'numeric_id'      => $sh->id,
-            'title'           => $sh->contract?->title ?? __('shipments.shipment') . ' ' . $sh->tracking_number,
-            'status'          => $statusKey,
+            'id' => $sh->tracking_number,
+            'numeric_id' => $sh->id,
+            'title' => $sh->contract?->title ?? __('shipments.shipment').' '.$sh->tracking_number,
+            'status' => $statusKey,
             'contract_number' => $sh->contract?->contract_number,
-            'contract_id'     => $sh->contract?->id,
-            'from'            => $this->locationLabel($sh->origin),
-            'to'              => $this->locationLabel($sh->destination),
-            'progress'        => $sh->realProgress(),
-            'eta'             => $this->longDate($sh->estimated_delivery),
-            'days_remaining'  => $daysRemaining,
-            'carrier'         => $logistics?->name,
-            'carrier_code'    => $logistics ? $this->initials($logistics->name) : null,
-            'carrier_email'   => $logistics?->email,
-            'carrier_phone'   => $logistics?->phone,
-            'timeline'        => $timeline,
-            'gps_updates'     => $gpsUpdates,
-            'notes'           => $sh->notes,
+            'contract_id' => $sh->contract?->id,
+            'from' => $this->locationLabel($sh->origin),
+            'to' => $this->locationLabel($sh->destination),
+            'progress' => $sh->realProgress(),
+            'eta' => $this->longDate($sh->estimated_delivery),
+            'days_remaining' => $daysRemaining,
+            'carrier' => $logistics?->name,
+            'carrier_code' => $logistics ? $this->initials($logistics->name) : null,
+            'carrier_email' => $logistics?->email,
+            'carrier_phone' => $logistics?->phone,
+            'timeline' => $timeline,
+            'gps_updates' => $gpsUpdates,
+            'notes' => $sh->notes,
         ];
 
         return view('dashboard.shipments.show', compact('shipment'));
@@ -174,11 +173,11 @@ class ShipmentController extends Controller
     private function buildTimeline(Shipment $sh, $events, string $statusKey): array
     {
         $phases = [
-            'preparing'        => ['key' => 'preparing'],
-            'in_transit'       => ['key' => 'in_transit'],
-            'at_customs'       => ['key' => 'at_customs'],
+            'preparing' => ['key' => 'preparing'],
+            'in_transit' => ['key' => 'in_transit'],
+            'at_customs' => ['key' => 'at_customs'],
             'out_for_delivery' => ['key' => 'out_for_delivery'],
-            'delivered'        => ['key' => 'delivered'],
+            'delivered' => ['key' => 'delivered'],
         ];
 
         $order = array_keys($phases);
@@ -196,11 +195,11 @@ class ShipmentController extends Controller
             $isCurrent = $idx === $currentIdx && $statusKey !== 'delivered';
 
             $timeline[] = [
-                'done'     => $isDone || $isCurrent,
-                'current'  => $isCurrent,
-                'title'    => __('status.' . $phaseKey),
-                'desc'     => $event?->description ?? __('shipments.phase_desc_' . $phaseKey),
-                'time'     => $event?->event_at?->format('F j, Y - g:i A') ?? '',
+                'done' => $isDone || $isCurrent,
+                'current' => $isCurrent,
+                'title' => __('status.'.$phaseKey),
+                'desc' => $event?->description ?? __('shipments.phase_desc_'.$phaseKey),
+                'time' => $event?->event_at?->format('F j, Y - g:i A') ?? '',
                 'location' => $event ? $this->locationLabel($event->location ?? []) : '',
             ];
         }
@@ -213,10 +212,15 @@ class ShipmentController extends Controller
         $parts = preg_split('/[\s\-]+/u', trim($name)) ?: [];
         $letters = '';
         foreach ($parts as $part) {
-            if ($part === '') continue;
+            if ($part === '') {
+                continue;
+            }
             $letters .= mb_strtoupper(mb_substr($part, 0, 1));
-            if (mb_strlen($letters) >= 2) break;
+            if (mb_strlen($letters) >= 2) {
+                break;
+            }
         }
+
         return $letters !== '' ? $letters : '—';
     }
 
@@ -227,16 +231,16 @@ class ShipmentController extends Controller
         $shipment = $this->findOrFail($id);
 
         $location = array_filter([
-            'lat'  => $request->input('lat'),
-            'lng'  => $request->input('lng'),
+            'lat' => $request->input('lat'),
+            'lng' => $request->input('lng'),
             'city' => $request->input('city'),
         ]);
 
         $this->service->addTrackingEvent($shipment->id, [
-            'status'      => $request->input('status'),
+            'status' => $request->input('status'),
             'description' => $request->input('description'),
-            'location'    => $location ?: null,
-            'event_at'    => now(),
+            'location' => $location ?: null,
+            'event_at' => now(),
         ]);
 
         return redirect()
@@ -267,7 +271,7 @@ class ShipmentController extends Controller
     private function authorizeShipmentParty(Shipment $shipment): void
     {
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             abort(404);
         }
         if ($user->isAdmin() || $user->isGovernment()) {
@@ -289,7 +293,7 @@ class ShipmentController extends Controller
 
         $allowedCompanyIds = array_filter(array_unique($allowedCompanyIds));
 
-        if (!in_array($user->company_id, $allowedCompanyIds, true)) {
+        if (! in_array($user->company_id, $allowedCompanyIds, true)) {
             abort(404);
         }
     }
@@ -309,14 +313,13 @@ class ShipmentController extends Controller
     private function mapShipmentStatus(string $status): string
     {
         return match ($status) {
-            'in_production'    => 'preparing',
+            'in_production' => 'preparing',
             'ready_for_pickup' => 'preparing',
-            'in_transit'       => 'in_transit',
-            'in_clearance'     => 'at_customs',
-            'delivered'        => 'delivered',
-            'cancelled'        => 'closed',
-            default            => 'preparing',
+            'in_transit' => 'in_transit',
+            'in_clearance' => 'at_customs',
+            'delivered' => 'delivered',
+            'cancelled' => 'closed',
+            default => 'preparing',
         };
     }
-
 }

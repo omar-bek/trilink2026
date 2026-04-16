@@ -2,15 +2,18 @@
 
 namespace App\Services\Privacy;
 
+use App\Enums\ContractStatus;
+use App\Jobs\ExecutePrivacyErasureJob;
 use App\Models\Contract;
 use App\Models\Dispute;
 use App\Models\PrivacyRequest;
 use App\Models\User;
-use App\Enums\ContractStatus;
 use App\Notifications\DataErasureCompletedNotification;
 use App\Notifications\DataErasureDeniedNotification;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use RuntimeException;
 
 /**
@@ -104,7 +107,7 @@ class DataErasureService
     /**
      * Schedule an erasure request — does NOT actually erase. Creates
      * a `pending` PrivacyRequest with `scheduled_for = now + 30 days`.
-     * The {@see \App\Jobs\ExecutePrivacyErasureJob} is the worker that
+     * The {@see ExecutePrivacyErasureJob} is the worker that
      * picks it up after the cooling period elapses.
      */
     public function scheduleErasure(User $user, int $coolingDays = 30): PrivacyRequest
@@ -114,23 +117,23 @@ class DataErasureService
         // Hard blockers (anything not starting with "Note:") fail-fast.
         $hardBlockers = array_values(array_filter(
             $blockers,
-            fn ($b) => !str_starts_with($b, 'Note:')
+            fn ($b) => ! str_starts_with($b, 'Note:')
         ));
 
-        if (!empty($hardBlockers)) {
+        if (! empty($hardBlockers)) {
             // PDPL requires the data subject to be told WHY their
             // erasure was refused — silent failure is itself a
             // violation. Create a denied PrivacyRequest row so the
             // refusal is auditable, then notify the user before
             // throwing.
             $deniedRequest = PrivacyRequest::create([
-                'user_id'      => $user->id,
+                'user_id' => $user->id,
                 'request_type' => PrivacyRequest::TYPE_ERASURE,
-                'status'       => PrivacyRequest::STATUS_REJECTED ?? 'rejected',
+                'status' => PrivacyRequest::STATUS_REJECTED ?? 'rejected',
                 'requested_at' => CarbonImmutable::now(),
                 'completed_at' => CarbonImmutable::now(),
                 'fulfillment_metadata' => [
-                    'reason'   => implode(' | ', $hardBlockers),
+                    'reason' => implode(' | ', $hardBlockers),
                     'blockers' => $hardBlockers,
                 ],
             ]);
@@ -140,7 +143,7 @@ class DataErasureService
             } catch (\Throwable $e) {
                 \Log::warning('DataErasureService denied notification failed', [
                     'user_id' => $user->id,
-                    'error'   => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
 
@@ -148,14 +151,14 @@ class DataErasureService
         }
 
         return PrivacyRequest::create([
-            'user_id'              => $user->id,
-            'request_type'         => PrivacyRequest::TYPE_ERASURE,
-            'status'               => PrivacyRequest::STATUS_PENDING,
-            'requested_at'         => CarbonImmutable::now(),
-            'scheduled_for'        => CarbonImmutable::now()->addDays($coolingDays),
+            'user_id' => $user->id,
+            'request_type' => PrivacyRequest::TYPE_ERASURE,
+            'status' => PrivacyRequest::STATUS_PENDING,
+            'requested_at' => CarbonImmutable::now(),
+            'scheduled_for' => CarbonImmutable::now()->addDays($coolingDays),
             'fulfillment_metadata' => [
                 'cooling_days' => $coolingDays,
-                'warnings'     => $blockers, // includes the "Note:" lines
+                'warnings' => $blockers, // includes the "Note:" lines
             ],
         ]);
     }
@@ -172,7 +175,7 @@ class DataErasureService
      */
     public function executeErasure(PrivacyRequest $request): void
     {
-        if (!$request->isErasure() || !in_array($request->status, [
+        if (! $request->isErasure() || ! in_array($request->status, [
             PrivacyRequest::STATUS_PENDING,
             PrivacyRequest::STATUS_APPROVED,
         ], true)) {
@@ -181,15 +184,16 @@ class DataErasureService
 
         DB::transaction(function () use ($request) {
             $user = User::find($request->user_id);
-            if (!$user) {
+            if (! $user) {
                 $request->update([
-                    'status'       => PrivacyRequest::STATUS_COMPLETED,
+                    'status' => PrivacyRequest::STATUS_COMPLETED,
                     'completed_at' => now(),
                     'fulfillment_metadata' => array_merge(
                         $request->fulfillment_metadata ?? [],
                         ['skipped_reason' => 'user_already_deleted']
                     ),
                 ]);
+
                 return;
             }
 
@@ -205,12 +209,12 @@ class DataErasureService
 
             $user->update([
                 'first_name' => 'Anonymised',
-                'last_name'  => 'User',
-                'email'      => $placeholder,
-                'phone'      => null,
-                'permissions'=> null,
+                'last_name' => 'User',
+                'email' => $placeholder,
+                'phone' => null,
+                'permissions' => null,
                 // Force a logout: rotate the password to a random value.
-                'password'   => bcrypt(bin2hex(random_bytes(32))),
+                'password' => bcrypt(bin2hex(random_bytes(32))),
             ]);
 
             // Phase 2.5 (UAE Compliance Roadmap — post-implementation
@@ -237,8 +241,8 @@ class DataErasureService
             $loggedActions = \DB::table('audit_logs')
                 ->where('user_id', $user->id)
                 ->update([
-                    'ip_address' => \Illuminate\Support\Facades\Crypt::encryptString($anonIp),
-                    'user_agent' => \Illuminate\Support\Facades\Crypt::encryptString($anonUa),
+                    'ip_address' => Crypt::encryptString($anonIp),
+                    'user_agent' => Crypt::encryptString($anonUa),
                 ]);
 
             $touchedConsents = \DB::table('consents')
@@ -264,15 +268,15 @@ class DataErasureService
             // a Phase 9 (external anchoring) concern.
 
             $request->update([
-                'status'       => PrivacyRequest::STATUS_COMPLETED,
+                'status' => PrivacyRequest::STATUS_COMPLETED,
                 'completed_at' => now(),
                 'fulfillment_metadata' => array_merge(
                     $request->fulfillment_metadata ?? [],
                     [
-                        'anonymised_at'         => now()->toIso8601String(),
-                        'placeholder_email'     => $placeholder,
+                        'anonymised_at' => now()->toIso8601String(),
+                        'placeholder_email' => $placeholder,
                         'audit_logs_anonymised' => $loggedActions,
-                        'consents_anonymised'   => $touchedConsents,
+                        'consents_anonymised' => $touchedConsents,
                     ]
                 ),
             ]);
@@ -284,12 +288,12 @@ class DataErasureService
             // if the notification driver is offline.
             if ($originalEmail) {
                 try {
-                    \Illuminate\Support\Facades\Notification::route('mail', $originalEmail)
+                    Notification::route('mail', $originalEmail)
                         ->notify(new DataErasureCompletedNotification($request->fresh()));
                 } catch (\Throwable $e) {
                     \Log::warning('DataErasureService completed notification failed', [
                         'request_id' => $request->id,
-                        'error'      => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }
@@ -302,12 +306,12 @@ class DataErasureService
      */
     public function cancel(PrivacyRequest $request): PrivacyRequest
     {
-        if (!$request->isErasure() || !$request->isOpen()) {
+        if (! $request->isErasure() || ! $request->isOpen()) {
             return $request;
         }
 
         $request->update([
-            'status'       => PrivacyRequest::STATUS_WITHDRAWN,
+            'status' => PrivacyRequest::STATUS_WITHDRAWN,
             'completed_at' => now(),
         ]);
 

@@ -38,7 +38,7 @@ class HsCodeClassificationService
             return ['success' => false, 'source' => 'none', 'suggestions' => []];
         }
 
-        $cacheKey = 'hs:' . md5($description . '|' . ($country ?? ''));
+        $cacheKey = 'hs:'.md5($description.'|'.($country ?? ''));
 
         return Cache::remember($cacheKey, now()->addHours(24), function () use ($description, $country) {
             $apiKey = config('services.anthropic.api_key');
@@ -49,6 +49,7 @@ class HsCodeClassificationService
                 }
                 // Fall through to rule-based fallback if Claude failed.
             }
+
             return $this->fallbackRules($description);
         });
     }
@@ -60,7 +61,7 @@ class HsCodeClassificationService
     {
         $model = config('services.anthropic.model', 'claude-haiku-4-5-20251001');
 
-        $systemPrompt = <<<TXT
+        $systemPrompt = <<<'TXT'
 You are a customs classification expert specialising in the WCO Harmonized System (HS) nomenclature.
 Given a product description, return up to 3 most likely 6-digit HS codes ranked by confidence.
 
@@ -82,21 +83,22 @@ TXT;
         try {
             $response = Http::timeout(15)
                 ->withHeaders([
-                    'x-api-key'         => $apiKey,
+                    'x-api-key' => $apiKey,
                     'anthropic-version' => '2023-06-01',
-                    'content-type'      => 'application/json',
+                    'content-type' => 'application/json',
                 ])
                 ->post('https://api.anthropic.com/v1/messages', [
-                    'model'      => $model,
+                    'model' => $model,
                     'max_tokens' => 600,
-                    'system'     => $systemPrompt,
-                    'messages'   => [
+                    'system' => $systemPrompt,
+                    'messages' => [
                         ['role' => 'user', 'content' => $userPrompt],
                     ],
                 ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::warning('Claude HS classification HTTP error', ['status' => $response->status()]);
+
                 return ['success' => false, 'source' => 'claude_error', 'suggestions' => []];
             }
 
@@ -105,7 +107,7 @@ TXT;
 
             // Extract JSON even if Claude wrapped it in stray whitespace.
             $jsonStart = strpos($text, '{');
-            $jsonEnd   = strrpos($text, '}');
+            $jsonEnd = strrpos($text, '}');
             if ($jsonStart === false || $jsonEnd === false) {
                 return ['success' => false, 'source' => 'claude_parse_error', 'suggestions' => []];
             }
@@ -114,17 +116,18 @@ TXT;
             $suggestions = $parsed['suggestions'] ?? [];
 
             return [
-                'success'     => true,
-                'source'      => 'claude',
+                'success' => true,
+                'source' => 'claude',
                 'suggestions' => array_map(fn ($s) => [
-                    'code'        => (string) ($s['code'] ?? ''),
+                    'code' => (string) ($s['code'] ?? ''),
                     'description' => (string) ($s['description'] ?? ''),
-                    'confidence'  => (float) ($s['confidence'] ?? 0),
-                    'reason'      => $s['reason'] ?? null,
+                    'confidence' => (float) ($s['confidence'] ?? 0),
+                    'reason' => $s['reason'] ?? null,
                 ], $suggestions),
             ];
         } catch (\Throwable $e) {
             Log::warning('Claude HS classification exception', ['error' => $e->getMessage()]);
+
             return ['success' => false, 'source' => 'claude_exception', 'suggestions' => []];
         }
     }
@@ -162,10 +165,10 @@ TXT;
             foreach ($rule['keywords'] as $kw) {
                 if (str_contains($haystack, $kw)) {
                     $matches[] = [
-                        'code'        => $rule['code'],
+                        'code' => $rule['code'],
                         'description' => $rule['desc'],
-                        'confidence'  => 0.55,
-                        'reason'      => "Matched keyword: {$kw}",
+                        'confidence' => 0.55,
+                        'reason' => "Matched keyword: {$kw}",
                     ];
                     break;
                 }
@@ -173,8 +176,8 @@ TXT;
         }
 
         return [
-            'success'     => true,
-            'source'      => 'rules',
+            'success' => true,
+            'source' => 'rules',
             'suggestions' => array_slice($matches, 0, 3),
         ];
     }

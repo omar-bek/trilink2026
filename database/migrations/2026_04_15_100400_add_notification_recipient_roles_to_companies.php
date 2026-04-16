@@ -19,7 +19,8 @@ use Illuminate\Support\Facades\Schema;
  * keep working unchanged. The company profile page lets a manager
  * narrow it down whenever they want.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('companies', function (Blueprint $table) {

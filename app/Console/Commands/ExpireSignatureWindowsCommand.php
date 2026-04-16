@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Notification;
 class ExpireSignatureWindowsCommand extends Command
 {
     protected $signature = 'contracts:expire-signature-windows {--days=14 : Signature window length in days}';
+
     protected $description = 'Notify parties when a contract signing window has elapsed without all signatures.';
 
     public function handle(): int
@@ -52,8 +53,9 @@ class ExpireSignatureWindowsCommand extends Command
             $totalNotified += $recipients->count();
         }
 
-        $this->info("Processed " . $contracts->count() . " expired signature window(s).");
+        $this->info('Processed '.$contracts->count().' expired signature window(s).');
         $this->info("Sent {$totalNotified} expired-signature notification(s).");
+
         return self::SUCCESS;
     }
 }

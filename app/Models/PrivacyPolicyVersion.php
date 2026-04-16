@@ -57,6 +57,6 @@ class PrivacyPolicyVersion extends Model
      */
     public static function canonicalSha256(string $bodyEn, string $bodyAr): string
     {
-        return hash('sha256', $bodyAr . "\n----\n" . $bodyEn);
+        return hash('sha256', $bodyAr."\n----\n".$bodyEn);
     }
 }

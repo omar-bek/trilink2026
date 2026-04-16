@@ -42,30 +42,31 @@ class OdooConnector implements ErpConnectorInterface
 
         try {
             $session = $this->authenticate($connector->base_url, $creds);
-            if (!$session) {
+            if (! $session) {
                 return ['success' => false, 'error' => 'Odoo authentication failed', 'mode' => 'live'];
             }
 
             $orderPayload = [
-                'partner_id'    => 1, // Default placeholder. Real impl looks up via search_read.
-                'date_order'    => $contract->start_date?->toDateTimeString() ?? now()->toDateTimeString(),
+                'partner_id' => 1, // Default placeholder. Real impl looks up via search_read.
+                'date_order' => $contract->start_date?->toDateTimeString() ?? now()->toDateTimeString(),
                 'client_order_ref' => $contract->contract_number,
-                'amount_total'  => (float) $contract->total_amount,
-                'currency_id'   => 1,
+                'amount_total' => (float) $contract->total_amount,
+                'currency_id' => 1,
             ];
 
             $externalId = $this->callKw($connector->base_url, $session, 'sale.order', 'create', [$orderPayload]);
-            if (!$externalId) {
+            if (! $externalId) {
                 return ['success' => false, 'error' => 'Odoo order creation failed', 'mode' => 'live'];
             }
 
             return [
-                'success'     => true,
+                'success' => true,
                 'external_id' => (string) $externalId,
-                'mode'        => 'live',
+                'mode' => 'live',
             ];
         } catch (\Throwable $e) {
             Log::warning('Odoo pushContract exception', ['error' => $e->getMessage()]);
+
             return ['success' => false, 'error' => $e->getMessage(), 'mode' => 'live'];
         }
     }
@@ -79,31 +80,32 @@ class OdooConnector implements ErpConnectorInterface
 
         try {
             $session = $this->authenticate($connector->base_url, $creds);
-            if (!$session) {
+            if (! $session) {
                 return ['success' => false, 'error' => 'Odoo authentication failed', 'mode' => 'live'];
             }
 
             $paymentPayload = [
-                'amount'         => (float) $payment->total_amount,
-                'currency_id'    => 1,
-                'date'           => now()->toDateString(),
-                'payment_type'   => 'inbound',
-                'partner_type'   => 'customer',
-                'communication'  => $payment->milestone,
+                'amount' => (float) $payment->total_amount,
+                'currency_id' => 1,
+                'date' => now()->toDateString(),
+                'payment_type' => 'inbound',
+                'partner_type' => 'customer',
+                'communication' => $payment->milestone,
             ];
 
             $externalId = $this->callKw($connector->base_url, $session, 'account.payment', 'create', [$paymentPayload]);
-            if (!$externalId) {
+            if (! $externalId) {
                 return ['success' => false, 'error' => 'Odoo payment creation failed', 'mode' => 'live'];
             }
 
             return [
-                'success'     => true,
+                'success' => true,
                 'external_id' => (string) $externalId,
-                'mode'        => 'live',
+                'mode' => 'live',
             ];
         } catch (\Throwable $e) {
             Log::warning('Odoo pushPayment exception', ['error' => $e->getMessage()]);
+
             return ['success' => false, 'error' => $e->getMessage(), 'mode' => 'live'];
         }
     }
@@ -117,20 +119,21 @@ class OdooConnector implements ErpConnectorInterface
     {
         $response = Http::timeout(15)
             ->acceptJson()
-            ->post(rtrim($baseUrl, '/') . '/web/session/authenticate', [
+            ->post(rtrim($baseUrl, '/').'/web/session/authenticate', [
                 'jsonrpc' => '2.0',
-                'params'  => [
-                    'db'       => $creds['db'],
-                    'login'    => $creds['login'],
+                'params' => [
+                    'db' => $creds['db'],
+                    'login' => $creds['login'],
                     'password' => $creds['password'],
                 ],
             ]);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             return null;
         }
 
         $cookie = $response->cookies()->getCookieByName('session_id');
+
         return $cookie?->getValue();
     }
 
@@ -143,30 +146,31 @@ class OdooConnector implements ErpConnectorInterface
         $response = Http::timeout(20)
             ->acceptJson()
             ->withHeaders(['Cookie' => "session_id={$sessionId}"])
-            ->post(rtrim($baseUrl, '/') . '/web/dataset/call_kw', [
+            ->post(rtrim($baseUrl, '/').'/web/dataset/call_kw', [
                 'jsonrpc' => '2.0',
-                'method'  => 'call',
-                'params'  => [
-                    'model'  => $model,
+                'method' => 'call',
+                'params' => [
+                    'model' => $model,
                     'method' => $method,
-                    'args'   => $args,
-                    'kwargs' => new \stdClass(),
+                    'args' => $args,
+                    'kwargs' => new \stdClass,
                 ],
             ]);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             return null;
         }
         $body = $response->json();
+
         return $body['result'] ?? null;
     }
 
     private function stub(string $kind): array
     {
         return [
-            'success'     => true,
-            'external_id' => 'ODOO-STUB-' . strtoupper($kind) . '-' . strtoupper(Str::random(8)),
-            'mode'        => 'stub',
+            'success' => true,
+            'external_id' => 'ODOO-STUB-'.strtoupper($kind).'-'.strtoupper(Str::random(8)),
+            'mode' => 'stub',
         ];
     }
 }

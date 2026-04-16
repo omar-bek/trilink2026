@@ -2,7 +2,12 @@
 
 namespace App\Providers;
 
+use App\Events\ContractSigned;
+use App\Events\ShipmentDelivered;
+use App\Listeners\ReleaseEscrowOnDelivery;
+use App\Listeners\ReleaseEscrowOnSignature;
 use App\Models\Bid;
+use App\Models\Company;
 use App\Models\Contract;
 use App\Models\Dispute;
 use App\Models\EscrowAccount;
@@ -10,15 +15,17 @@ use App\Models\EscrowRelease;
 use App\Models\Payment;
 use App\Models\PurchaseRequest;
 use App\Models\Rfq;
-use App\Events\ContractSigned;
-use App\Events\ShipmentDelivered;
-use App\Listeners\ReleaseEscrowOnDelivery;
-use App\Listeners\ReleaseEscrowOnSignature;
 use App\Models\Shipment;
 use App\Models\User;
 use App\Observers\AuditLogObserver;
 use App\Observers\ContractObserver;
+use App\Observers\PaymentInvoiceObserver;
 use App\Observers\SidebarBadgeInvalidator;
+use App\Policies\BidPolicy;
+use App\Policies\CompanyPolicy;
+use App\Policies\ContractPolicy;
+use App\Policies\PaymentPolicy;
+use App\Policies\RfqPolicy;
 use App\Services\AI\AnthropicClient;
 use App\Services\Credit\CreditScoringProviderInterface;
 use App\Services\Credit\MockCreditScoringProvider;
@@ -36,12 +43,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use App\Models\Company;
-use App\Policies\BidPolicy;
-use App\Policies\CompanyPolicy;
-use App\Policies\ContractPolicy;
-use App\Policies\PaymentPolicy;
-use App\Policies\RfqPolicy;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -68,7 +69,7 @@ class AppServiceProvider extends ServiceProvider
         // registration_number); Phase 3 swaps in AECB / SIMAH / D&B by
         // re-binding here behind a config-based selector.
         $this->app->bind(CreditScoringProviderInterface::class, function () {
-            return new MockCreditScoringProvider();
+            return new MockCreditScoringProvider;
         });
 
         // Phase 3 / Sprint 11 / task 3.3 — bank partner adapter for the
@@ -79,6 +80,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(BankPartnerFactory::class);
         $this->app->bind(BankPartnerInterface::class, function ($app) {
             $factory = $app->make(BankPartnerFactory::class);
+
             return $factory->make($factory->defaultKey());
         });
 
@@ -131,8 +133,9 @@ class AppServiceProvider extends ServiceProvider
         // pace themselves and the legitimate user (who occasionally
         // typos the password) is not affected.
         RateLimiter::for('contract.sign', function (Request $request) {
-            $userId   = $request->user()?->id ?: $request->ip();
+            $userId = $request->user()?->id ?: $request->ip();
             $contract = $request->route('id') ?: '0';
+
             return Limit::perMinute(5)->by("contract.sign:{$userId}:{$contract}");
         });
 
@@ -160,7 +163,7 @@ class AppServiceProvider extends ServiceProvider
         // a Payment row transitions into COMPLETED. The observer dispatches
         // IssueTaxInvoiceJob (ShouldBeUnique on payment_id) so duplicate
         // status flips from concurrent webhooks don't double-issue.
-        Payment::observe(\App\Observers\PaymentInvoiceObserver::class);
+        Payment::observe(PaymentInvoiceObserver::class);
 
         // Sidebar badge cache invalidation. Every entity that contributes
         // to a sidebar count clears the per-company cache the moment its
@@ -195,14 +198,14 @@ class AppServiceProvider extends ServiceProvider
         Queue::failing(function (JobFailed $event) {
             Log::error('queue.job.failed', [
                 'connection' => $event->connectionName,
-                'queue'      => $event->job->getQueue(),
-                'job'        => $event->job->resolveName(),
-                'payload'    => $event->job->getRawBody(),
-                'exception'  => [
-                    'class'   => get_class($event->exception),
+                'queue' => $event->job->getQueue(),
+                'job' => $event->job->resolveName(),
+                'payload' => $event->job->getRawBody(),
+                'exception' => [
+                    'class' => get_class($event->exception),
                     'message' => $event->exception->getMessage(),
-                    'file'    => $event->exception->getFile(),
-                    'line'    => $event->exception->getLine(),
+                    'file' => $event->exception->getFile(),
+                    'line' => $event->exception->getLine(),
                 ],
             ]);
         });
@@ -224,7 +227,7 @@ class AppServiceProvider extends ServiceProvider
         | does not break callers that register specific abilities.
         */
         Gate::before(function (?User $user, string $ability) {
-            if (!$user) {
+            if (! $user) {
                 return null;
             }
             if ($user->isAdmin()) {
@@ -236,6 +239,7 @@ class AppServiceProvider extends ServiceProvider
             if (str_contains($ability, '.') && $user->hasPermission($ability)) {
                 return true;
             }
+
             return null;
         });
     }

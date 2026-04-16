@@ -27,7 +27,8 @@ use Illuminate\Support\Facades\Schema;
  * value lazily on first read. The platform's existing Simple-only
  * signing flow keeps working unchanged when the column is null.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('contracts', function (Blueprint $table) {

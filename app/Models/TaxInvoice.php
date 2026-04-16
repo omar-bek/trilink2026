@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Tax\TaxInvoiceService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * to COMPLETED via the IssueTaxInvoiceJob, or manually by a finance user
  * from the admin. Once issued, the row is immutable except for the
  * void/voided_by/voided_at/void_reason columns — see
- * {@see \App\Services\Tax\TaxInvoiceService::voidInvoice()}.
+ * {@see TaxInvoiceService::voidInvoice()}.
  *
  * Field semantics map 1:1 to FTA Tax Invoice requirements (Federal
  * Decree-Law 8/2017 Article 65 + Cabinet Decision 52/2017 Article 59):
@@ -35,17 +36,23 @@ class TaxInvoice extends Model
     use HasFactory, SoftDeletes;
 
     public const STATUS_ISSUED = 'issued';
+
     public const STATUS_VOIDED = 'voided';
 
     // Phase 1.5 (UAE Compliance Roadmap — post-implementation hardening).
     // Cabinet Decision 52/2017 Article 59(1)(j) — the legal treatment
     // must be visible on the invoice document itself.
-    public const VAT_STANDARD                 = 'standard';
-    public const VAT_REVERSE_CHARGE           = 'reverse_charge';
+    public const VAT_STANDARD = 'standard';
+
+    public const VAT_REVERSE_CHARGE = 'reverse_charge';
+
     public const VAT_DESIGNATED_ZONE_INTERNAL = 'designated_zone_internal';
-    public const VAT_EXEMPT                   = 'exempt';
-    public const VAT_ZERO_RATED               = 'zero_rated';
-    public const VAT_OUT_OF_SCOPE             = 'out_of_scope';
+
+    public const VAT_EXEMPT = 'exempt';
+
+    public const VAT_ZERO_RATED = 'zero_rated';
+
+    public const VAT_OUT_OF_SCOPE = 'out_of_scope';
 
     public const ALL_VAT_TREATMENTS = [
         self::VAT_STANDARD,
@@ -93,16 +100,16 @@ class TaxInvoice extends Model
     protected function casts(): array
     {
         return [
-            'issue_date'        => 'date',
-            'supply_date'       => 'date',
-            'line_items'        => 'array',
+            'issue_date' => 'date',
+            'supply_date' => 'date',
+            'line_items' => 'array',
             'subtotal_excl_tax' => 'decimal:2',
-            'total_discount'    => 'decimal:2',
-            'total_tax'         => 'decimal:2',
-            'total_inclusive'   => 'decimal:2',
-            'voided_at'         => 'datetime',
-            'issued_at'         => 'datetime',
-            'metadata'          => 'array',
+            'total_discount' => 'decimal:2',
+            'total_tax' => 'decimal:2',
+            'total_inclusive' => 'decimal:2',
+            'voided_at' => 'datetime',
+            'issued_at' => 'datetime',
+            'metadata' => 'array',
         ];
     }
 

@@ -14,7 +14,7 @@ class PkiService
         ];
 
         $resource = openssl_pkey_new($config);
-        if (!$resource) {
+        if (! $resource) {
             throw new RuntimeException('Failed to generate key pair');
         }
 
@@ -31,7 +31,7 @@ class PkiService
     {
         $success = openssl_sign($data, $signature, $privateKey, OPENSSL_ALGO_SHA256);
 
-        if (!$success) {
+        if (! $success) {
             throw new RuntimeException('Failed to sign data');
         }
 
@@ -49,6 +49,7 @@ class PkiService
     public function generateContractHash(array $contractData): string
     {
         $dataString = json_encode($contractData, JSON_UNESCAPED_UNICODE | JSON_SORT_KEYS);
+
         return hash('sha256', $dataString);
     }
 
@@ -68,8 +69,8 @@ class PkiService
         if (empty($privateKey)) {
             throw new RuntimeException(
                 'Cannot create a digital signature without a private key. '
-                . 'The HMAC fallback was removed in Phase 0 (UAE Compliance Roadmap). '
-                . 'Provide an RSA private key or integrate a Trust Service Provider.'
+                .'The HMAC fallback was removed in Phase 0 (UAE Compliance Roadmap). '
+                .'Provide an RSA private key or integrate a Trust Service Provider.'
             );
         }
 

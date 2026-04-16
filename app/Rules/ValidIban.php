@@ -31,6 +31,7 @@ class ValidIban implements ValidationRule
         // Basic format
         if (! preg_match('/^[A-Z]{2}\d{2}[A-Z0-9]{4,30}$/', $iban)) {
             $fail(__('validation.iban_format'));
+
             return;
         }
 
@@ -40,6 +41,7 @@ class ValidIban implements ValidationRule
         if (isset(self::LENGTHS[$country]) && self::LENGTHS[$country] > 0) {
             if (strlen($iban) !== self::LENGTHS[$country]) {
                 $fail(__('validation.iban_length', ['country' => $country, 'length' => self::LENGTHS[$country]]));
+
                 return;
             }
         }
@@ -47,11 +49,12 @@ class ValidIban implements ValidationRule
         // UAE-specific: must start with AE followed by 2 digits and 19 digits
         if ($country === 'AE' && ! preg_match('/^AE\d{21}$/', $iban)) {
             $fail(__('validation.iban_uae'));
+
             return;
         }
 
         // Mod-97 check
-        $rearranged = substr($iban, 4) . substr($iban, 0, 4);
+        $rearranged = substr($iban, 4).substr($iban, 0, 4);
         $numeric = '';
         foreach (str_split($rearranged) as $char) {
             $numeric .= ctype_alpha($char) ? (ord($char) - 55) : $char;

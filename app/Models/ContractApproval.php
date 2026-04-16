@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ContractApproval extends Model
 {
     public const DECISION_APPROVED = 'approved';
+
     public const DECISION_REJECTED = 'rejected';
 
     protected $fillable = [

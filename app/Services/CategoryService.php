@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\Category;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class CategoryService
 {
@@ -42,15 +42,19 @@ class CategoryService
     public function update(int $id, array $data): ?Category
     {
         $category = Category::find($id);
-        if (!$category) return null;
+        if (! $category) {
+            return null;
+        }
 
         $category->update($data);
+
         return $category->fresh(['parent', 'children']);
     }
 
     public function delete(int $id): bool
     {
         $category = Category::find($id);
+
         return $category ? $category->delete() : false;
     }
 }

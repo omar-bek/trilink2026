@@ -1,5 +1,9 @@
 <?php
 
+use App\Services\Signing\ComtrustTspProvider;
+use App\Services\Signing\EsspTspProvider;
+use App\Services\Signing\MockTspProvider;
+
 return [
 
     /*
@@ -74,22 +78,22 @@ return [
     'tsp_providers' => [
 
         'mock' => [
-            'class'   => \App\Services\Signing\MockTspProvider::class,
+            'class' => MockTspProvider::class,
             'enabled' => true,
         ],
 
         'comtrust' => [
-            'class'    => \App\Services\Signing\ComtrustTspProvider::class,
-            'enabled'  => env('SIGNING_COMTRUST_ENABLED', false),
+            'class' => ComtrustTspProvider::class,
+            'enabled' => env('SIGNING_COMTRUST_ENABLED', false),
             'base_url' => env('SIGNING_COMTRUST_BASE_URL', 'https://api.comtrust.ae/v1'),
-            'api_key'  => env('SIGNING_COMTRUST_API_KEY'),
+            'api_key' => env('SIGNING_COMTRUST_API_KEY'),
         ],
 
         'essp' => [
-            'class'    => \App\Services\Signing\EsspTspProvider::class,
-            'enabled'  => env('SIGNING_ESSP_ENABLED', false),
+            'class' => EsspTspProvider::class,
+            'enabled' => env('SIGNING_ESSP_ENABLED', false),
             'base_url' => env('SIGNING_ESSP_BASE_URL', 'https://api.essp.ae/v1'),
-            'api_key'  => env('SIGNING_ESSP_API_KEY'),
+            'api_key' => env('SIGNING_ESSP_API_KEY'),
         ],
     ],
 

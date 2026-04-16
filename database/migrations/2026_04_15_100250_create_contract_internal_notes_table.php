@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Schema;
  * (contract_id, company_id = current user's company) so a
  * cross-company SELECT can never accidentally leak.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('contract_internal_notes', function (Blueprint $table) {

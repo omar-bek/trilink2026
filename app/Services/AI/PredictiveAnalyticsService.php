@@ -5,7 +5,6 @@ namespace App\Services\AI;
 use App\Models\Bid;
 use App\Models\Category;
 use App\Models\Contract;
-use App\Models\Rfq;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -44,9 +43,9 @@ class PredictiveAnalyticsService
 
             $byCurrency = $rows->groupBy('currency')->map(fn ($items) => [
                 'count' => $items->count(),
-                'avg'   => round($items->avg('price'), 2),
-                'min'   => round($items->min('price'), 2),
-                'max'   => round($items->max('price'), 2),
+                'avg' => round($items->avg('price'), 2),
+                'min' => round($items->min('price'), 2),
+                'max' => round($items->max('price'), 2),
             ]);
 
             return [
@@ -78,12 +77,13 @@ class PredictiveAnalyticsService
 
             if ($contracts->count() >= 3) {
                 $diffs = $contracts->map(fn ($c) => (int) $c->start_date->diffInDays($c->end_date));
+
                 return [
                     'sample_size' => $contracts->count(),
-                    'avg_days'    => (int) round($diffs->avg()),
-                    'min_days'    => (int) $diffs->min(),
-                    'max_days'    => (int) $diffs->max(),
-                    'source'      => 'contracts',
+                    'avg_days' => (int) round($diffs->avg()),
+                    'min_days' => (int) $diffs->min(),
+                    'max_days' => (int) $diffs->max(),
+                    'source' => 'contracts',
                 ];
             }
 
@@ -96,10 +96,10 @@ class PredictiveAnalyticsService
             if ($avgBidLead > 0) {
                 return [
                     'sample_size' => 0,
-                    'avg_days'    => (int) round($avgBidLead),
-                    'min_days'    => (int) round($avgBidLead * 0.7),
-                    'max_days'    => (int) round($avgBidLead * 1.3),
-                    'source'      => 'bids',
+                    'avg_days' => (int) round($avgBidLead),
+                    'min_days' => (int) round($avgBidLead * 0.7),
+                    'max_days' => (int) round($avgBidLead * 1.3),
+                    'source' => 'bids',
                 ];
             }
 
@@ -117,12 +117,12 @@ class PredictiveAnalyticsService
     {
         $bid->loadMissing('rfq.bids');
         $rfq = $bid->rfq;
-        if (!$rfq || $rfq->bids->isEmpty()) {
+        if (! $rfq || $rfq->bids->isEmpty()) {
             return 0.5;
         }
 
         $sorted = $rfq->bids->sortBy('price')->values();
-        $rank   = $sorted->search(fn ($b) => $b->id === $bid->id);
+        $rank = $sorted->search(fn ($b) => $b->id === $bid->id);
         if ($rank === false) {
             return 0.5;
         }
@@ -139,6 +139,7 @@ class PredictiveAnalyticsService
             ->value('rate') ?? 0.5);
 
         $adjusted = ($base * 0.7) + ($supplierAcceptRate * 0.3);
+
         return round(max(0.05, min(0.95, $adjusted)), 2);
     }
 }

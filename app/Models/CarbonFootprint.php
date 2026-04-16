@@ -17,13 +17,17 @@ class CarbonFootprint extends Model
 {
     use HasFactory;
 
-    public const ENTITY_COMPANY  = 'company';
+    public const ENTITY_COMPANY = 'company';
+
     public const ENTITY_CONTRACT = 'contract';
+
     public const ENTITY_SHIPMENT = 'shipment';
 
-    public const SCOPE_DIRECT          = 1;
-    public const SCOPE_PURCHASED       = 2;
-    public const SCOPE_VALUE_CHAIN     = 3;
+    public const SCOPE_DIRECT = 1;
+
+    public const SCOPE_PURCHASED = 2;
+
+    public const SCOPE_VALUE_CHAIN = 3;
 
     protected $fillable = [
         'entity_type',
@@ -39,11 +43,11 @@ class CarbonFootprint extends Model
     protected function casts(): array
     {
         return [
-            'scope'        => 'integer',
-            'co2e_kg'      => 'decimal:2',
+            'scope' => 'integer',
+            'co2e_kg' => 'decimal:2',
             'period_start' => 'date',
-            'period_end'   => 'date',
-            'metadata'     => 'array',
+            'period_end' => 'date',
+            'metadata' => 'array',
         ];
     }
 }

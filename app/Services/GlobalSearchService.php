@@ -37,10 +37,10 @@ class GlobalSearchService
         $term = trim($term);
         if ($term === '') {
             return [
-                'rfqs'      => collect(),
-                'products'  => collect(),
+                'rfqs' => collect(),
+                'products' => collect(),
                 'suppliers' => collect(),
-                'total'     => 0,
+                'total' => 0,
             ];
         }
 
@@ -73,10 +73,10 @@ class GlobalSearchService
             ->get(['id', 'name', 'name_ar', 'country', 'verification_level']);
 
         return [
-            'rfqs'      => $rfqs,
-            'products'  => $products,
+            'rfqs' => $rfqs,
+            'products' => $products,
             'suppliers' => $suppliers,
-            'total'     => $rfqs->count() + $products->count() + $suppliers->count(),
+            'total' => $rfqs->count() + $products->count() + $suppliers->count(),
         ];
     }
 }

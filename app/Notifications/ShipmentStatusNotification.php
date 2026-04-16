@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Shipment;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -18,8 +20,8 @@ use Illuminate\Notifications\Notification;
  */
 class ShipmentStatusNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Shipment $shipment,
@@ -30,8 +32,8 @@ class ShipmentStatusNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'contract_milestones',
             ['database', 'mail']
         );
@@ -39,15 +41,15 @@ class ShipmentStatusNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $ref    = $this->shipment->tracking_number ?: ('#' . $this->shipment->id);
+        $ref = $this->shipment->tracking_number ?: ('#'.$this->shipment->id);
         $status = $this->localisedStatus($notifiable);
 
         return $this->baseMail($notifiable, 'notifications.shipment.status.subject', [
-                'ref'    => $ref,
-                'status' => $status,
-            ])
+            'ref' => $ref,
+            'status' => $status,
+        ])
             ->line($this->t($notifiable, 'notifications.shipment.status.message', [
-                'ref'    => $ref,
+                'ref' => $ref,
                 'status' => $status,
             ]))
             ->action(
@@ -58,28 +60,29 @@ class ShipmentStatusNotification extends Notification implements ShouldQueue
 
     public function toArray(object $notifiable): array
     {
-        $ref = $this->shipment->tracking_number ?: ('#' . $this->shipment->id);
+        $ref = $this->shipment->tracking_number ?: ('#'.$this->shipment->id);
 
         return [
-            'type'        => match ($this->newStatus) {
-                'delivered'                  => 'success',
+            'type' => match ($this->newStatus) {
+                'delivered' => 'success',
                 'in_clearance', 'in_transit' => 'info',
-                default                      => 'info',
+                default => 'info',
             },
-            'title'       => $this->t($notifiable, 'notifications.shipment.status.title'),
-            'message'     => $this->t($notifiable, 'notifications.shipment.status.message', [
-                'ref'    => $ref,
+            'title' => $this->t($notifiable, 'notifications.shipment.status.title'),
+            'message' => $this->t($notifiable, 'notifications.shipment.status.message', [
+                'ref' => $ref,
                 'status' => $this->localisedStatus($notifiable),
             ]),
             'entity_type' => 'shipment',
-            'entity_id'   => $this->shipment->id,
+            'entity_id' => $this->shipment->id,
         ];
     }
 
     private function localisedStatus(object $notifiable): string
     {
-        $key = 'notifications.shipment.statuses.' . $this->newStatus;
+        $key = 'notifications.shipment.statuses.'.$this->newStatus;
         $value = trans($key, [], $this->localeFor($notifiable));
+
         return $value === $key ? ucwords(str_replace('_', ' ', $this->newStatus)) : $value;
     }
 }

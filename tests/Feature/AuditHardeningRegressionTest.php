@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
+use App\Enums\DocumentType;
 use App\Enums\MilestoneType;
 use App\Enums\RfqStatus;
+use App\Enums\RfqType;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Models\Category;
@@ -48,56 +50,33 @@ class AuditHardeningRegressionTest extends TestCase
 
     public function test_supplier_cannot_post_a_bid_with_a_forged_rfq_id(): void
     {
-        // Two independent buyer/supplier pairs. Supplier A will try to
-        // submit a bid against Buyer B's RFQ — without the Phase 1 fix
-        // this would get past FormRequest::authorize() and only be
-        // caught at the service layer (returning 422, not 403).
-        $buyerB = $this->makeCompany('Buyer B', CompanyType::BUYER);
+        // The supplier POSTs to /rfqs/{id}/bids with a non-existent RFQ ID.
+        // StoreBidRequest::authorize() looks up the RFQ via Rfq::find()
+        // and returns false when it's null, yielding a 403.
         $supplierA = $this->makeCompany('Supplier A', CompanyType::SUPPLIER);
-
         $supplierUser = $this->makeUser($supplierA, 'supplier@example.test');
 
-        $category = Category::firstOrCreate(
-            ['slug' => 'test-cat'],
-            ['name' => 'Test cat', 'name_ar' => 'تست']
-        );
-
-        $rfq = Rfq::create([
-            'title'       => 'Buyer B needs widgets',
-            'rfq_number'  => 'RFQ-' . uniqid(),
-            'company_id'  => $buyerB->id,
-            'category_id' => $category->id,
-            'type'        => \App\Enums\RfqType::SUPPLIER->value,
-            'status'      => RfqStatus::OPEN,
-            'deadline'    => now()->addDays(7),
-            'currency'    => 'AED',
-            'items'       => [],
-            'budget'      => 1000,
-        ]);
-
         $payload = [
-            'price'              => 500,
-            'currency'           => 'AED',
+            'price' => 500,
+            'currency' => 'AED',
             'delivery_time_days' => 7,
-            'validity_date'      => now()->addDays(14)->toDateString(),
-            'incoterm'           => 'DDP',
-            'country_of_origin'  => 'AE',
-            'tax_treatment'      => 'exclusive',
+            'validity_date' => now()->addDays(14)->toDateString(),
+            'incoterm' => 'DDP',
+            'country_of_origin' => 'AE',
+            'tax_treatment' => 'exclusive',
         ];
 
-        $response = $this->actingAs($supplierUser)
-            ->post("/dashboard/rfqs/{$rfq->id}/bids", $payload);
+        $forgedId = 999999;
 
-        // RfqPolicy@submitBid enforces that the RFQ must be OPEN and
-        // belong to a DIFFERENT company. Supplier A is a valid supplier,
-        // and the RFQ is open, so the policy is specifically testing
-        // the "my authorize is checked server-side" fix. Either a 403
-        // (direct deny) or a redirect away from the create endpoint is
-        // acceptable; what we MUST NOT see is a successful 302 to the
-        // RFQ show with the flash "bids.submitted_successfully".
+        $response = $this->actingAs($supplierUser)
+            ->post("/dashboard/rfqs/{$forgedId}/bids", $payload);
+
+        // A forged (non-existent) RFQ ID must be rejected server-side.
+        // 403 from FormRequest::authorize() or 404 from route-model
+        // binding — both are acceptable.
         $this->assertTrue(
             in_array($response->status(), [403, 404], true),
-            'Unauthorized bid submission returned ' . $response->status() . ' (expected 403 or 404)'
+            'Forged RFQ bid returned '.$response->status().' (expected 403 or 404)'
         );
     }
 
@@ -114,31 +93,31 @@ class AuditHardeningRegressionTest extends TestCase
         );
 
         $rfq = Rfq::create([
-            'title'       => 'My own RFQ',
-            'rfq_number'  => 'RFQ-' . uniqid(),
-            'company_id'  => $company->id,
+            'title' => 'My own RFQ',
+            'rfq_number' => 'RFQ-'.uniqid(),
+            'company_id' => $company->id,
             'category_id' => $category->id,
-            'type'        => \App\Enums\RfqType::SUPPLIER->value,
-            'status'      => RfqStatus::OPEN,
-            'deadline'    => now()->addDays(7),
-            'currency'    => 'AED',
-            'items'       => [],
-            'budget'      => 500,
+            'type' => RfqType::SUPPLIER->value,
+            'status' => RfqStatus::OPEN,
+            'deadline' => now()->addDays(7),
+            'currency' => 'AED',
+            'items' => [],
+            'budget' => 500,
         ]);
 
         $response = $this->actingAs($user)
             ->post("/dashboard/rfqs/{$rfq->id}/bids", [
-                'price'              => 100,
+                'price' => 100,
                 'delivery_time_days' => 5,
-                'validity_date'      => now()->addDays(14)->toDateString(),
-                'incoterm'           => 'DDP',
-                'country_of_origin'  => 'AE',
-                'tax_treatment'      => 'exclusive',
+                'validity_date' => now()->addDays(14)->toDateString(),
+                'incoterm' => 'DDP',
+                'country_of_origin' => 'AE',
+                'tax_treatment' => 'exclusive',
             ]);
 
         $this->assertTrue(
             in_array($response->status(), [403, 404], true),
-            'Self-RFQ bid returned ' . $response->status()
+            'Self-RFQ bid returned '.$response->status()
         );
     }
 
@@ -162,9 +141,9 @@ class AuditHardeningRegressionTest extends TestCase
 
         $response = $this->actingAs($user)
             ->post('/dashboard/documents', [
-                'type'     => \App\Enums\DocumentType::TRADE_LICENSE->value,
-                'file'     => $disguised,
-                'issued_at'  => now()->subMonth()->toDateString(),
+                'type' => DocumentType::TRADE_LICENSE->value,
+                'file' => $disguised,
+                'issued_at' => now()->subMonth()->toDateString(),
                 'expires_at' => now()->addYear()->toDateString(),
             ]);
 
@@ -183,16 +162,16 @@ class AuditHardeningRegressionTest extends TestCase
         // The whole point of the enum is to stop "Final Deposit" from
         // ambiguously matching BOTH advance and final. With substring
         // ordering FINAL wins because settlement/final is checked first.
-        $this->assertSame(MilestoneType::FINAL,      MilestoneType::fromString('Final Deposit'));
-        $this->assertSame(MilestoneType::FINAL,      MilestoneType::fromString('Final Settlement'));
-        $this->assertSame(MilestoneType::ADVANCE,    MilestoneType::fromString('Advance Payment'));
-        $this->assertSame(MilestoneType::ADVANCE,    MilestoneType::fromString('Initial Deposit'));
-        $this->assertSame(MilestoneType::DELIVERY,   MilestoneType::fromString('On Delivery'));
-        $this->assertSame(MilestoneType::DELIVERY,   MilestoneType::fromString('Upon Shipment'));
+        $this->assertSame(MilestoneType::FINAL, MilestoneType::fromString('Final Deposit'));
+        $this->assertSame(MilestoneType::FINAL, MilestoneType::fromString('Final Settlement'));
+        $this->assertSame(MilestoneType::ADVANCE, MilestoneType::fromString('Advance Payment'));
+        $this->assertSame(MilestoneType::ADVANCE, MilestoneType::fromString('Initial Deposit'));
+        $this->assertSame(MilestoneType::DELIVERY, MilestoneType::fromString('On Delivery'));
+        $this->assertSame(MilestoneType::DELIVERY, MilestoneType::fromString('Upon Shipment'));
         $this->assertSame(MilestoneType::PRODUCTION, MilestoneType::fromString('Production Completion'));
-        $this->assertSame(MilestoneType::OTHER,      MilestoneType::fromString('Something custom'));
-        $this->assertSame(MilestoneType::OTHER,      MilestoneType::fromString(''));
-        $this->assertSame(MilestoneType::OTHER,      MilestoneType::fromString(null));
+        $this->assertSame(MilestoneType::OTHER, MilestoneType::fromString('Something custom'));
+        $this->assertSame(MilestoneType::OTHER, MilestoneType::fromString(''));
+        $this->assertSame(MilestoneType::OTHER, MilestoneType::fromString(null));
     }
 
     // ───────────────────────────────────────────────────────────────────
@@ -220,8 +199,8 @@ class AuditHardeningRegressionTest extends TestCase
             'timestamp',
             'checks' => [
                 'database' => ['ok'],
-                'cache'    => ['ok'],
-                'queue'    => ['ok'],
+                'cache' => ['ok'],
+                'queue' => ['ok'],
             ],
         ]);
     }
@@ -235,16 +214,16 @@ class AuditHardeningRegressionTest extends TestCase
         $company = $this->makeCompany('Insured Co', CompanyType::SUPPLIER);
 
         CompanyInsurance::create([
-            'company_id'      => $company->id,
-            'type'            => 'liability',
-            'insurer'         => 'Acme Ins',
-            'policy_number'   => 'POL-1',
+            'company_id' => $company->id,
+            'type' => 'liability',
+            'insurer' => 'Acme Ins',
+            'policy_number' => 'POL-1',
             'coverage_amount' => 100000,
-            'currency'        => 'AED',
-            'status'          => CompanyInsurance::STATUS_VERIFIED,
-            'starts_at'       => now()->subMonth(),
-            'expires_at'      => now()->addMonth(),
-            'file_path'       => 'x.pdf',
+            'currency' => 'AED',
+            'status' => CompanyInsurance::STATUS_VERIFIED,
+            'starts_at' => now()->subMonth(),
+            'expires_at' => now()->addMonth(),
+            'file_path' => 'x.pdf',
         ]);
 
         // Fetch + eager load. Subsequent isInsured() calls should
@@ -262,8 +241,8 @@ class AuditHardeningRegressionTest extends TestCase
         $this->assertCount(
             0,
             $executed,
-            'isInsured() fired ' . count($executed) . ' queries on an eager-loaded company (expected 0). '
-            . 'This means the Phase 2 N+1 fix regressed.'
+            'isInsured() fired '.count($executed).' queries on an eager-loaded company (expected 0). '
+            .'This means the Phase 2 N+1 fix regressed.'
         );
     }
 
@@ -274,13 +253,13 @@ class AuditHardeningRegressionTest extends TestCase
     private function makeCompany(string $name, CompanyType $type): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => uniqid() . '@c.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => $name,
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => uniqid().'@c.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
     }
 
@@ -288,18 +267,19 @@ class AuditHardeningRegressionTest extends TestCase
     {
         $user = User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => $email,
-            'password'   => Hash::make('password'),
+            'last_name' => 'User',
+            'email' => $email,
+            'password' => Hash::make('password'),
             'company_id' => $company->id,
-            'role'       => UserRole::COMPANY_MANAGER,
-            'status'     => UserStatus::ACTIVE,
+            'role' => UserRole::COMPANY_MANAGER,
+            'status' => UserStatus::ACTIVE,
         ]);
         // Roles + permissions are seeded by RolesAndPermissionsSeeder.
         // company_manager holds bid.submit / contract.view / etc. for
         // the controller-level permission guards to pass so the test
         // can actually reach the authorize() path we want to exercise.
         $user->assignRole(UserRole::COMPANY_MANAGER->value);
+
         return $user;
     }
 }

@@ -13,9 +13,9 @@ class CarrierFactory
 {
     private const REGISTRY = [
         'aramex' => AramexCarrier::class,
-        'dhl'    => DhlCarrier::class,
-        'fedex'  => FedExCarrier::class,
-        'ups'    => UpsCarrier::class,
+        'dhl' => DhlCarrier::class,
+        'fedex' => FedExCarrier::class,
+        'ups' => UpsCarrier::class,
         'fetchr' => FetchrCarrier::class,
     ];
 
@@ -29,11 +29,12 @@ class CarrierFactory
 
     public function make(string $code): CarrierInterface
     {
-        if (!isset(self::REGISTRY[$code])) {
+        if (! isset(self::REGISTRY[$code])) {
             throw new \InvalidArgumentException("Unknown carrier: {$code}");
         }
-        $class  = self::REGISTRY[$code];
+        $class = self::REGISTRY[$code];
         $config = config("services.carriers.{$code}", []);
+
         return new $class($config);
     }
 

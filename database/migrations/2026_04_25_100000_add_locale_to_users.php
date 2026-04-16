@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Schema;
  * switches language, and User implements HasLocalePreference so
  * Laravel automatically applies it before dispatching notifications.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {

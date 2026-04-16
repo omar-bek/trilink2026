@@ -4,7 +4,9 @@ namespace App\Notifications;
 
 use App\Models\Bid;
 use App\Models\Contract;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,8 +19,8 @@ use Illuminate\Notifications\Notification;
  */
 class BidAcceptedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Bid $bid,
@@ -29,8 +31,8 @@ class BidAcceptedNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'bid_updates',
             ['database', 'mail']
         );
@@ -39,9 +41,9 @@ class BidAcceptedNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
-        $title     = $this->bid->rfq?->title ?? '';
-        $amount    = number_format((float) $this->bid->price, 2);
-        $currency  = $this->bid->currency ?? 'AED';
+        $title = $this->bid->rfq?->title ?? '';
+        $amount = number_format((float) $this->bid->price, 2);
+        $currency = $this->bid->currency ?? 'AED';
 
         $mail = $this->baseMail($notifiable, 'notifications.bid.accepted.subject', ['title' => $title])
             ->line($this->t($notifiable, 'notifications.bid.accepted.line1', ['rfq' => $rfqNumber]))
@@ -68,11 +70,11 @@ class BidAcceptedNotification extends Notification implements ShouldQueue
         $rfqNumber = $this->bid->rfq?->rfq_number ?? '—';
 
         return [
-            'type'        => 'success',
-            'title'       => $this->t($notifiable, 'notifications.bid.accepted.title'),
-            'message'     => $this->t($notifiable, 'notifications.bid.accepted.message', ['rfq' => $rfqNumber]),
+            'type' => 'success',
+            'title' => $this->t($notifiable, 'notifications.bid.accepted.title'),
+            'message' => $this->t($notifiable, 'notifications.bid.accepted.message', ['rfq' => $rfqNumber]),
             'entity_type' => $this->contract ? 'contract' : 'bid',
-            'entity_id'   => $this->contract?->id ?? $this->bid->id,
+            'entity_id' => $this->contract?->id ?? $this->bid->id,
         ];
     }
 }

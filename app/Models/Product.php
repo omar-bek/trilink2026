@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Product extends Model
 {
-    use HasFactory, SoftDeletes, Searchable;
+    use HasFactory, Searchable, SoftDeletes;
 
     protected $fillable = [
         'company_id',
@@ -44,13 +44,13 @@ class Product extends Model
     protected function casts(): array
     {
         return [
-            'base_price'      => 'decimal:2',
-            'min_order_qty'   => 'integer',
-            'stock_qty'       => 'integer',
-            'lead_time_days'  => 'integer',
-            'images'          => 'array',
-            'specs'           => 'array',
-            'is_active'       => 'boolean',
+            'base_price' => 'decimal:2',
+            'min_order_qty' => 'integer',
+            'stock_qty' => 'integer',
+            'lead_time_days' => 'integer',
+            'images' => 'array',
+            'specs' => 'array',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -85,12 +85,13 @@ class Product extends Model
      */
     public function isPurchasable(): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
         if ($this->stock_qty !== null && $this->stock_qty <= 0) {
             return false;
         }
+
         return true;
     }
 
@@ -102,7 +103,7 @@ class Product extends Model
     public function lowestPrice(): float
     {
         $base = (float) $this->base_price;
-        if (!$this->relationLoaded('variants') || $this->variants->isEmpty()) {
+        if (! $this->relationLoaded('variants') || $this->variants->isEmpty()) {
             return $base;
         }
 

@@ -60,7 +60,7 @@ class CompanySupplierController extends Controller
 
         $data = $request->validate([
             'supplier_company_id' => ['required', 'integer', 'exists:companies,id'],
-            'notes'               => ['nullable', 'string', 'max:1000'],
+            'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         // Cannot lock yourself to yourself.
@@ -68,12 +68,12 @@ class CompanySupplierController extends Controller
 
         CompanySupplier::firstOrCreate(
             [
-                'company_id'          => $user->company_id,
+                'company_id' => $user->company_id,
                 'supplier_company_id' => $data['supplier_company_id'],
             ],
             [
-                'status'   => 'active',
-                'notes'    => $data['notes'] ?? null,
+                'status' => 'active',
+                'notes' => $data['notes'] ?? null,
                 'added_by' => $user->id,
             ]
         );

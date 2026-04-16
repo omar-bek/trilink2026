@@ -52,12 +52,13 @@ class SearchHistory extends Model
         if ($latest && $latest->term === $term) {
             // Same term as the previous entry — bump the timestamp + count.
             $latest->update(['result_count' => $resultCount, 'updated_at' => now()]);
+
             return;
         }
 
         self::create([
-            'user_id'      => $userId,
-            'term'         => $term,
+            'user_id' => $userId,
+            'term' => $term,
             'result_count' => $resultCount,
         ]);
 

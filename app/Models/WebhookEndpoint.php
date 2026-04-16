@@ -31,9 +31,9 @@ class WebhookEndpoint extends Model
     protected function casts(): array
     {
         return [
-            'is_active'         => 'boolean',
+            'is_active' => 'boolean',
             'last_delivered_at' => 'datetime',
-            'failure_count'     => 'integer',
+            'failure_count' => 'integer',
         ];
     }
 
@@ -58,6 +58,7 @@ class WebhookEndpoint extends Model
             return true;
         }
         $list = array_map('trim', explode(',', $filter));
+
         return in_array($event, $list, true);
     }
 }

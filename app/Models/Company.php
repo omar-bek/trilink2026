@@ -5,9 +5,13 @@ namespace App\Models;
 use App\Concerns\Searchable;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
+use App\Enums\CorporateTaxStatus;
+use App\Enums\DocumentType;
 use App\Enums\FreeZoneAuthority;
 use App\Enums\LegalJurisdiction;
 use App\Enums\VerificationLevel;
+use App\Services\EInvoice\PintAeMapper;
+use App\Services\Procurement\IcvScoringService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -15,10 +19,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class Company extends Model
 {
-    use HasFactory, SoftDeletes, Searchable;
+    use HasFactory, Searchable, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -88,10 +93,10 @@ class Company extends Model
             // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
             // Casts to enums so callers can === compare against the
             // canonical values without dealing with raw strings.
-            'is_free_zone'        => 'boolean',
-            'is_designated_zone'  => 'boolean',
+            'is_free_zone' => 'boolean',
+            'is_designated_zone' => 'boolean',
             'free_zone_authority' => FreeZoneAuthority::class,
-            'legal_jurisdiction'  => LegalJurisdiction::class,
+            'legal_jurisdiction' => LegalJurisdiction::class,
             // Notification recipient role filter — JSON list of
             // UserRole values that opt in to contract events.
             'notification_recipient_roles' => 'array',
@@ -109,8 +114,8 @@ class Company extends Model
      */
     public function isQfzp(): bool
     {
-        return $this->corporate_tax_status === \App\Enums\CorporateTaxStatus::QFZP->value
-            || $this->corporate_tax_status === \App\Enums\CorporateTaxStatus::QFZP;
+        return $this->corporate_tax_status === CorporateTaxStatus::QFZP->value
+            || $this->corporate_tax_status === CorporateTaxStatus::QFZP;
     }
 
     /**
@@ -119,15 +124,15 @@ class Company extends Model
      */
     public function ctAnnotation(): ?string
     {
-        $status = $this->corporate_tax_status instanceof \App\Enums\CorporateTaxStatus
+        $status = $this->corporate_tax_status instanceof CorporateTaxStatus
             ? $this->corporate_tax_status
-            : \App\Enums\CorporateTaxStatus::tryFrom((string) $this->corporate_tax_status);
+            : CorporateTaxStatus::tryFrom((string) $this->corporate_tax_status);
 
         return match ($status) {
-            \App\Enums\CorporateTaxStatus::QFZP                   => 'QFZP — Qualifying Free Zone Person (0% CT on qualifying income)',
-            \App\Enums\CorporateTaxStatus::EXEMPT_BELOW_THRESHOLD => 'Exempt — annual profits below AED 375,000 threshold',
-            \App\Enums\CorporateTaxStatus::NOT_REGISTERED         => 'WARNING: Company is NOT registered for Corporate Tax',
-            default                                                => null,
+            CorporateTaxStatus::QFZP => 'QFZP — Qualifying Free Zone Person (0% CT on qualifying income)',
+            CorporateTaxStatus::EXEMPT_BELOW_THRESHOLD => 'Exempt — annual profits below AED 375,000 threshold',
+            CorporateTaxStatus::NOT_REGISTERED => 'WARNING: Company is NOT registered for Corporate Tax',
+            default => null,
         };
     }
 
@@ -144,7 +149,7 @@ class Company extends Model
 
     /**
      * Phase 4 (UAE Compliance Roadmap) — In-Country Value certificates.
-     * The relationship is loaded by the {@see \App\Services\Procurement\IcvScoringService}
+     * The relationship is loaded by the {@see IcvScoringService}
      * during bid evaluation.
      */
     public function icvCertificates(): HasMany
@@ -165,7 +170,7 @@ class Company extends Model
      * the company has no TRN — those rows can't be addressed via
      * Peppol and the FTA submission would fail anyway.
      *
-     * Used by {@see \App\Services\EInvoice\PintAeMapper} when stamping
+     * Used by {@see PintAeMapper} when stamping
      * the EndpointID on AccountingSupplierParty / Customer.
      */
     public function peppolParticipantId(): ?string
@@ -174,7 +179,8 @@ class Company extends Model
         if (empty($trn)) {
             return null;
         }
-        return '0235:' . $trn;
+
+        return '0235:'.$trn;
     }
 
     /**
@@ -331,17 +337,17 @@ class Company extends Model
         $docs = $this->relationLoaded('companyDocuments')
             ? $this->companyDocuments
             : $this->companyDocuments()
-                ->where('type', \App\Enums\DocumentType::TRADE_LICENSE)
+                ->where('type', DocumentType::TRADE_LICENSE)
                 ->where('status', CompanyDocument::STATUS_VERIFIED)
                 ->get();
 
         $latest = $docs
-            ->where('type', \App\Enums\DocumentType::TRADE_LICENSE)
+            ->where('type', DocumentType::TRADE_LICENSE)
             ->where('status', CompanyDocument::STATUS_VERIFIED)
             ->sortByDesc('id')
             ->first();
 
-        if (!$latest) {
+        if (! $latest) {
             return false;
         }
 
@@ -455,7 +461,7 @@ class Company extends Model
      */
     public function hasSignatureAssets(): bool
     {
-        return !empty($this->signature_path) && !empty($this->stamp_path);
+        return ! empty($this->signature_path) && ! empty($this->stamp_path);
     }
 
     /**
@@ -466,7 +472,7 @@ class Company extends Model
     public function signatureUrl(): ?string
     {
         return $this->signature_path
-            ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->signature_path)
+            ? Storage::disk('public')->url($this->signature_path)
             : null;
     }
 
@@ -476,7 +482,7 @@ class Company extends Model
     public function stampUrl(): ?string
     {
         return $this->stamp_path
-            ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->stamp_path)
+            ? Storage::disk('public')->url($this->stamp_path)
             : null;
     }
 

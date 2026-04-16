@@ -18,7 +18,7 @@ class DisputeController extends Controller
         $filters = $request->only(['contract_id', 'status', 'escalated', 'assigned_to', 'per_page']);
         $user = auth()->user();
 
-        if (!$user->isAdmin() && !in_array($user->role->value, ['government'])) {
+        if (! $user->isAdmin() && ! in_array($user->role->value, ['government'])) {
             $filters['company_id'] = $user->company_id;
         }
 
@@ -28,6 +28,7 @@ class DisputeController extends Controller
     public function show(int $id): JsonResponse
     {
         $dispute = $this->service->find($id);
+
         return $dispute ? $this->success($dispute) : $this->notFound();
     }
 
@@ -56,12 +57,14 @@ class DisputeController extends Controller
         ]);
 
         $dispute = $this->service->update($id, $data);
+
         return $dispute ? $this->success($dispute) : $this->notFound();
     }
 
     public function escalate(int $id): JsonResponse
     {
         $dispute = $this->service->escalate($id);
+
         return $dispute
             ? $this->success($dispute, 'Dispute escalated to government')
             : $this->error('Cannot escalate this dispute', 422);
@@ -72,6 +75,7 @@ class DisputeController extends Controller
         $data = $request->validate(['resolution' => 'required|string']);
 
         $dispute = $this->service->resolve($id, $data['resolution']);
+
         return $dispute ? $this->success($dispute, 'Dispute resolved') : $this->notFound();
     }
 }

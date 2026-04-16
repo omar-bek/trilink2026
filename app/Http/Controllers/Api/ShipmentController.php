@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Shipment;
 use App\Services\ShipmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +18,7 @@ class ShipmentController extends Controller
         $filters = $request->only(['contract_id', 'status', 'logistics_company_id', 'per_page']);
         $user = auth()->user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             $filters['company_id'] = $user->company_id;
         }
 
@@ -29,6 +28,7 @@ class ShipmentController extends Controller
     public function show(int $id): JsonResponse
     {
         $shipment = $this->service->find($id);
+
         return $shipment ? $this->success($shipment) : $this->notFound();
     }
 
@@ -63,6 +63,7 @@ class ShipmentController extends Controller
         ]);
 
         $shipment = $this->service->update($id, $data);
+
         return $shipment ? $this->success($shipment) : $this->notFound();
     }
 
@@ -76,7 +77,7 @@ class ShipmentController extends Controller
         ]);
 
         $event = $this->service->addTrackingEvent($id, $data);
+
         return $event ? $this->success($event, 'Tracking event added') : $this->notFound();
     }
 }
-

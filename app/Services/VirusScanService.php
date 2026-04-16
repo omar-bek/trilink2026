@@ -29,9 +29,9 @@ class VirusScanService
         $driver = config('services.virus_scan.driver', 'none');
 
         return match ($driver) {
-            'clamav'     => $this->scanWithClamAv($file),
+            'clamav' => $this->scanWithClamAv($file),
             'virustotal' => $this->scanWithVirusTotal($file),
-            default      => ['clean' => true, 'engine' => 'none', 'details' => 'Scanning disabled'],
+            default => ['clean' => true, 'engine' => 'none', 'details' => 'Scanning disabled'],
         };
     }
 
@@ -47,10 +47,11 @@ class VirusScanService
 
             if (! $socket) {
                 Log::warning('ClamAV unreachable', ['error' => $errstr]);
+
                 // Fail-open in development, fail-closed in production
                 return [
-                    'clean'   => app()->isLocal(),
-                    'engine'  => 'clamav',
+                    'clean' => app()->isLocal(),
+                    'engine' => 'clamav',
                     'details' => "Connection failed: {$errstr}",
                 ];
             }
@@ -74,12 +75,13 @@ class VirusScanService
             }
 
             return [
-                'clean'   => $clean,
-                'engine'  => 'clamav',
+                'clean' => $clean,
+                'engine' => 'clamav',
                 'details' => $response,
             ];
         } catch (\Throwable $e) {
             Log::error('ClamAV scan error', ['error' => $e->getMessage()]);
+
             return ['clean' => app()->isLocal(), 'engine' => 'clamav', 'details' => $e->getMessage()];
         }
     }
@@ -91,6 +93,7 @@ class VirusScanService
 
         if (! $apiKey) {
             Log::warning('VirusTotal API key not configured');
+
             return ['clean' => app()->isLocal(), 'engine' => 'virustotal', 'details' => 'API key missing'];
         }
 
@@ -100,18 +103,18 @@ class VirusScanService
             // Upload file
             $ch = curl_init('https://www.virustotal.com/api/v3/files');
             curl_setopt_array($ch, [
-                CURLOPT_POST           => true,
+                CURLOPT_POST => true,
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HTTPHEADER     => ["x-apikey: {$apiKey}"],
-                CURLOPT_POSTFIELDS     => ['file' => new \CURLFile($path)],
-                CURLOPT_TIMEOUT        => 60,
+                CURLOPT_HTTPHEADER => ["x-apikey: {$apiKey}"],
+                CURLOPT_POSTFIELDS => ['file' => new \CURLFile($path)],
+                CURLOPT_TIMEOUT => 60,
             ]);
             $response = json_decode(curl_exec($ch), true);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
             if ($httpCode !== 200 || ! isset($response['data']['id'])) {
-                return ['clean' => false, 'engine' => 'virustotal', 'details' => 'Upload failed: HTTP ' . $httpCode];
+                return ['clean' => false, 'engine' => 'virustotal', 'details' => 'Upload failed: HTTP '.$httpCode];
             }
 
             // For async scanning, we just log the analysis ID
@@ -119,12 +122,13 @@ class VirusScanService
             Log::info('VirusTotal scan submitted', ['analysis_id' => $response['data']['id']]);
 
             return [
-                'clean'   => true, // Optimistic — actual result arrives async
-                'engine'  => 'virustotal',
-                'details' => 'Scan submitted: ' . $response['data']['id'],
+                'clean' => true, // Optimistic — actual result arrives async
+                'engine' => 'virustotal',
+                'details' => 'Scan submitted: '.$response['data']['id'],
             ];
         } catch (\Throwable $e) {
             Log::error('VirusTotal scan error', ['error' => $e->getMessage()]);
+
             return ['clean' => false, 'engine' => 'virustotal', 'details' => $e->getMessage()];
         }
     }

@@ -18,7 +18,7 @@ class JwtAuthenticate
     {
         try {
             $token = $request->bearerToken();
-            if (!$token) {
+            if (! $token) {
                 return response()->json(['message' => 'Token not provided'], 401);
             }
 
@@ -27,7 +27,7 @@ class JwtAuthenticate
             }
 
             $user = JWTAuth::parseToken()->authenticate();
-            if (!$user || !$user->isActive()) {
+            if (! $user || ! $user->isActive()) {
                 return response()->json(['message' => 'Unauthorized'], 401);
             }
 

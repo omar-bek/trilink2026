@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\EInvoiceSubmission;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,8 +19,8 @@ use Illuminate\Notifications\Notification;
  */
 class EInvoiceDispatchedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly EInvoiceSubmission $submission,
@@ -28,8 +30,8 @@ class EInvoiceDispatchedNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'compliance_alerts',
             ['database', 'mail']
         );
@@ -46,11 +48,11 @@ class EInvoiceDispatchedNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'info',
-            'title'       => $this->t($notifiable, 'notifications.einvoice.dispatched.title'),
-            'message'     => $this->t($notifiable, 'notifications.einvoice.dispatched.message', ['ref' => $this->reference()]),
+            'type' => 'info',
+            'title' => $this->t($notifiable, 'notifications.einvoice.dispatched.title'),
+            'message' => $this->t($notifiable, 'notifications.einvoice.dispatched.message', ['ref' => $this->reference()]),
             'entity_type' => 'einvoice_submission',
-            'entity_id'   => $this->submission->id,
+            'entity_id' => $this->submission->id,
         ];
     }
 
@@ -58,6 +60,6 @@ class EInvoiceDispatchedNotification extends Notification implements ShouldQueue
     {
         return $this->submission->taxInvoice?->invoice_number
             ?? $this->submission->taxCreditNote?->credit_note_number
-            ?? ('#' . $this->submission->id);
+            ?? ('#'.$this->submission->id);
     }
 }

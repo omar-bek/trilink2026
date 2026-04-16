@@ -26,7 +26,8 @@ use Illuminate\Support\Facades\Schema;
  * doesn't have to recompute and can't drift from what the supplier saw on
  * the form.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('bids', function (Blueprint $table) {

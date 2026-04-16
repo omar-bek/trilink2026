@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Schema;
  * line_items JSON shape, same status/audit columns. The only difference
  * is the original_invoice_id FK and the `reason` enum.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('tax_credit_notes', function (Blueprint $table) {

@@ -27,8 +27,7 @@ class CreditScoringService
 
     public function __construct(
         private readonly CreditScoringProviderInterface $provider,
-    ) {
-    }
+    ) {}
 
     /**
      * Fetch a credit score for the company. Returns the persisted
@@ -41,7 +40,7 @@ class CreditScoringService
             return null;
         }
 
-        $cacheKey = 'credit:' . $this->provider->code() . ':' . md5($registration . '|' . ($company->country ?? ''));
+        $cacheKey = 'credit:'.$this->provider->code().':'.md5($registration.'|'.($company->country ?? ''));
 
         $result = $useCache
             ? Cache::remember(
@@ -51,24 +50,24 @@ class CreditScoringService
             )
             : $this->provider->fetchScore($registration, $company->country);
 
-        if (!($result['success'] ?? false) || $result['score'] === null) {
+        if (! ($result['success'] ?? false) || $result['score'] === null) {
             return null;
         }
 
         $row = CreditScore::create([
-            'company_id'   => $company->id,
-            'provider'     => $this->provider->code(),
-            'score'        => $result['score'],
-            'band'         => $result['band'],
-            'reasons'      => $result['reasons'] ?? [],
-            'reported_at'  => $result['reported_at'] ?? now(),
+            'company_id' => $company->id,
+            'provider' => $this->provider->code(),
+            'score' => $result['score'],
+            'band' => $result['band'],
+            'reasons' => $result['reasons'] ?? [],
+            'reported_at' => $result['reported_at'] ?? now(),
         ]);
 
         // Denormalise onto the company row so the bid card / supplier
         // profile don't have to join credit_scores on every render.
         $company->update([
             'latest_credit_score' => $result['score'],
-            'latest_credit_band'  => $result['band'],
+            'latest_credit_band' => $result['band'],
         ]);
 
         return $row;

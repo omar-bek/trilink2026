@@ -30,10 +30,11 @@ class SovosAspProvider implements AspProviderInterface
         $config = (array) config('einvoice.providers.sovos', []);
         if (empty($config['enabled']) || empty($config['api_key'])) {
             $submission->update([
-                'status'        => EInvoiceSubmission::STATUS_FAILED,
+                'status' => EInvoiceSubmission::STATUS_FAILED,
                 'error_message' => 'Sovos provider not configured. Set EINVOICE_SOVOS_ENABLED=true and EINVOICE_SOVOS_API_KEY before enabling.',
-                'submitted_at'  => now(),
+                'submitted_at' => now(),
             ]);
+
             return $submission->fresh();
         }
 

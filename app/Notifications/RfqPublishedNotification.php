@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Rfq;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -21,8 +23,8 @@ use Illuminate\Notifications\Notification;
  */
 class RfqPublishedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Rfq $rfq,
@@ -32,8 +34,8 @@ class RfqPublishedNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'rfq_matches',
             ['database', 'mail']
         );
@@ -41,10 +43,10 @@ class RfqPublishedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $title    = (string) $this->rfq->title;
-        $buyer    = $this->rfq->company?->name ?? '—';
+        $title = (string) $this->rfq->title;
+        $buyer = $this->rfq->company?->name ?? '—';
         $deadline = $this->rfq->deadline?->format('M j, Y H:i') ?? '—';
-        $budget   = number_format((float) $this->rfq->budget, 2);
+        $budget = number_format((float) $this->rfq->budget, 2);
         $currency = $this->rfq->currency ?? 'AED';
 
         return $this->baseMail($notifiable, 'notifications.rfq.published.subject', ['title' => $title])
@@ -61,14 +63,14 @@ class RfqPublishedNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'info',
-            'title'       => $this->t($notifiable, 'notifications.rfq.published.title'),
-            'message'     => $this->t($notifiable, 'notifications.rfq.published.message', [
-                'rfq'   => $this->rfq->rfq_number,
+            'type' => 'info',
+            'title' => $this->t($notifiable, 'notifications.rfq.published.title'),
+            'message' => $this->t($notifiable, 'notifications.rfq.published.message', [
+                'rfq' => $this->rfq->rfq_number,
                 'title' => $this->rfq->title,
             ]),
             'entity_type' => 'rfq',
-            'entity_id'   => $this->rfq->id,
+            'entity_id' => $this->rfq->id,
         ];
     }
 }

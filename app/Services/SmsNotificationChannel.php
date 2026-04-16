@@ -39,34 +39,35 @@ class SmsNotificationChannel
         $provider = config('services.sms.provider', 'log');
 
         match ($provider) {
-            'vonage'  => $this->sendViaVonage($phone, $message),
-            'twilio'  => $this->sendViaTwilio($phone, $message),
-            default   => $this->sendViaLog($phone, $message),
+            'vonage' => $this->sendViaVonage($phone, $message),
+            'twilio' => $this->sendViaTwilio($phone, $message),
+            default => $this->sendViaLog($phone, $message),
         };
     }
 
     private function sendViaVonage(string $to, string $message): void
     {
-        $apiKey    = config('services.vonage.key');
+        $apiKey = config('services.vonage.key');
         $apiSecret = config('services.vonage.secret');
-        $from      = config('services.vonage.sms_from', 'TriLink');
+        $from = config('services.vonage.sms_from', 'TriLink');
 
         if (! $apiKey || ! $apiSecret) {
             $this->sendViaLog($to, $message);
+
             return;
         }
 
         $ch = curl_init('https://rest.nexmo.com/sms/json');
         curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
+            CURLOPT_POST => true,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POSTFIELDS     => http_build_query([
-                'api_key'    => $apiKey,
+            CURLOPT_POSTFIELDS => http_build_query([
+                'api_key' => $apiKey,
                 'api_secret' => $apiSecret,
-                'from'       => $from,
-                'to'         => preg_replace('/\D/', '', $to),
-                'text'       => $message,
-                'type'       => 'unicode',
+                'from' => $from,
+                'to' => preg_replace('/\D/', '', $to),
+                'text' => $message,
+                'type' => 'unicode',
             ]),
         ]);
         $response = curl_exec($ch);
@@ -77,23 +78,24 @@ class SmsNotificationChannel
 
     private function sendViaTwilio(string $to, string $message): void
     {
-        $sid   = config('services.twilio.sid');
+        $sid = config('services.twilio.sid');
         $token = config('services.twilio.token');
-        $from  = config('services.twilio.from');
+        $from = config('services.twilio.from');
 
         if (! $sid || ! $token || ! $from) {
             $this->sendViaLog($to, $message);
+
             return;
         }
 
         $ch = curl_init("https://api.twilio.com/2010-04-01/Accounts/{$sid}/Messages.json");
         curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
+            CURLOPT_POST => true,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_USERPWD        => "{$sid}:{$token}",
-            CURLOPT_POSTFIELDS     => http_build_query([
+            CURLOPT_USERPWD => "{$sid}:{$token}",
+            CURLOPT_POSTFIELDS => http_build_query([
                 'From' => $from,
-                'To'   => $to,
+                'To' => $to,
                 'Body' => $message,
             ]),
         ]);

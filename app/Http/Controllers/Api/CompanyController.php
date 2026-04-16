@@ -23,6 +23,7 @@ class CompanyController extends Controller
     public function show(int $id): JsonResponse
     {
         $company = $this->service->find($id);
+
         return $company ? $this->success($company) : $this->notFound();
     }
 
@@ -60,6 +61,7 @@ class CompanyController extends Controller
         ]);
 
         $company = $this->service->update($id, $data);
+
         return $company ? $this->success($company) : $this->notFound();
     }
 
@@ -73,18 +75,24 @@ class CompanyController extends Controller
     public function approve(int $id): JsonResponse
     {
         $company = Company::find($id);
-        if (!$company) return $this->notFound();
+        if (! $company) {
+            return $this->notFound();
+        }
 
         $company->update(['status' => CompanyStatus::ACTIVE]);
+
         return $this->success($company->fresh(), 'Company approved');
     }
 
     public function reject(Request $request, int $id): JsonResponse
     {
         $company = Company::find($id);
-        if (!$company) return $this->notFound();
+        if (! $company) {
+            return $this->notFound();
+        }
 
         $company->update(['status' => CompanyStatus::INACTIVE]);
+
         return $this->success($company->fresh(), 'Company rejected');
     }
 
@@ -97,7 +105,9 @@ class CompanyController extends Controller
         ]);
 
         $company = Company::find($id);
-        if (!$company) return $this->notFound();
+        if (! $company) {
+            return $this->notFound();
+        }
 
         $documents = $company->documents ?? [];
         foreach ($request->documents as $doc) {
@@ -105,6 +115,7 @@ class CompanyController extends Controller
         }
 
         $company->update(['documents' => $documents]);
+
         return $this->success($company->fresh(), 'Documents added');
     }
 
@@ -116,22 +127,28 @@ class CompanyController extends Controller
         ]);
 
         $this->service->linkCategories($id, $data['category_ids']);
+
         return $this->success(null, 'Categories linked');
     }
 
     public function unlinkCategory(int $companyId, int $categoryId): JsonResponse
     {
         $company = Company::find($companyId);
-        if (!$company) return $this->notFound();
+        if (! $company) {
+            return $this->notFound();
+        }
 
         $company->categories()->detach($categoryId);
+
         return $this->success(null, 'Category unlinked');
     }
 
     public function getCategories(int $id): JsonResponse
     {
         $company = Company::find($id);
-        if (!$company) return $this->notFound();
+        if (! $company) {
+            return $this->notFound();
+        }
 
         return $this->success($company->categories);
     }

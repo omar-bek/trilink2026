@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\CompanyDocument;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,8 +18,8 @@ use Illuminate\Notifications\Notification;
  */
 class DocumentExpiringSoonNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(private readonly CompanyDocument $document)
     {
@@ -26,8 +28,8 @@ class DocumentExpiringSoonNotification extends Notification implements ShouldQue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'compliance_alerts',
             ['database', 'mail']
         );
@@ -35,7 +37,7 @@ class DocumentExpiringSoonNotification extends Notification implements ShouldQue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $type    = $this->document->type instanceof \BackedEnum ? $this->document->type->value : (string) $this->document->type;
+        $type = $this->document->type instanceof \BackedEnum ? $this->document->type->value : (string) $this->document->type;
         $expires = $this->document->expires_at?->format('M j, Y') ?? '—';
 
         return $this->baseMail($notifiable, 'notifications.document.expiring.subject', ['name' => $type])
@@ -51,15 +53,15 @@ class DocumentExpiringSoonNotification extends Notification implements ShouldQue
         $type = $this->document->type instanceof \BackedEnum ? $this->document->type->value : (string) $this->document->type;
 
         return [
-            'type'        => 'document_expiring_soon',
-            'title'       => $this->t($notifiable, 'notifications.document.expiring.title'),
-            'message'     => $this->t($notifiable, 'notifications.document.expiring.message', [
+            'type' => 'document_expiring_soon',
+            'title' => $this->t($notifiable, 'notifications.document.expiring.title'),
+            'message' => $this->t($notifiable, 'notifications.document.expiring.message', [
                 'name' => $type,
                 'date' => $this->document->expires_at?->format('M j, Y') ?? '—',
             ]),
             'entity_type' => 'company_document',
-            'entity_id'   => $this->document->id,
-            'action_url'  => route('dashboard.documents.index'),
+            'entity_id' => $this->document->id,
+            'action_url' => route('dashboard.documents.index'),
         ];
     }
 }

@@ -22,11 +22,11 @@ class CategoryController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'name'        => ['required', 'string', 'max:255'],
-            'name_ar'     => ['nullable', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
+            'name_ar' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
-            'parent_id'   => ['nullable', 'exists:categories,id'],
-            'is_active'   => ['nullable', 'boolean'],
+            'parent_id' => ['nullable', 'exists:categories,id'],
+            'is_active' => ['nullable', 'boolean'],
         ]);
 
         $category = Category::create($data + ['is_active' => $request->boolean('is_active', true)]);
@@ -39,14 +39,14 @@ class CategoryController extends Controller
     public function update(Request $request, int $id): RedirectResponse
     {
         $category = Category::findOrFail($id);
-        $before   = $category->only(['name', 'name_ar', 'description', 'parent_id', 'is_active']);
+        $before = $category->only(['name', 'name_ar', 'description', 'parent_id', 'is_active']);
 
         $data = $request->validate([
-            'name'        => ['required', 'string', 'max:255'],
-            'name_ar'     => ['nullable', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
+            'name_ar' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
-            'parent_id'   => ['nullable', 'exists:categories,id', "not_in:{$id}"],
-            'is_active'   => ['nullable', 'boolean'],
+            'parent_id' => ['nullable', 'exists:categories,id', "not_in:{$id}"],
+            'is_active' => ['nullable', 'boolean'],
         ]);
 
         $category->update($data + ['is_active' => $request->boolean('is_active')]);
@@ -75,16 +75,16 @@ class CategoryController extends Controller
     private function audit(AuditAction $action, Category $category, ?array $before = null, ?array $after = null): void
     {
         AuditLog::create([
-            'user_id'       => auth()->id(),
-            'company_id'    => auth()->user()?->company_id,
-            'action'        => $action,
+            'user_id' => auth()->id(),
+            'company_id' => auth()->user()?->company_id,
+            'action' => $action,
             'resource_type' => 'Category',
-            'resource_id'   => $category->id,
-            'before'        => $before,
-            'after'         => $after,
-            'ip_address'    => request()->ip(),
-            'user_agent'    => substr((string) request()->userAgent(), 0, 255),
-            'status'        => 'success',
+            'resource_id' => $category->id,
+            'before' => $before,
+            'after' => $after,
+            'ip_address' => request()->ip(),
+            'user_agent' => substr((string) request()->userAgent(), 0, 255),
+            'status' => 'success',
         ]);
     }
 }

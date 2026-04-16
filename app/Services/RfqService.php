@@ -68,7 +68,7 @@ class RfqService
         $rfq = $rfq->fresh(['company', 'category']);
 
         $isOpen = $rfq && $rfq->status === RfqStatus::OPEN;
-        if ($rfq && !$wasOpen && $isOpen) {
+        if ($rfq && ! $wasOpen && $isOpen) {
             $this->notifyMatchingSuppliers($rfq);
         }
 
@@ -96,7 +96,7 @@ class RfqService
     public function cancel(int $id, ?string $reason = null): ?Rfq
     {
         $rfq = Rfq::with(['bids.provider'])->find($id);
-        if (!$rfq) {
+        if (! $rfq) {
             return null;
         }
 
@@ -119,7 +119,7 @@ class RfqService
     public function close(int $id): ?Rfq
     {
         $rfq = Rfq::with(['bids.provider'])->find($id);
-        if (!$rfq) {
+        if (! $rfq) {
             return null;
         }
 
@@ -165,7 +165,7 @@ class RfqService
      */
     private function notifyMatchingSuppliers(Rfq $rfq): void
     {
-        if (!$rfq->category_id) {
+        if (! $rfq->category_id) {
             return;
         }
 

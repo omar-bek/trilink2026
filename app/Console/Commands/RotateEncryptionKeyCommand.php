@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Phase 8 (UAE Compliance Roadmap) — re-encrypt every encrypted column
@@ -65,8 +67,9 @@ class RotateEncryptionKeyCommand extends Command
         $isDryRun = (bool) $this->option('dry-run');
         $chunk = (int) ($this->option('chunk') ?: 500);
 
-        if (!$oldKey && !$isDryRun) {
+        if (! $oldKey && ! $isDryRun) {
             $this->error('No old key provided. Pass --old-key=base64:... or set DECRYPT_KEY in .env.');
+
             return self::FAILURE;
         }
 
@@ -77,8 +80,9 @@ class RotateEncryptionKeyCommand extends Command
             $table = $t['table'];
             $col = $t['column'];
 
-            if (!\Illuminate\Support\Facades\Schema::hasColumn($table, $col)) {
+            if (! Schema::hasColumn($table, $col)) {
                 $this->warn("Skipping {$table}.{$col} — column missing.");
+
                 continue;
             }
 
@@ -87,6 +91,7 @@ class RotateEncryptionKeyCommand extends Command
 
             if ($isDryRun) {
                 $this->line("  {$table}.{$col}: {$count} non-null rows");
+
                 continue;
             }
 
@@ -100,7 +105,7 @@ class RotateEncryptionKeyCommand extends Command
 
                     // Decrypt with the old key
                     try {
-                        $encrypter = new \Illuminate\Encryption\Encrypter(
+                        $encrypter = new Encrypter(
                             base64_decode(str_replace('base64:', '', $oldKey)),
                             config('app.cipher', 'AES-256-CBC')
                         );
@@ -129,7 +134,7 @@ class RotateEncryptionKeyCommand extends Command
         }
 
         if ($isDryRun) {
-            $this->info("DRY RUN — {$totalRows} rows across " . count(self::TARGETS) . " columns would be re-encrypted.");
+            $this->info("DRY RUN — {$totalRows} rows across ".count(self::TARGETS).' columns would be re-encrypted.');
         } else {
             $this->info("Re-encryption complete: {$totalReEncrypted} rows re-encrypted.");
             $this->warn('IMPORTANT: Remove DECRYPT_KEY from .env now that all rows use the new APP_KEY.');

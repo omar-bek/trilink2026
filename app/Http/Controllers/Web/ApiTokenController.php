@@ -42,12 +42,12 @@ class ApiTokenController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'name'        => ['required', 'string', 'max:64'],
-            'abilities'   => ['nullable', 'array'],
-            'abilities.*' => ['string', 'in:' . implode(',', self::ALLOWED_ABILITIES)],
+            'name' => ['required', 'string', 'max:64'],
+            'abilities' => ['nullable', 'array'],
+            'abilities.*' => ['string', 'in:'.implode(',', self::ALLOWED_ABILITIES)],
         ]);
 
-        $abilities = !empty($data['abilities']) ? $data['abilities'] : ['read:rfqs', 'read:bids', 'read:contracts'];
+        $abilities = ! empty($data['abilities']) ? $data['abilities'] : ['read:rfqs', 'read:bids', 'read:contracts'];
 
         $token = $request->user()->createToken($data['name'], $abilities);
 

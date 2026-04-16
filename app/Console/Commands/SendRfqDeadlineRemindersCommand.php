@@ -9,7 +9,6 @@ use App\Models\User;
 use App\Notifications\RfqDeadlineReminderNotification;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Notification;
 
 /**
  * Hourly cron — finds OPEN RFQs whose deadline is approaching and
@@ -25,13 +24,14 @@ use Illuminate\Support\Facades\Notification;
 class SendRfqDeadlineRemindersCommand extends Command
 {
     protected $signature = 'rfqs:deadline-reminders';
+
     protected $description = 'Notify suppliers when an RFQ deadline is approaching (48h / 24h / 2h).';
 
     /** Window in hours we consider "this is the bucket". */
     private const BUCKETS = [
         48 => 60, // 48 ± 60min — fires in the hour the RFQ crosses 48h-out
         24 => 60,
-        2  => 30, // tighter window for the urgency tier
+        2 => 30, // tighter window for the urgency tier
     ];
 
     public function handle(): int
@@ -41,7 +41,7 @@ class SendRfqDeadlineRemindersCommand extends Command
 
         foreach (self::BUCKETS as $hours => $windowMinutes) {
             $windowStart = $now->copy()->addHours($hours)->subMinutes($windowMinutes);
-            $windowEnd   = $now->copy()->addHours($hours)->addMinutes($windowMinutes);
+            $windowEnd = $now->copy()->addHours($hours)->addMinutes($windowMinutes);
 
             $rfqs = Rfq::query()
                 ->where('status', RfqStatus::OPEN->value)
@@ -84,10 +84,11 @@ class SendRfqDeadlineRemindersCommand extends Command
                 $totalNotified += $sent;
             }
 
-            $this->info("Bucket {$hours}h: processed " . $rfqs->count() . " RFQ(s).");
+            $this->info("Bucket {$hours}h: processed ".$rfqs->count().' RFQ(s).');
         }
 
         $this->info("Sent {$totalNotified} deadline reminder(s).");
+
         return self::SUCCESS;
     }
 }

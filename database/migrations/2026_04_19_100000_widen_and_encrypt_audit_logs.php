@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AuditLog;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Crypt;
@@ -52,7 +53,8 @@ use Illuminate\Support\Facades\Schema;
  * The down() reverses everything: decrypts back to plaintext, recomputes
  * the chain to its plaintext form, restores the original column types.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * @var array<int, array{column: string, type: string}>
      */
@@ -115,9 +117,10 @@ return new class extends Migration {
                         // throws on plaintext, so we skip on success.
                         try {
                             Crypt::decryptString((string) $value);
+
                             // It's already ciphertext — skip.
                             continue;
-                        } catch (\Throwable) {
+                        } catch (Throwable) {
                             // Plaintext — encrypt.
                             $updates[$col] = Crypt::encryptString((string) $value);
                         }
@@ -136,14 +139,14 @@ return new class extends Migration {
                         ->where('id', $row->id)
                         ->first();
 
-                    $canonical = \App\Models\AuditLog::canonicalize($fresh);
-                    $newHash = \App\Models\AuditLog::computeHash($canonical, $previousHash);
+                    $canonical = AuditLog::canonicalize($fresh);
+                    $newHash = AuditLog::computeHash($canonical, $previousHash);
 
                     DB::table('audit_logs')
                         ->where('id', $row->id)
                         ->update([
                             'previous_hash' => $previousHash,
-                            'hash'          => $newHash,
+                            'hash' => $newHash,
                         ]);
 
                     $previousHash = $newHash;
@@ -169,7 +172,7 @@ return new class extends Migration {
                         }
                         try {
                             $updates[$col] = Crypt::decryptString((string) $value);
-                        } catch (\Throwable) {
+                        } catch (Throwable) {
                             // Already plaintext — skip.
                             continue;
                         }
@@ -185,14 +188,14 @@ return new class extends Migration {
                         ->where('id', $row->id)
                         ->first();
 
-                    $canonical = \App\Models\AuditLog::canonicalize($fresh);
-                    $newHash = \App\Models\AuditLog::computeHash($canonical, $previousHash);
+                    $canonical = AuditLog::canonicalize($fresh);
+                    $newHash = AuditLog::computeHash($canonical, $previousHash);
 
                     DB::table('audit_logs')
                         ->where('id', $row->id)
                         ->update([
                             'previous_hash' => $previousHash,
-                            'hash'          => $newHash,
+                            'hash' => $newHash,
                         ]);
 
                     $previousHash = $newHash;

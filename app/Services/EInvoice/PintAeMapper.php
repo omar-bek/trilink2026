@@ -44,8 +44,10 @@ class PintAeMapper
     public const UBL_VERSION = '2.1';
 
     private const NS_INVOICE = 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2';
-    private const NS_CAC     = 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2';
-    private const NS_CBC     = 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2';
+
+    private const NS_CAC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2';
+
+    private const NS_CBC = 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2';
 
     /**
      * The PINT-AE customisation identifier the FTA validates against.
@@ -53,7 +55,8 @@ class PintAeMapper
      * if it changes, only this constant + the test fixture move.
      */
     private const CUSTOMIZATION_ID = 'urn:peppol:pint:billing-1@ae-1';
-    private const PROFILE_ID       = 'urn:peppol:bis:billing';
+
+    private const PROFILE_ID = 'urn:peppol:bis:billing';
 
     public function toUbl(TaxInvoice $invoice): string
     {
@@ -80,15 +83,15 @@ class PintAeMapper
         $this->cbc($doc, $root, 'TaxCurrencyCode', $invoice->currency ?? 'AED');
 
         $this->buildParty($doc, $root, 'AccountingSupplierParty', [
-            'name'    => $invoice->supplier_name,
-            'trn'     => $invoice->supplier_trn,
+            'name' => $invoice->supplier_name,
+            'trn' => $invoice->supplier_trn,
             'address' => $invoice->supplier_address,
             'country' => $invoice->supplier_country,
         ]);
 
         $this->buildParty($doc, $root, 'AccountingCustomerParty', [
-            'name'    => $invoice->buyer_name,
-            'trn'     => $invoice->buyer_trn,
+            'name' => $invoice->buyer_name,
+            'trn' => $invoice->buyer_trn,
             'address' => $invoice->buyer_address,
             'country' => $invoice->buyer_country,
         ]);
@@ -134,7 +137,7 @@ class PintAeMapper
         $cn->loadMissing('originalInvoice');
         $original = $cn->originalInvoice;
 
-        if (!$original) {
+        if (! $original) {
             throw new \RuntimeException(
                 "Cannot map credit note {$cn->id} to UBL: original invoice no longer exists."
             );
@@ -172,15 +175,15 @@ class PintAeMapper
 
         // Parties — snapshot from the original invoice.
         $this->buildParty($doc, $root, 'AccountingSupplierParty', [
-            'name'    => $original->supplier_name,
-            'trn'     => $original->supplier_trn,
+            'name' => $original->supplier_name,
+            'trn' => $original->supplier_trn,
             'address' => $original->supplier_address,
             'country' => $original->supplier_country,
         ]);
 
         $this->buildParty($doc, $root, 'AccountingCustomerParty', [
-            'name'    => $original->buyer_name,
-            'trn'     => $original->buyer_trn,
+            'name' => $original->buyer_name,
+            'trn' => $original->buyer_trn,
             'address' => $original->buyer_address,
             'country' => $original->buyer_country,
         ]);
@@ -242,15 +245,15 @@ class PintAeMapper
         // (1) Well-formedness — load with libxml errors captured so
         // we can surface a precise message instead of a generic warning.
         $previous = libxml_use_internal_errors(true);
-        $doc = new DOMDocument();
+        $doc = new DOMDocument;
         $loaded = $doc->loadXML($xml);
         $errors = libxml_get_errors();
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 
-        if (!$loaded) {
+        if (! $loaded) {
             $first = $errors[0]->message ?? 'unknown XML parse error';
-            throw new \RuntimeException("PintAeMapper: generated {$documentType} XML is not well-formed: " . trim($first));
+            throw new \RuntimeException("PintAeMapper: generated {$documentType} XML is not well-formed: ".trim($first));
         }
 
         $xpath = new \DOMXPath($doc);
@@ -282,10 +285,10 @@ class PintAeMapper
         }
 
         // (4) Currency code = 3 uppercase ASCII letters (ISO 4217).
-        $currencyNodes = $xpath->query("/*/cbc:DocumentCurrencyCode");
+        $currencyNodes = $xpath->query('/*/cbc:DocumentCurrencyCode');
         if ($currencyNodes !== false && $currencyNodes->length > 0) {
             $currency = trim((string) $currencyNodes->item(0)->textContent);
-            if (!preg_match('/^[A-Z]{3}$/', $currency)) {
+            if (! preg_match('/^[A-Z]{3}$/', $currency)) {
                 throw new \RuntimeException("PintAeMapper: invalid currency code '{$currency}' (expected ISO 4217, e.g. AED).");
             }
         }
@@ -293,11 +296,11 @@ class PintAeMapper
         // (5) Every PostalAddress/Country/IdentificationCode must be a
         // 2-letter ISO 3166-1 code (e.g. AE, SA, IN). The FTA's
         // validator rejects bare country names like "United Arab Emirates".
-        $countryNodes = $xpath->query("//cac:Country/cbc:IdentificationCode");
+        $countryNodes = $xpath->query('//cac:Country/cbc:IdentificationCode');
         if ($countryNodes !== false) {
             foreach ($countryNodes as $node) {
                 $code = trim((string) $node->textContent);
-                if (!preg_match('/^[A-Z]{2}$/', $code)) {
+                if (! preg_match('/^[A-Z]{2}$/', $code)) {
                     throw new \RuntimeException("PintAeMapper: invalid country code '{$code}' (expected ISO 3166-1 alpha-2, e.g. AE).");
                 }
             }
@@ -307,11 +310,11 @@ class PintAeMapper
         // It must parse as a non-negative decimal — the FTA rejects
         // anything else (negative amounts go on credit notes, not
         // invoices, via the InvoiceTypeCode/CreditNoteTypeCode flag).
-        $amountNodes = $xpath->query("//*[@currencyID]");
+        $amountNodes = $xpath->query('//*[@currencyID]');
         if ($amountNodes !== false) {
             foreach ($amountNodes as $node) {
                 $raw = trim((string) $node->textContent);
-                if (!preg_match('/^-?\d+(\.\d+)?$/', $raw)) {
+                if (! preg_match('/^-?\d+(\.\d+)?$/', $raw)) {
                     throw new \RuntimeException("PintAeMapper: monetary amount '{$raw}' is not a valid decimal.");
                 }
                 if ((float) $raw < 0) {
@@ -323,7 +326,7 @@ class PintAeMapper
         // (7) Peppol routing identifier — every party must carry an
         // EndpointID with the UAE FTA scheme '0235'. Without this the
         // ASP cannot route the document on the network.
-        $endpointNodes = $xpath->query("//cac:Party/cbc:EndpointID");
+        $endpointNodes = $xpath->query('//cac:Party/cbc:EndpointID');
         if ($endpointNodes === false || $endpointNodes->length < 2) {
             throw new \RuntimeException("PintAeMapper: {$documentType} must carry an EndpointID for both parties (Peppol routing).");
         }
@@ -354,9 +357,9 @@ class PintAeMapper
             libxml_clear_errors();
             libxml_use_internal_errors($previous);
 
-            if (!$passed) {
+            if (! $passed) {
                 $first = $errors[0]->message ?? 'unknown schema error';
-                throw new \RuntimeException("PintAeMapper: {$documentType} fails XSD validation: " . trim($first));
+                throw new \RuntimeException("PintAeMapper: {$documentType} fails XSD validation: ".trim($first));
             }
         }
     }
@@ -371,17 +374,18 @@ class PintAeMapper
      */
     private function creditNoteAsInvoiceShape(TaxCreditNote $cn): TaxInvoice
     {
-        $shim = new TaxInvoice();
+        $shim = new TaxInvoice;
         $shim->setRawAttributes([
-            'currency'          => $cn->currency,
+            'currency' => $cn->currency,
             'subtotal_excl_tax' => (string) $cn->subtotal_excl_tax,
-            'total_discount'    => '0.00',
-            'total_tax'         => (string) $cn->total_tax,
-            'total_inclusive'   => (string) $cn->total_inclusive,
-            'line_items'        => is_array($cn->line_items)
+            'total_discount' => '0.00',
+            'total_tax' => (string) $cn->total_tax,
+            'total_inclusive' => (string) $cn->total_inclusive,
+            'line_items' => is_array($cn->line_items)
                 ? json_encode($cn->line_items)
                 : (string) $cn->line_items,
         ]);
+
         return $shim;
     }
 
@@ -399,7 +403,7 @@ class PintAeMapper
         // attribute. The UAE FTA TRN namespace is registered as
         // scheme `0235`. Without this element a real ASP cannot route
         // the document to its destination on the Peppol network.
-        if (!empty($party['trn'])) {
+        if (! empty($party['trn'])) {
             $endpoint = $doc->createElementNS(self::NS_CBC, 'cbc:EndpointID', $party['trn']);
             $endpoint->setAttribute('schemeID', '0235');
             $inner->appendChild($endpoint);
@@ -419,7 +423,7 @@ class PintAeMapper
         $inner->appendChild($address);
 
         // Tax registration. The FTA expects scheme=VAT for the TRN.
-        if (!empty($party['trn'])) {
+        if (! empty($party['trn'])) {
             $taxScheme = $doc->createElementNS(self::NS_CAC, 'cac:PartyTaxScheme');
             $this->cbc($doc, $taxScheme, 'CompanyID', $party['trn']);
             $scheme = $doc->createElementNS(self::NS_CAC, 'cac:TaxScheme');
@@ -521,11 +525,11 @@ class PintAeMapper
     {
         return match (mb_strtolower((string) $unit)) {
             'each', 'pcs', 'piece', 'unit', '' => 'C62',
-            'kg'                                => 'KGM',
-            'litre', 'liter', 'l'               => 'LTR',
-            'meter', 'metre', 'm'               => 'MTR',
-            'hour', 'hr', 'h'                   => 'HUR',
-            default                              => 'C62',
+            'kg' => 'KGM',
+            'litre', 'liter', 'l' => 'LTR',
+            'meter', 'metre', 'm' => 'MTR',
+            'hour', 'hr', 'h' => 'HUR',
+            default => 'C62',
         };
     }
 }

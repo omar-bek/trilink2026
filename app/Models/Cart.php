@@ -17,9 +17,11 @@ class Cart extends Model
 {
     use HasFactory, SoftDeletes;
 
-    public const STATUS_OPEN         = 'open';
-    public const STATUS_CHECKED_OUT  = 'checked_out';
-    public const STATUS_ABANDONED    = 'abandoned';
+    public const STATUS_OPEN = 'open';
+
+    public const STATUS_CHECKED_OUT = 'checked_out';
+
+    public const STATUS_ABANDONED = 'abandoned';
 
     protected $fillable = [
         'user_id',
@@ -77,6 +79,7 @@ class Cart extends Model
         if ($this->relationLoaded('items')) {
             return (int) $this->items->sum('quantity');
         }
+
         return (int) $this->items()->sum('quantity');
     }
 
@@ -93,6 +96,7 @@ class Cart extends Model
             $key = $item->currency ?: 'AED';
             $totals[$key] = ($totals[$key] ?? 0) + ($item->quantity * (float) $item->unit_price);
         }
+
         return $totals;
     }
 }

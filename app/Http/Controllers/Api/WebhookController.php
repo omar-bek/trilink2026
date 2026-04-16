@@ -36,12 +36,13 @@ class WebhookController extends Controller
 {
     public function stripeWebhook(Request $request): JsonResponse
     {
-        $payload   = $request->getContent();
+        $payload = $request->getContent();
         $sigHeader = $request->header('Stripe-Signature');
-        $secret    = config('services.stripe.webhook_secret');
+        $secret = config('services.stripe.webhook_secret');
 
-        if (!$secret) {
+        if (! $secret) {
             Log::error('Stripe webhook secret missing — refusing request');
+
             return response()->json(['error' => 'Webhook not configured'], 503);
         }
 
@@ -51,12 +52,13 @@ class WebhookController extends Controller
             Log::warning('Stripe webhook signature verification failed', [
                 'error' => $e->getMessage(),
             ]);
+
             return response()->json(['error' => 'Invalid signature'], 400);
         }
 
         // Replay protection: claim the Stripe event id. Stripe guarantees
         // event.id is unique forever, so this is a perfect idempotency key.
-        if (!WebhookEvent::claim('stripe', $event->id, $event->type, $request->all())) {
+        if (! WebhookEvent::claim('stripe', $event->id, $event->type, $request->all())) {
             return response()->json(['received' => true, 'replay' => true]);
         }
 
@@ -77,8 +79,9 @@ class WebhookController extends Controller
     {
         $secret = config('services.paypal.webhook_secret');
 
-        if (!$secret) {
+        if (! $secret) {
             Log::error('PayPal webhook secret missing — refusing request');
+
             return response()->json(['error' => 'Webhook not configured'], 503);
         }
 
@@ -87,12 +90,13 @@ class WebhookController extends Controller
         // secret" mode — the merchant dashboard surfaces the same secret on
         // both sides. The full PayPal cert-based verification is overkill
         // for the merchant-internal flow we use here.
-        $rawBody    = $request->getContent();
+        $rawBody = $request->getContent();
         $providedSig = (string) $request->header('Paypal-Transmission-Sig', '');
         $expectedSig = hash_hmac('sha256', $rawBody, $secret);
 
-        if (!$providedSig || !hash_equals($expectedSig, $providedSig)) {
+        if (! $providedSig || ! hash_equals($expectedSig, $providedSig)) {
             Log::warning('PayPal webhook signature mismatch');
+
             return response()->json(['error' => 'Invalid signature'], 400);
         }
 
@@ -104,7 +108,7 @@ class WebhookController extends Controller
         $eventId = $event['id'] ?? sha1($rawBody);
         $eventType = $event['event_type'] ?? null;
 
-        if (!WebhookEvent::claim('paypal', $eventId, $eventType, $event)) {
+        if (! WebhookEvent::claim('paypal', $eventId, $eventType, $event)) {
             return response()->json(['received' => true, 'replay' => true]);
         }
 
@@ -115,8 +119,8 @@ class WebhookController extends Controller
                     $payment = Payment::where('gateway_order_id', $orderId)->first();
                     if ($payment) {
                         $payment->update([
-                            'status'             => PaymentStatus::COMPLETED,
-                            'paid_date'          => now(),
+                            'status' => PaymentStatus::COMPLETED,
+                            'paid_date' => now(),
                             'gateway_payment_id' => $event['resource']['id'] ?? null,
                         ]);
                     }
@@ -129,8 +133,8 @@ class WebhookController extends Controller
                     $payment = Payment::where('gateway_order_id', $orderId)->first();
                     if ($payment) {
                         $payment->update([
-                            'status'         => PaymentStatus::FAILED,
-                            'failed_at'      => now(),
+                            'status' => PaymentStatus::FAILED,
+                            'failed_at' => now(),
                             'failure_reason' => 'Payment denied by PayPal',
                         ]);
                     }
@@ -146,8 +150,8 @@ class WebhookController extends Controller
         $payment = Payment::where('gateway_payment_id', $paymentIntent->id)->first();
         if ($payment) {
             $payment->update([
-                'status'         => PaymentStatus::COMPLETED,
-                'paid_date'      => now(),
+                'status' => PaymentStatus::COMPLETED,
+                'paid_date' => now(),
                 'transaction_id' => $paymentIntent->latest_charge ?? null,
             ]);
         }
@@ -158,8 +162,8 @@ class WebhookController extends Controller
         $payment = Payment::where('gateway_payment_id', $paymentIntent->id)->first();
         if ($payment) {
             $payment->update([
-                'status'         => PaymentStatus::FAILED,
-                'failed_at'      => now(),
+                'status' => PaymentStatus::FAILED,
+                'failed_at' => now(),
                 'failure_reason' => $paymentIntent->last_payment_error->message ?? 'Payment failed',
             ]);
         }
@@ -183,7 +187,7 @@ class WebhookController extends Controller
         // for can post to this endpoint. Unknown providers are rejected
         // with 404 to avoid leaking which adapters exist.
         $allowedProviders = ['mashreq_neobiz', 'enbd_trade', 'mock'];
-        if (!in_array($provider, $allowedProviders, true)) {
+        if (! in_array($provider, $allowedProviders, true)) {
             return response()->json(['error' => 'Unknown provider'], 404);
         }
 
@@ -193,22 +197,24 @@ class WebhookController extends Controller
         if ($provider !== 'mock') {
             $configKey = match ($provider) {
                 'mashreq_neobiz' => 'services.escrow.mashreq.webhook_secret',
-                'enbd_trade'     => 'services.escrow.enbd.webhook_secret',
-                default          => null,
+                'enbd_trade' => 'services.escrow.enbd.webhook_secret',
+                default => null,
             };
             $secret = $configKey ? config($configKey) : null;
 
-            if (!$secret) {
+            if (! $secret) {
                 Log::error('Escrow webhook secret missing', ['provider' => $provider]);
+
                 return response()->json(['error' => 'Webhook not configured'], 503);
             }
 
-            $rawBody     = $request->getContent();
+            $rawBody = $request->getContent();
             $providedSig = (string) $request->header('X-Bank-Signature', '');
             $expectedSig = hash_hmac('sha256', $rawBody, $secret);
 
-            if (!$providedSig || !hash_equals($expectedSig, $providedSig)) {
+            if (! $providedSig || ! hash_equals($expectedSig, $providedSig)) {
                 Log::warning('Escrow webhook signature mismatch', ['provider' => $provider]);
+
                 return response()->json(['error' => 'Invalid signature'], 400);
             }
         }
@@ -220,25 +226,26 @@ class WebhookController extends Controller
         // for the in-house mock provider.
         $bankReference = match ($provider) {
             'mashreq_neobiz' => $payload['transaction_id'] ?? $payload['reference'] ?? null,
-            'enbd_trade'     => $payload['txnRef'] ?? $payload['reference'] ?? null,
-            default          => $payload['reference'] ?? null,
+            'enbd_trade' => $payload['txnRef'] ?? $payload['reference'] ?? null,
+            default => $payload['reference'] ?? null,
         };
 
         $amount = match ($provider) {
             'mashreq_neobiz' => (float) ($payload['amount'] ?? 0),
-            'enbd_trade'     => (float) ($payload['txnAmount'] ?? 0),
-            default          => (float) ($payload['amount'] ?? 0),
+            'enbd_trade' => (float) ($payload['txnAmount'] ?? 0),
+            default => (float) ($payload['amount'] ?? 0),
         };
 
         $event = $payload['event_type'] ?? $payload['type'] ?? 'deposit.completed';
 
-        if (!$bankReference || $amount <= 0) {
+        if (! $bankReference || $amount <= 0) {
             // Don't log the full payload — bank webhooks carry account
             // numbers and customer references that we never want in logs.
             Log::warning('Escrow webhook with missing fields', [
                 'provider' => $provider,
-                'event'    => $event,
+                'event' => $event,
             ]);
+
             return response()->json(['error' => 'Missing reference or amount'], 422);
         }
 
@@ -246,7 +253,7 @@ class WebhookController extends Controller
         // a deposit. The EscrowService::confirmDepositFromWebhook() also
         // checks confirmed_at, but claiming the row here adds a second
         // layer for non-deposit events that may arrive in the future.
-        if (!WebhookEvent::claim('escrow_' . $provider, $bankReference, $event, $payload)) {
+        if (! WebhookEvent::claim('escrow_'.$provider, $bankReference, $event, $payload)) {
             return response()->json(['received' => true, 'replay' => true]);
         }
 
@@ -256,6 +263,7 @@ class WebhookController extends Controller
         // (chargebacks, settlement reversals) will branch off this switch.
         if (str_contains($event, 'deposit')) {
             $release = $escrowService->confirmDepositFromWebhook($bankReference, $amount);
+
             return response()->json(['received' => true, 'matched' => (bool) $release]);
         }
 

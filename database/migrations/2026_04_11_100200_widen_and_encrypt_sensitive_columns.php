@@ -45,7 +45,8 @@ use Illuminate\Support\Facades\Schema;
  * step is a no-op there, but the encrypt step still runs (which is what
  * the test suite exercises).
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * @var array<int, array{table: string, column: string, type: string, length?: int|null}>
      */
@@ -54,9 +55,9 @@ return new class extends Migration {
         ['table' => 'beneficial_owners',   'column' => 'id_number',        'type' => 'string', 'length' => 64],
         ['table' => 'beneficial_owners',   'column' => 'date_of_birth',    'type' => 'date'],
         ['table' => 'beneficial_owners',   'column' => 'source_of_wealth', 'type' => 'text'],
-        ['table' => 'company_bank_details','column' => 'iban',             'type' => 'string', 'length' => 64],
-        ['table' => 'company_bank_details','column' => 'swift',            'type' => 'string', 'length' => 32],
-        ['table' => 'company_bank_details','column' => 'holder_name',      'type' => 'string', 'length' => 255],
+        ['table' => 'company_bank_details', 'column' => 'iban',             'type' => 'string', 'length' => 64],
+        ['table' => 'company_bank_details', 'column' => 'swift',            'type' => 'string', 'length' => 32],
+        ['table' => 'company_bank_details', 'column' => 'holder_name',      'type' => 'string', 'length' => 255],
     ];
 
     public function up(): void
@@ -65,7 +66,7 @@ return new class extends Migration {
         // the original type so the encrypted ciphertext fits and so the
         // schema is consistent across all the encrypted columns.
         foreach ($this->targets as $t) {
-            if (!Schema::hasColumn($t['table'], $t['column'])) {
+            if (! Schema::hasColumn($t['table'], $t['column'])) {
                 continue;
             }
 
@@ -78,7 +79,7 @@ return new class extends Migration {
 
         // Step 2 — encrypt the existing plaintext values in place.
         foreach ($this->targets as $t) {
-            if (!Schema::hasColumn($t['table'], $t['column'])) {
+            if (! Schema::hasColumn($t['table'], $t['column'])) {
                 continue;
             }
 
@@ -111,7 +112,7 @@ return new class extends Migration {
     {
         // Step 1 — decrypt back to plaintext.
         foreach ($this->targets as $t) {
-            if (!Schema::hasColumn($t['table'], $t['column'])) {
+            if (! Schema::hasColumn($t['table'], $t['column'])) {
                 continue;
             }
 
@@ -126,7 +127,7 @@ return new class extends Migration {
                         }
                         try {
                             $plain = Crypt::decryptString((string) $cipher);
-                        } catch (\Throwable $e) {
+                        } catch (Throwable $e) {
                             // Already plaintext (partial migration?) — skip.
                             continue;
                         }
@@ -141,7 +142,7 @@ return new class extends Migration {
         // exactly the original max length per row, so we restore the
         // original schema declarations.
         foreach ($this->targets as $t) {
-            if (!Schema::hasColumn($t['table'], $t['column'])) {
+            if (! Schema::hasColumn($t['table'], $t['column'])) {
                 continue;
             }
 

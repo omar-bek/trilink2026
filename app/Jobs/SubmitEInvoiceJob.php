@@ -35,11 +35,12 @@ use Throwable;
  *     contract) — exceptions only happen on programming errors, in
  *     which case Laravel's failed_jobs table catches them.
  */
-class SubmitEInvoiceJob implements ShouldQueue, ShouldBeUnique
+class SubmitEInvoiceJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $backoff = 60;
 
     public function __construct(
@@ -50,17 +51,17 @@ class SubmitEInvoiceJob implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        return 'einvoice-submit:' . $this->taxInvoiceId;
+        return 'einvoice-submit:'.$this->taxInvoiceId;
     }
 
     public function handle(EInvoiceDispatcher $dispatcher): void
     {
-        if (!$dispatcher->isEnabled()) {
+        if (! $dispatcher->isEnabled()) {
             return;
         }
 
         $invoice = TaxInvoice::find($this->taxInvoiceId);
-        if (!$invoice) {
+        if (! $invoice) {
             // Tax invoice was hard-deleted between dispatch and run.
             // Drop silently — there's nothing left to transmit.
             return;

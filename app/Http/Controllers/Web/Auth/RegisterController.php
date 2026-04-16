@@ -3,48 +3,49 @@
 namespace App\Http\Controllers\Web\Auth;
 
 use App\Enums\CompanyType;
+use App\Enums\FreeZoneAuthority;
+use App\Enums\LegalJurisdiction;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\User;
 use App\Notifications\CompanyInfoCompletedNotification;
 use App\Notifications\CompanyRegisteredNotification;
+use App\Rules\SafeUpload;
 use App\Services\AuthService;
 use App\Support\CompanyInfoFields;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class RegisterController extends Controller
 {
-    public function __construct(private readonly AuthService $authService)
-    {
-    }
+    public function __construct(private readonly AuthService $authService) {}
 
     public function showForm(): View
     {
         $countries = [
             'UAE' => 'United Arab Emirates',
-            'SA'  => 'Saudi Arabia',
-            'KW'  => 'Kuwait',
-            'QA'  => 'Qatar',
-            'BH'  => 'Bahrain',
-            'OM'  => 'Oman',
-            'EG'  => 'Egypt',
-            'JO'  => 'Jordan',
+            'SA' => 'Saudi Arabia',
+            'KW' => 'Kuwait',
+            'QA' => 'Qatar',
+            'BH' => 'Bahrain',
+            'OM' => 'Oman',
+            'EG' => 'Egypt',
+            'JO' => 'Jordan',
         ];
 
         // Companies pick what they do at registration time. Only the
         // operational types are exposed — government/admin are platform
         // roles assigned manually, never self-registered.
         $companyTypes = [
-            CompanyType::BUYER->value            => __('register.type_buyer'),
-            CompanyType::SUPPLIER->value         => __('register.type_supplier'),
-            CompanyType::LOGISTICS->value        => __('register.type_logistics'),
-            CompanyType::CLEARANCE->value        => __('register.type_clearance'),
+            CompanyType::BUYER->value => __('register.type_buyer'),
+            CompanyType::SUPPLIER->value => __('register.type_supplier'),
+            CompanyType::LOGISTICS->value => __('register.type_logistics'),
+            CompanyType::CLEARANCE->value => __('register.type_clearance'),
             CompanyType::SERVICE_PROVIDER->value => __('register.type_service_provider'),
         ];
 
@@ -54,7 +55,7 @@ class RegisterController extends Controller
         // the form picks it up automatically. The label() method on
         // each case provides the human-readable name.
         $freeZoneAuthorities = [];
-        foreach (\App\Enums\FreeZoneAuthority::cases() as $authority) {
+        foreach (FreeZoneAuthority::cases() as $authority) {
             $freeZoneAuthorities[$authority->value] = $authority->label();
         }
 
@@ -67,21 +68,21 @@ class RegisterController extends Controller
         // asked the manager for more info. Sourced from the typed
         // `company_info_requests` table (Phase 0 / task 0.6).
         $infoRequest = null;
-        $user        = auth()->user();
+        $user = auth()->user();
 
         $pending = $user?->company?->infoRequest;
         if ($pending && $pending->isPending() && is_array($pending->items) && $pending->items !== []) {
             $catalog = CompanyInfoFields::catalog();
-            $items   = [];
+            $items = [];
             foreach ($pending->items as $key) {
                 if (isset($catalog[$key])) {
                     $items[] = $catalog[$key] + ['key' => $key];
                 }
             }
-            if (!empty($items)) {
+            if (! empty($items)) {
                 $infoRequest = [
-                    'items'        => $items,
-                    'note'         => $pending->note ?? '',
+                    'items' => $items,
+                    'note' => $pending->note ?? '',
                     'requested_at' => $pending->requested_at?->toDateTimeString(),
                 ];
             }
@@ -117,21 +118,22 @@ class RegisterController extends Controller
         // the original registration form.
         if (in_array('website', $requestedKeys, true)
             && $request->filled('website')
-            && !preg_match('~^https?://~i', (string) $request->input('website'))) {
-            $request->merge(['website' => 'https://' . trim((string) $request->input('website'))]);
+            && ! preg_match('~^https?://~i', (string) $request->input('website'))) {
+            $request->merge(['website' => 'https://'.trim((string) $request->input('website'))]);
         }
 
         $data = $request->validate($rules);
 
-        $catalog       = CompanyInfoFields::catalog();
+        $catalog = CompanyInfoFields::catalog();
         $columnUpdates = [];
-        $documents     = is_array($company->documents) ? $company->documents : [];
+        $documents = is_array($company->documents) ? $company->documents : [];
 
         foreach ($requestedKeys as $key) {
             $entry = $catalog[$key];
 
             if ($entry['kind'] === 'field' && isset($entry['column'])) {
                 $columnUpdates[$entry['column']] = $data[$key] ?? null;
+
                 continue;
             }
 
@@ -159,7 +161,7 @@ class RegisterController extends Controller
         app()->terminating(function () use ($companyId) {
             try {
                 $company = Company::find($companyId);
-                if (!$company) {
+                if (! $company) {
                     return;
                 }
                 $admins = User::where('role', UserRole::ADMIN->value)->get();
@@ -190,8 +192,8 @@ class RegisterController extends Controller
         // Be friendly about the website field: users routinely type
         // "company.com" without a protocol. Prepend https:// so the
         // built-in `url` rule accepts it.
-        if ($request->filled('website') && !preg_match('~^https?://~i', (string) $request->input('website'))) {
-            $request->merge(['website' => 'https://' . trim((string) $request->input('website'))]);
+        if ($request->filled('website') && ! preg_match('~^https?://~i', (string) $request->input('website'))) {
+            $request->merge(['website' => 'https://'.trim((string) $request->input('website'))]);
         }
 
         $data = $request->validate([
@@ -202,37 +204,37 @@ class RegisterController extends Controller
             // the platform regardless of this value (it is a profile
             // descriptor, not an authorization gate). Defaults to BUYER
             // when not provided so the column stays populated.
-            'company_type'    => ['nullable', 'string', \Illuminate\Validation\Rule::in($allowedTypes)],
-            'trade_license'   => ['required', 'string', 'max:100', 'unique:companies,registration_number'],
-            'tax_number'      => ['nullable', 'string', 'max:100'],
-            'country'         => ['required', 'string', 'max:10'],
-            'city'            => ['required', 'string', 'max:100'],
-            'address'         => ['required', 'string', 'max:500'],
-            'phone'           => ['required', 'string', 'max:30'],
-            'email'           => ['required', 'email', 'max:255'],
-            'website'         => ['nullable', 'url', 'max:255'],
-            'description'     => ['nullable', 'string', 'max:2000'],
+            'company_type' => ['nullable', 'string', Rule::in($allowedTypes)],
+            'trade_license' => ['required', 'string', 'max:100', 'unique:companies,registration_number'],
+            'tax_number' => ['nullable', 'string', 'max:100'],
+            'country' => ['required', 'string', 'max:10'],
+            'city' => ['required', 'string', 'max:100'],
+            'address' => ['required', 'string', 'max:500'],
+            'phone' => ['required', 'string', 'max:30'],
+            'email' => ['required', 'email', 'max:255'],
+            'website' => ['nullable', 'url', 'max:255'],
+            'description' => ['nullable', 'string', 'max:2000'],
             // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
             // The form sends `establishment_type` = mainland|free_zone.
             // When free_zone is chosen, `free_zone_authority` is required
             // and is validated against the FreeZoneAuthority enum.
-            'establishment_type'  => ['required', 'in:mainland,free_zone'],
-            'free_zone_authority' => ['required_if:establishment_type,free_zone', 'nullable', 'string', \Illuminate\Validation\Rule::in(array_map(fn ($c) => $c->value, \App\Enums\FreeZoneAuthority::cases()))],
+            'establishment_type' => ['required', 'in:mainland,free_zone'],
+            'free_zone_authority' => ['required_if:establishment_type,free_zone', 'nullable', 'string', Rule::in(array_map(fn ($c) => $c->value, FreeZoneAuthority::cases()))],
 
-            'trade_license_file'    => ['nullable', 'file', 'max:5120', ...\App\Rules\SafeUpload::pdfOrImage()],
-            'tax_certificate_file'  => ['nullable', 'file', 'max:5120', ...\App\Rules\SafeUpload::pdfOrImage()],
-            'company_profile_file'  => ['nullable', 'file', 'max:5120', ...\App\Rules\SafeUpload::pdfOrImage()],
+            'trade_license_file' => ['nullable', 'file', 'max:5120', ...SafeUpload::pdfOrImage()],
+            'tax_certificate_file' => ['nullable', 'file', 'max:5120', ...SafeUpload::pdfOrImage()],
+            'company_profile_file' => ['nullable', 'file', 'max:5120', ...SafeUpload::pdfOrImage()],
 
-            'manager_name'     => ['required', 'string', 'max:255'],
-            'manager_email'    => ['required', 'email', 'max:255', 'unique:users,email'],
-            'manager_phone'    => ['required', 'string', 'max:30'],
+            'manager_name' => ['required', 'string', 'max:255'],
+            'manager_email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'manager_phone' => ['required', 'string', 'max:30'],
             'manager_password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
         // Split manager name into first/last (best effort).
-        $parts     = preg_split('/\s+/', trim($data['manager_name']), 2);
+        $parts = preg_split('/\s+/', trim($data['manager_name']), 2);
         $firstName = $parts[0] ?? $data['manager_name'];
-        $lastName  = $parts[1] ?? '';
+        $lastName = $parts[1] ?? '';
 
         // Persist uploaded documents (if any) to the company's documents folder.
         $documents = [];
@@ -247,47 +249,47 @@ class RegisterController extends Controller
         // Free zone → look up the authority and derive its designated /
         // jurisdiction attributes from the enum so the registration
         // form doesn't have to know the legal classification.
-        $isFreeZone        = ($data['establishment_type'] ?? 'mainland') === 'free_zone';
+        $isFreeZone = ($data['establishment_type'] ?? 'mainland') === 'free_zone';
         $freeZoneAuthority = $isFreeZone ? ($data['free_zone_authority'] ?? null) : null;
-        $isDesignatedZone  = false;
-        $jurisdiction      = \App\Enums\LegalJurisdiction::FEDERAL;
+        $isDesignatedZone = false;
+        $jurisdiction = LegalJurisdiction::FEDERAL;
         if ($freeZoneAuthority) {
-            $authority = \App\Enums\FreeZoneAuthority::tryFrom($freeZoneAuthority);
+            $authority = FreeZoneAuthority::tryFrom($freeZoneAuthority);
             if ($authority) {
                 $isDesignatedZone = $authority->isDesignated();
-                $jurisdiction     = $authority->jurisdiction();
+                $jurisdiction = $authority->jurisdiction();
             }
         }
 
         $result = $this->authService->registerCompany([
-            'company_name'        => $data['company_name_en'],
-            'company_name_ar'     => $data['company_name_ar'] ?? null,
+            'company_name' => $data['company_name_en'],
+            'company_name_ar' => $data['company_name_ar'] ?? null,
             'registration_number' => $data['trade_license'],
-            'tax_number'          => $data['tax_number'] ?? null,
-            'company_type'        => CompanyType::from($data['company_type'] ?? CompanyType::BUYER->value),
-            'company_email'       => $data['email'],
-            'company_phone'       => $data['phone'],
-            'website'             => $data['website'] ?? null,
-            'address'             => $data['address'],
-            'city'                => $data['city'],
-            'country'             => $data['country'],
-            'description'         => $data['description'] ?? null,
+            'tax_number' => $data['tax_number'] ?? null,
+            'company_type' => CompanyType::from($data['company_type'] ?? CompanyType::BUYER->value),
+            'company_email' => $data['email'],
+            'company_phone' => $data['phone'],
+            'website' => $data['website'] ?? null,
+            'address' => $data['address'],
+            'city' => $data['city'],
+            'country' => $data['country'],
+            'description' => $data['description'] ?? null,
 
             // Phase 3 (UAE Compliance Roadmap) — Free Zone & Jurisdiction.
-            'is_free_zone'        => $isFreeZone,
+            'is_free_zone' => $isFreeZone,
             'free_zone_authority' => $freeZoneAuthority,
-            'is_designated_zone'  => $isDesignatedZone,
-            'legal_jurisdiction'  => $jurisdiction->value,
+            'is_designated_zone' => $isDesignatedZone,
+            'legal_jurisdiction' => $jurisdiction->value,
 
             'first_name' => $firstName,
-            'last_name'  => $lastName,
-            'email'      => $data['manager_email'],
-            'password'   => $data['manager_password'],
-            'phone'      => $data['manager_phone'],
+            'last_name' => $lastName,
+            'email' => $data['manager_email'],
+            'password' => $data['manager_password'],
+            'phone' => $data['manager_phone'],
         ]);
 
         // Attach uploaded documents to the company record.
-        if (!empty($documents)) {
+        if (! empty($documents)) {
             $result['user']->company?->update(['documents' => $documents]);
         }
 
@@ -307,8 +309,8 @@ class RegisterController extends Controller
         $companyId = $result['user']->company->id;
         app()->terminating(function () use ($companyId) {
             try {
-                $company = \App\Models\Company::find($companyId);
-                if (!$company) {
+                $company = Company::find($companyId);
+                if (! $company) {
                     return;
                 }
                 $admins = User::where('role', UserRole::ADMIN->value)->get();

@@ -77,28 +77,28 @@ return [
 
     'sub_processors' => [
         [
-            'name'     => 'AWS Middle East (Bahrain)',
-            'purpose'  => 'Database, file storage, application hosting',
+            'name' => 'AWS Middle East (Bahrain)',
+            'purpose' => 'Database, file storage, application hosting',
             'location' => 'BH',
-            'basis'    => 'adequacy_decision',
+            'basis' => 'adequacy_decision',
         ],
         [
-            'name'     => 'Stripe Payments',
-            'purpose'  => 'Card payment processing',
+            'name' => 'Stripe Payments',
+            'purpose' => 'Card payment processing',
             'location' => 'US',
-            'basis'    => 'scc',
+            'basis' => 'scc',
         ],
         [
-            'name'     => 'OpenSanctions',
-            'purpose'  => 'Sanctions list screening (KYC/AML)',
+            'name' => 'OpenSanctions',
+            'purpose' => 'Sanctions list screening (KYC/AML)',
             'location' => 'DE',
-            'basis'    => 'contract_necessity',
+            'basis' => 'contract_necessity',
         ],
         [
-            'name'     => 'Anthropic Claude API',
-            'purpose'  => 'AI-assisted document classification + chat assistant',
+            'name' => 'Anthropic Claude API',
+            'purpose' => 'AI-assisted document classification + chat assistant',
             'location' => 'US',
-            'basis'    => 'scc',
+            'basis' => 'scc',
         ],
     ],
 
@@ -115,7 +115,7 @@ return [
     */
 
     'dpo' => [
-        'name'  => env('DPO_NAME', 'Data Protection Officer'),
+        'name' => env('DPO_NAME', 'Data Protection Officer'),
         'email' => env('DPO_EMAIL', 'privacy@trilink.ae'),
         'phone' => env('DPO_PHONE', null),
     ],
@@ -133,5 +133,5 @@ return [
     */
 
     'privacy_policy_version' => env('PRIVACY_POLICY_VERSION', '1.0'),
-    'dpa_version'            => env('DPA_VERSION', '1.0'),
+    'dpa_version' => env('DPA_VERSION', '1.0'),
 ];

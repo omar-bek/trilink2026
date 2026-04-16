@@ -25,7 +25,8 @@ use Illuminate\Support\Facades\Schema;
  * application code falls back to those values whenever the columns
  * are null, so unmigrated reads remain safe.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('companies', function (Blueprint $table) {

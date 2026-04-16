@@ -12,8 +12,8 @@ class UploadService
     public function upload(UploadedFile $file, array $metadata = []): Upload
     {
         $disk = config('filesystems.default', 's3');
-        $fileName = Str::uuid() . '.' . $file->getClientOriginalExtension();
-        $path = ($metadata['folder'] ?? 'uploads') . '/' . date('Y/m') . '/' . $fileName;
+        $fileName = Str::uuid().'.'.$file->getClientOriginalExtension();
+        $path = ($metadata['folder'] ?? 'uploads').'/'.date('Y/m').'/'.$fileName;
 
         Storage::disk($disk)->put($path, file_get_contents($file));
 
@@ -40,9 +40,12 @@ class UploadService
     public function delete(int $id): bool
     {
         $upload = Upload::find($id);
-        if (!$upload) return false;
+        if (! $upload) {
+            return false;
+        }
 
         Storage::disk($upload->disk)->delete($upload->path);
+
         return $upload->delete();
     }
 }

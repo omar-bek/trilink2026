@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Models\Bid;
 use App\Services\SidebarBadgeService;
 use Illuminate\Database\Eloquent\Model;
 
@@ -52,7 +53,7 @@ class SidebarBadgeInvalidator
 
         // Special case: a Bid affects both the supplier company and the
         // RFQ-owning buyer company. Pull the parent RFQ if it's loaded.
-        if ($model instanceof \App\Models\Bid && $model->rfq) {
+        if ($model instanceof Bid && $model->rfq) {
             $companyIds[] = (int) $model->rfq->company_id;
         }
 

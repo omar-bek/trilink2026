@@ -10,12 +10,16 @@ class NegotiationMessage extends Model
 {
     use HasFactory;
 
-    public const KIND_TEXT          = 'text';
+    public const KIND_TEXT = 'text';
+
     public const KIND_COUNTER_OFFER = 'counter_offer';
 
-    public const ROUND_OPEN     = 'open';
+    public const ROUND_OPEN = 'open';
+
     public const ROUND_ACCEPTED = 'accepted';
+
     public const ROUND_REJECTED = 'rejected';
+
     public const ROUND_COUNTERED = 'countered';
 
     protected $fillable = [
@@ -32,7 +36,7 @@ class NegotiationMessage extends Model
     protected function casts(): array
     {
         return [
-            'offer'        => 'array',
+            'offer' => 'array',
             'round_number' => 'integer',
         ];
     }

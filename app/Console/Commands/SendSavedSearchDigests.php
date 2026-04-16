@@ -26,7 +26,8 @@ use Illuminate\Support\Facades\Notification;
  */
 class SendSavedSearchDigests extends Command
 {
-    protected $signature   = 'digest:saved-searches';
+    protected $signature = 'digest:saved-searches';
+
     protected $description = 'Email daily digests of new matches for every active saved search';
 
     public function handle(): int
@@ -45,8 +46,8 @@ class SendSavedSearchDigests extends Command
                 continue;
             }
 
-            $threshold  = $this->matchThreshold($user);
-            $bundles    = [];
+            $threshold = $this->matchThreshold($user);
+            $bundles = [];
             $touchedIds = [];
 
             foreach ($searches as $search) {
@@ -55,7 +56,7 @@ class SendSavedSearchDigests extends Command
                     continue;
                 }
 
-                $bundles[]    = $hits;
+                $bundles[] = $hits;
                 $touchedIds[] = $search->id;
             }
 
@@ -84,8 +85,8 @@ class SendSavedSearchDigests extends Command
     private function evaluateSearch(SavedSearch $search, User $user, int $threshold): array
     {
         return match ($search->resource_type) {
-            'rfqs'    => $this->evaluateRfqSearch($search, $user, $threshold),
-            default   => ['label' => $search->label, 'count' => 0, 'url' => '', 'items' => []],
+            'rfqs' => $this->evaluateRfqSearch($search, $user, $threshold),
+            default => ['label' => $search->label, 'count' => 0, 'url' => '', 'items' => []],
         };
     }
 
@@ -98,7 +99,7 @@ class SendSavedSearchDigests extends Command
     private function evaluateRfqSearch(SavedSearch $search, User $user, int $threshold): array
     {
         $filters = $search->filters ?? [];
-        $since   = $search->last_notified_at ?? $search->created_at;
+        $since = $search->last_notified_at ?? $search->created_at;
 
         $base = Rfq::query()
             ->where('status', RfqStatus::OPEN->value)
@@ -124,7 +125,7 @@ class SendSavedSearchDigests extends Command
 
         $scored = $rfqs
             ->map(fn (Rfq $r) => [
-                'rfq'   => $r,
+                'rfq' => $r,
                 'score' => $supplierCompany ? $r->matchScoreFor($supplierCompany) : 0,
             ])
             ->filter(fn ($row) => $row['score'] >= $threshold)
@@ -133,11 +134,11 @@ class SendSavedSearchDigests extends Command
         return [
             'label' => $search->label,
             'count' => $scored->count(),
-            'url'   => url('/dashboard/rfqs?' . $search->toQueryString()),
+            'url' => url('/dashboard/rfqs?'.$search->toQueryString()),
             'items' => $scored->take(5)->map(fn ($row) => [
                 'rfq_number' => $row['rfq']->rfq_number,
-                'title'      => $row['rfq']->title,
-                'match'      => $row['score'],
+                'title' => $row['rfq']->title,
+                'match' => $row['score'],
             ])->all(),
         ];
     }

@@ -41,9 +41,9 @@ class CartController extends Controller
         $cart?->load(['items.product.company', 'items.variant', 'items.supplierCompany']);
 
         return view('dashboard.cart.index', [
-            'cart'     => $cart,
-            'grouped'  => $this->groupBySupplier($cart),
-            'totals'   => $cart ? $cart->totalsByCurrency() : [],
+            'cart' => $cart,
+            'grouped' => $this->groupBySupplier($cart),
+            'totals' => $cart ? $cart->totalsByCurrency() : [],
         ]);
     }
 
@@ -55,13 +55,13 @@ class CartController extends Controller
     public function add(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'product_id'         => ['required', 'integer', 'exists:products,id'],
+            'product_id' => ['required', 'integer', 'exists:products,id'],
             'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
-            'quantity'           => ['required', 'integer', 'min:1'],
+            'quantity' => ['required', 'integer', 'min:1'],
         ]);
 
         $product = Product::findOrFail($data['product_id']);
-        $variant = !empty($data['product_variant_id'])
+        $variant = ! empty($data['product_variant_id'])
             ? ProductVariant::find($data['product_variant_id'])
             : null;
 
@@ -108,6 +108,7 @@ class CartController extends Controller
     public function clear(): RedirectResponse
     {
         $this->cartService->clear(auth()->user());
+
         return back()->with('status', __('cart.cleared'));
     }
 
@@ -122,7 +123,7 @@ class CartController extends Controller
         $user = auth()->user();
         $cart = $this->cartService->current($user, create: false);
 
-        if (!$cart || $cart->items()->count() === 0) {
+        if (! $cart || $cart->items()->count() === 0) {
             return back()->withErrors(['cart' => __('cart.empty')]);
         }
 
@@ -160,7 +161,7 @@ class CartController extends Controller
      */
     public function reorderFromContract(string $id): RedirectResponse
     {
-        $user     = auth()->user();
+        $user = auth()->user();
         $contract = is_numeric($id)
             ? Contract::findOrFail((int) $id)
             : Contract::where('contract_number', $id)->firstOrFail();
@@ -190,24 +191,24 @@ class CartController extends Controller
      */
     private function groupBySupplier($cart): array
     {
-        if (!$cart || $cart->items->isEmpty()) {
+        if (! $cart || $cart->items->isEmpty()) {
             return [];
         }
 
         $groups = [];
         foreach ($cart->items as $item) {
             $sid = $item->supplier_company_id;
-            if (!isset($groups[$sid])) {
+            if (! isset($groups[$sid])) {
                 $groups[$sid] = [
-                    'supplier_id'   => $sid,
+                    'supplier_id' => $sid,
                     'supplier_name' => $item->supplierCompany?->name ?? '—',
-                    'items'         => [],
-                    'currency'      => $item->currency ?: 'AED',
-                    'total'         => 0.0,
+                    'items' => [],
+                    'currency' => $item->currency ?: 'AED',
+                    'total' => 0.0,
                 ];
             }
             $groups[$sid]['items'][] = $item;
-            $groups[$sid]['total']  += $item->lineTotal();
+            $groups[$sid]['total'] += $item->lineTotal();
         }
 
         return array_values($groups);

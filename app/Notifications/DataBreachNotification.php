@@ -31,12 +31,15 @@ use Illuminate\Notifications\Notification;
  */
 class DataBreachNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
-    public const SEVERITY_LOW      = 'low';
-    public const SEVERITY_MEDIUM   = 'medium';
-    public const SEVERITY_HIGH     = 'high';
+    public const SEVERITY_LOW = 'low';
+
+    public const SEVERITY_MEDIUM = 'medium';
+
+    public const SEVERITY_HIGH = 'high';
+
     public const SEVERITY_CRITICAL = 'critical';
 
     public function __construct(
@@ -60,9 +63,9 @@ class DataBreachNotification extends Notification implements ShouldQueue
 
         return $this->baseMail($notifiable, 'notifications.privacy.breach.subject')
             ->line($this->t($notifiable, 'notifications.privacy.breach.message'))
-            ->line(strtoupper($this->severity) . ' — ' . $this->affectedCount . ' subjects')
+            ->line(strtoupper($this->severity).' — '.$this->affectedCount.' subjects')
             ->line($this->description)
-            ->line('72h deadline: ' . $deadline->toDayDateTimeString() . ' GST')
+            ->line('72h deadline: '.$deadline->toDayDateTimeString().' GST')
             ->action(
                 $this->t($notifiable, 'notifications.common.action_view'),
                 url('/dashboard/admin/audit')
@@ -72,15 +75,15 @@ class DataBreachNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'             => 'data_breach',
-            'title'            => $this->t($notifiable, 'notifications.privacy.breach.title') . ' (' . strtoupper($this->severity) . ')',
-            'message'          => "{$this->affectedCount} — " . $this->truncate($this->description, 140),
-            'severity'         => $this->severity,
-            'affected_count'   => $this->affectedCount,
+            'type' => 'data_breach',
+            'title' => $this->t($notifiable, 'notifications.privacy.breach.title').' ('.strtoupper($this->severity).')',
+            'message' => "{$this->affectedCount} — ".$this->truncate($this->description, 140),
+            'severity' => $this->severity,
+            'affected_count' => $this->affectedCount,
             'detection_method' => $this->detectionMethod,
-            'reported_by'      => $this->reportedBy,
-            'pdpl_deadline'    => now()->addHours(72)->toIso8601String(),
-            'action_url'       => '/dashboard/admin/audit',
+            'reported_by' => $this->reportedBy,
+            'pdpl_deadline' => now()->addHours(72)->toIso8601String(),
+            'action_url' => '/dashboard/admin/audit',
         ];
     }
 
@@ -89,6 +92,7 @@ class DataBreachNotification extends Notification implements ShouldQueue
         if (mb_strlen($value) <= $max) {
             return $value;
         }
-        return mb_substr($value, 0, $max - 1) . '…';
+
+        return mb_substr($value, 0, $max - 1).'…';
     }
 }

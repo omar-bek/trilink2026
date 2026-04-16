@@ -43,7 +43,7 @@ class MockTspProvider implements TrustServiceProviderInterface
             'sha256',
             implode('|', [
                 $contractHash,
-                $signerContext['user_id']    ?? '',
+                $signerContext['user_id'] ?? '',
                 $signerContext['company_id'] ?? '',
                 $signedAt->toIso8601String(),
             ]),
@@ -52,17 +52,17 @@ class MockTspProvider implements TrustServiceProviderInterface
 
         $timestampToken = hash_hmac(
             'sha256',
-            $payload . '|' . $signedAt->toIso8601String(),
+            $payload.'|'.$signedAt->toIso8601String(),
             $appKey
         );
 
         return [
-            'tsp_provider'       => 'mock',
-            'tsp_certificate_id' => 'MOCK-CERT-' . substr(hash('sha256', $payload), 0, 16),
-            'signature_format'   => 'CAdES',
-            'signature_payload'  => base64_encode($payload),
-            'timestamp_token'    => base64_encode($timestampToken),
-            'signed_at'          => $signedAt->toIso8601String(),
+            'tsp_provider' => 'mock',
+            'tsp_certificate_id' => 'MOCK-CERT-'.substr(hash('sha256', $payload), 0, 16),
+            'signature_format' => 'CAdES',
+            'signature_payload' => base64_encode($payload),
+            'timestamp_token' => base64_encode($timestampToken),
+            'signed_at' => $signedAt->toIso8601String(),
         ];
     }
 
@@ -75,7 +75,7 @@ class MockTspProvider implements TrustServiceProviderInterface
             'sha256',
             implode('|', [
                 $contractHash,
-                $envelope['signer_user_id']    ?? '',
+                $envelope['signer_user_id'] ?? '',
                 $envelope['signer_company_id'] ?? '',
                 $signedAt,
             ]),
@@ -85,22 +85,22 @@ class MockTspProvider implements TrustServiceProviderInterface
         $providedPayload = base64_decode((string) ($envelope['signature_payload'] ?? ''), true);
         if ($providedPayload === false) {
             return [
-                'valid'        => false,
-                'reason'       => 'Signature payload is not valid base64',
-                'signed_at'    => $signedAt,
+                'valid' => false,
+                'reason' => 'Signature payload is not valid base64',
+                'signed_at' => $signedAt,
                 'tsp_provider' => 'mock',
-                'cert_chain'   => [],
+                'cert_chain' => [],
             ];
         }
 
         $valid = hash_equals($expectedPayload, $providedPayload);
 
         return [
-            'valid'        => $valid,
-            'reason'       => $valid ? 'Signature verified against application key (mock TSP).' : 'Signature payload does not match expected HMAC.',
-            'signed_at'    => $signedAt,
+            'valid' => $valid,
+            'reason' => $valid ? 'Signature verified against application key (mock TSP).' : 'Signature payload does not match expected HMAC.',
+            'signed_at' => $signedAt,
             'tsp_provider' => 'mock',
-            'cert_chain'   => ['MOCK-ROOT', $envelope['tsp_certificate_id'] ?? ''],
+            'cert_chain' => ['MOCK-ROOT', $envelope['tsp_certificate_id'] ?? ''],
         ];
     }
 }

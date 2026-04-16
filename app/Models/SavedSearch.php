@@ -26,8 +26,8 @@ class SavedSearch extends Model
     protected function casts(): array
     {
         return [
-            'filters'          => 'array',
-            'is_active'        => 'boolean',
+            'filters' => 'array',
+            'is_active' => 'boolean',
             'last_notified_at' => 'datetime',
         ];
     }

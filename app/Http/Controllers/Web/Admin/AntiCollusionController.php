@@ -50,21 +50,22 @@ class AntiCollusionController extends Controller
         // Decode evidence JSON for display
         $alerts->getCollection()->transform(function ($row) {
             $row->evidence = json_decode($row->evidence, true) ?? [];
+
             return $row;
         });
 
         $stats = [
-            'open'           => DB::table('collusion_alerts')->where('status', 'open')->count(),
-            'investigating'  => DB::table('collusion_alerts')->where('status', 'investigating')->count(),
+            'open' => DB::table('collusion_alerts')->where('status', 'open')->count(),
+            'investigating' => DB::table('collusion_alerts')->where('status', 'investigating')->count(),
             'false_positive' => DB::table('collusion_alerts')->where('status', 'false_positive')->count(),
-            'confirmed'      => DB::table('collusion_alerts')->where('status', 'confirmed')->count(),
+            'confirmed' => DB::table('collusion_alerts')->where('status', 'confirmed')->count(),
         ];
 
         return view('dashboard.admin.anti-collusion.index', [
-            'alerts'  => $alerts,
-            'stats'   => $stats,
+            'alerts' => $alerts,
+            'stats' => $stats,
             'filters' => [
-                'status'   => $request->query('status'),
+                'status' => $request->query('status'),
                 'severity' => $request->query('severity'),
             ],
         ]);
@@ -76,14 +77,14 @@ class AntiCollusionController extends Controller
 
         $data = $request->validate([
             'status' => ['required', 'in:investigating,false_positive,confirmed'],
-            'notes'  => ['nullable', 'string', 'max:1000'],
+            'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         DB::table('collusion_alerts')
             ->where('id', $id)
             ->update([
-                'status'     => $data['status'],
-                'admin_notes'=> $data['notes'] ?? null,
+                'status' => $data['status'],
+                'admin_notes' => $data['notes'] ?? null,
                 'handled_by' => $request->user()->id,
                 'handled_at' => now(),
                 'updated_at' => now(),

@@ -59,15 +59,15 @@ class TaxInvoicePhase1Test extends TestCase
     private function makeCompany(string $name, CompanyType $type, ?string $trn = null): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => $trn ?? ('TRN-' . random_int(100000, 999999)),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@t.test',
-            'address'             => '101 Sheikh Zayed Road',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => $trn ?? ('TRN-'.random_int(100000, 999999)),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@t.test',
+            'address' => '101 Sheikh Zayed Road',
+            'city' => 'Dubai',
+            'country' => 'AE',
         ]);
     }
 
@@ -75,11 +75,11 @@ class TaxInvoicePhase1Test extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => 'u-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'u-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
             // Suppliers don't get payment.view by default; whitelist it
             // explicitly so they can hit the user-facing download route
@@ -92,12 +92,12 @@ class TaxInvoicePhase1Test extends TestCase
     private function makePayment(Company $buyer, Company $supplier, ?Contract $contract = null): Payment
     {
         $contract = $contract ?? Contract::create([
-            'title'             => 'Test Contract for Tax Invoice',
-            'buyer_company_id'  => $buyer->id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'title' => 'Test Contract for Tax Invoice',
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
         ]);
 
         // Buyer-side user is required because payments.buyer_id is NOT
@@ -108,15 +108,15 @@ class TaxInvoicePhase1Test extends TestCase
         // observer fires (the observer only acts on transitions INTO
         // completed, not direct creates in the completed state).
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
             'recipient_company_id' => $supplier->id,
-            'buyer_id'             => $buyerUser->id,
-            'status'               => PaymentStatus::PENDING_APPROVAL,
-            'amount'               => 1000,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
-            'milestone'            => 'Milestone 1',
+            'buyer_id' => $buyerUser->id,
+            'status' => PaymentStatus::PENDING_APPROVAL,
+            'amount' => 1000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
+            'milestone' => 'Milestone 1',
         ]);
 
         return $payment;
@@ -134,9 +134,9 @@ class TaxInvoicePhase1Test extends TestCase
 
         $year = now()->year;
 
-        $first  = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_INVOICE);
+        $first = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_INVOICE);
         $second = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_INVOICE);
-        $third  = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_INVOICE);
+        $third = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_INVOICE);
 
         $this->assertSame("INV-{$year}-000001", $first);
         $this->assertSame("INV-{$year}-000002", $second);
@@ -173,9 +173,9 @@ class TaxInvoicePhase1Test extends TestCase
         $year = now()->year;
 
         $inv1 = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_INVOICE);
-        $cn1  = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_CREDIT_NOTE);
+        $cn1 = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_CREDIT_NOTE);
         $inv2 = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_INVOICE);
-        $cn2  = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_CREDIT_NOTE);
+        $cn2 = $allocator->allocate($supplier->id, InvoiceNumberAllocator::SERIES_CREDIT_NOTE);
 
         $this->assertSame("INV-{$year}-000001", $inv1);
         $this->assertSame("INV-{$year}-000002", $inv2);
@@ -213,7 +213,7 @@ class TaxInvoicePhase1Test extends TestCase
     {
         $service = $this->app->make(TaxInvoiceService::class);
 
-        $buyer    = $this->makeCompany('Idem Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Idem Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Idem Supplier', CompanyType::SUPPLIER);
 
         $payment = $this->makePayment($buyer, $supplier);
@@ -221,7 +221,7 @@ class TaxInvoicePhase1Test extends TestCase
         $payment->approved_at = now();
         $payment->saveQuietly(); // saveQuietly to skip the observer here — we drive the service directly.
 
-        $first  = $service->issueFor($payment);
+        $first = $service->issueFor($payment);
         $second = $service->issueFor($payment);
 
         $this->assertSame($first->id, $second->id);
@@ -233,9 +233,9 @@ class TaxInvoicePhase1Test extends TestCase
     {
         Bus::fake([IssueTaxInvoiceJob::class]);
 
-        $buyer    = $this->makeCompany('Obs Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Obs Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Obs Supplier', CompanyType::SUPPLIER);
-        $payment  = $this->makePayment($buyer, $supplier);
+        $payment = $this->makePayment($buyer, $supplier);
 
         // Flip to COMPLETED — this should fire the observer.
         $payment->status = PaymentStatus::COMPLETED;
@@ -250,9 +250,9 @@ class TaxInvoicePhase1Test extends TestCase
     {
         Bus::fake([IssueTaxInvoiceJob::class]);
 
-        $buyer    = $this->makeCompany('Idle Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Idle Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Idle Supplier', CompanyType::SUPPLIER);
-        $payment  = $this->makePayment($buyer, $supplier);
+        $payment = $this->makePayment($buyer, $supplier);
 
         // Touch a non-status column on a non-completed payment.
         $payment->milestone = 'Updated milestone';
@@ -266,9 +266,9 @@ class TaxInvoicePhase1Test extends TestCase
         // No bus fake — we want the inline (sync) job to run. The PDF
         // render is exercised end-to-end so we'll see any view-side
         // breakage too. Storage is the local disk in the test env.
-        $buyer    = $this->makeCompany('E2E Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('E2E Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('E2E Supplier', CompanyType::SUPPLIER, 'TRN-EE-12345');
-        $payment  = $this->makePayment($buyer, $supplier);
+        $payment = $this->makePayment($buyer, $supplier);
 
         $payment->status = PaymentStatus::COMPLETED;
         $payment->approved_at = now();
@@ -294,9 +294,9 @@ class TaxInvoicePhase1Test extends TestCase
     {
         $service = $this->app->make(TaxInvoiceService::class);
 
-        $buyer    = $this->makeCompany('Void Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Void Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Void Supplier', CompanyType::SUPPLIER);
-        $admin    = $this->makeUser($buyer, UserRole::ADMIN);
+        $admin = $this->makeUser($buyer, UserRole::ADMIN);
 
         $payment = $this->makePayment($buyer, $supplier);
         $payment->status = PaymentStatus::COMPLETED;
@@ -317,7 +317,7 @@ class TaxInvoicePhase1Test extends TestCase
     {
         $service = $this->app->make(TaxInvoiceService::class);
 
-        $buyer    = $this->makeCompany('Repeat Void Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Repeat Void Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Repeat Void Supplier', CompanyType::SUPPLIER);
 
         $payment = $this->makePayment($buyer, $supplier);
@@ -342,7 +342,7 @@ class TaxInvoicePhase1Test extends TestCase
     {
         $service = $this->app->make(TaxInvoiceService::class);
 
-        $buyer    = $this->makeCompany('CN Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('CN Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('CN Supplier', CompanyType::SUPPLIER);
 
         $payment = $this->makePayment($buyer, $supplier);
@@ -362,7 +362,7 @@ class TaxInvoicePhase1Test extends TestCase
         $this->assertSame($invoice->id, (int) $cn->original_invoice_id);
         $this->assertSame('AED', $cn->currency);
         $this->assertEquals((float) $invoice->total_inclusive, (float) $cn->total_inclusive);
-        $this->assertStringStartsWith('CN-' . now()->year . '-', $cn->credit_note_number);
+        $this->assertStringStartsWith('CN-'.now()->year.'-', $cn->credit_note_number);
         $this->assertNotNull($cn->pdf_path);
     }
 
@@ -370,7 +370,7 @@ class TaxInvoicePhase1Test extends TestCase
     {
         $service = $this->app->make(TaxInvoiceService::class);
 
-        $buyer    = $this->makeCompany('Bad Reason Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Bad Reason Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Bad Reason Supplier', CompanyType::SUPPLIER);
 
         $payment = $this->makePayment($buyer, $supplier);
@@ -390,9 +390,9 @@ class TaxInvoicePhase1Test extends TestCase
 
     public function test_buyer_can_download_their_payment_invoice(): void
     {
-        $buyerCompany    = $this->makeCompany('Auth Buyer', CompanyType::BUYER);
+        $buyerCompany = $this->makeCompany('Auth Buyer', CompanyType::BUYER);
         $supplierCompany = $this->makeCompany('Auth Supplier', CompanyType::SUPPLIER);
-        $buyerUser       = $this->makeUser($buyerCompany, UserRole::BUYER);
+        $buyerUser = $this->makeUser($buyerCompany, UserRole::BUYER);
 
         $payment = $this->makePayment($buyerCompany, $supplierCompany);
         $payment->status = PaymentStatus::COMPLETED;
@@ -408,9 +408,9 @@ class TaxInvoicePhase1Test extends TestCase
 
     public function test_supplier_can_download_their_payment_invoice(): void
     {
-        $buyerCompany    = $this->makeCompany('Sup-side Buyer', CompanyType::BUYER);
+        $buyerCompany = $this->makeCompany('Sup-side Buyer', CompanyType::BUYER);
         $supplierCompany = $this->makeCompany('Sup-side Supplier', CompanyType::SUPPLIER);
-        $supplierUser    = $this->makeUser($supplierCompany, UserRole::SUPPLIER);
+        $supplierUser = $this->makeUser($supplierCompany, UserRole::SUPPLIER);
 
         $payment = $this->makePayment($buyerCompany, $supplierCompany);
         $payment->status = PaymentStatus::COMPLETED;
@@ -425,10 +425,10 @@ class TaxInvoicePhase1Test extends TestCase
 
     public function test_unrelated_user_cannot_download_payment_invoice(): void
     {
-        $buyerCompany    = $this->makeCompany('Real Buyer', CompanyType::BUYER);
+        $buyerCompany = $this->makeCompany('Real Buyer', CompanyType::BUYER);
         $supplierCompany = $this->makeCompany('Real Supplier', CompanyType::SUPPLIER);
         $strangerCompany = $this->makeCompany('Unrelated Buyer', CompanyType::BUYER);
-        $stranger        = $this->makeUser($strangerCompany, UserRole::BUYER);
+        $stranger = $this->makeUser($strangerCompany, UserRole::BUYER);
 
         $payment = $this->makePayment($buyerCompany, $supplierCompany);
         $payment->status = PaymentStatus::COMPLETED;
@@ -443,9 +443,9 @@ class TaxInvoicePhase1Test extends TestCase
 
     public function test_payment_show_view_includes_tax_invoice_card_when_issued(): void
     {
-        $buyerCompany    = $this->makeCompany('Show Buyer', CompanyType::BUYER);
+        $buyerCompany = $this->makeCompany('Show Buyer', CompanyType::BUYER);
         $supplierCompany = $this->makeCompany('Show Supplier', CompanyType::SUPPLIER);
-        $buyerUser       = $this->makeUser($buyerCompany, UserRole::BUYER);
+        $buyerUser = $this->makeUser($buyerCompany, UserRole::BUYER);
 
         $payment = $this->makePayment($buyerCompany, $supplierCompany);
         $payment->status = PaymentStatus::COMPLETED;

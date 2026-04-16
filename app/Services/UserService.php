@@ -40,6 +40,7 @@ class UserService
         return DB::transaction(function () use ($data) {
             $user = User::create($data);
             $user->assignRole($user->role->value);
+
             return $user->load('company');
         });
     }
@@ -47,7 +48,9 @@ class UserService
     public function update(int $id, array $data): ?User
     {
         $user = User::find($id);
-        if (!$user) return null;
+        if (! $user) {
+            return null;
+        }
 
         $user->update($data);
 
@@ -61,21 +64,26 @@ class UserService
     public function updatePermissions(int $id, array $permissions): ?User
     {
         $user = User::find($id);
-        if (!$user) return null;
+        if (! $user) {
+            return null;
+        }
 
         $user->update(['custom_permissions' => $permissions]);
+
         return $user->fresh('company');
     }
 
     public function updateProfile(User $user, array $data): User
     {
         $user->update($data);
+
         return $user->fresh('company');
     }
 
     public function delete(int $id): bool
     {
         $user = User::find($id);
+
         return $user ? $user->delete() : false;
     }
 }

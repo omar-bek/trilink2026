@@ -11,12 +11,19 @@ use Illuminate\Support\Facades\Http;
  */
 class UpsCarrier extends AbstractCarrier
 {
-    public function code(): string { return 'ups'; }
-    public function name(): string { return 'UPS'; }
+    public function code(): string
+    {
+        return 'ups';
+    }
+
+    public function name(): string
+    {
+        return 'UPS';
+    }
 
     protected function isLive(): bool
     {
-        return !empty($this->config['client_id']) && !empty($this->config['client_secret']);
+        return ! empty($this->config['client_id']) && ! empty($this->config['client_secret']);
     }
 
     protected function liveQuote(array $request): array
@@ -25,33 +32,33 @@ class UpsCarrier extends AbstractCarrier
 
         $response = Http::timeout(10)
             ->withHeaders([
-                'Authorization' => 'Bearer ' . $this->getAccessToken(),
-                'transId'       => uniqid('trilink-'),
-                'transactionSrc'=> 'TriLink',
+                'Authorization' => 'Bearer '.$this->getAccessToken(),
+                'transId' => uniqid('trilink-'),
+                'transactionSrc' => 'TriLink',
             ])
             ->post($endpoint, [
                 'RateRequest' => [
                     'Shipment' => [
-                        'Shipper'   => ['Address' => $this->mapAddress($request['origin'] ?? [])],
-                        'ShipTo'    => ['Address' => $this->mapAddress($request['destination'] ?? [])],
-                        'ShipFrom'  => ['Address' => $this->mapAddress($request['origin'] ?? [])],
-                        'Service'   => ['Code' => '03'],
-                        'Package'   => [
+                        'Shipper' => ['Address' => $this->mapAddress($request['origin'] ?? [])],
+                        'ShipTo' => ['Address' => $this->mapAddress($request['destination'] ?? [])],
+                        'ShipFrom' => ['Address' => $this->mapAddress($request['origin'] ?? [])],
+                        'Service' => ['Code' => '03'],
+                        'Package' => [
                             'PackagingType' => ['Code' => '02'],
                             'PackageWeight' => [
                                 'UnitOfMeasurement' => ['Code' => 'KGS'],
-                                'Weight'            => (string) ($request['weight_kg'] ?? 1),
+                                'Weight' => (string) ($request['weight_kg'] ?? 1),
                             ],
                         ],
                     ],
                 ],
             ]);
 
-        if (!$response->successful()) {
-            return ['success' => false, 'error' => 'UPS API HTTP ' . $response->status()];
+        if (! $response->successful()) {
+            return ['success' => false, 'error' => 'UPS API HTTP '.$response->status()];
         }
 
-        $body  = $response->json();
+        $body = $response->json();
         $total = $body['RateResponse']['RatedShipment']['TotalCharges']['MonetaryValue'] ?? null;
         if ($total === null) {
             return $this->mockQuote($request);
@@ -59,10 +66,10 @@ class UpsCarrier extends AbstractCarrier
 
         return [
             'success' => true,
-            'rates'   => [[
-                'service'      => 'standard',
-                'price'        => (float) $total,
-                'currency'     => $body['RateResponse']['RatedShipment']['TotalCharges']['CurrencyCode'] ?? 'USD',
+            'rates' => [[
+                'service' => 'standard',
+                'price' => (float) $total,
+                'currency' => $body['RateResponse']['RatedShipment']['TotalCharges']['CurrencyCode'] ?? 'USD',
                 'transit_days' => 4,
             ]],
         ];
@@ -79,15 +86,23 @@ class UpsCarrier extends AbstractCarrier
     private function mapAddress(array $address): array
     {
         return [
-            'AddressLine'   => $address['address'] ?? '',
-            'City'          => $address['city'] ?? '',
-            'PostalCode'    => $address['post_code'] ?? '',
-            'CountryCode'   => strtoupper($address['country'] ?? 'AE'),
+            'AddressLine' => $address['address'] ?? '',
+            'City' => $address['city'] ?? '',
+            'PostalCode' => $address['post_code'] ?? '',
+            'CountryCode' => strtoupper($address['country'] ?? 'AE'),
         ];
     }
 
-    protected function mockBaseFee(): float { return 48.0; }
-    protected function mockPerKgRate(): float { return 7.0; }
+    protected function mockBaseFee(): float
+    {
+        return 48.0;
+    }
+
+    protected function mockPerKgRate(): float
+    {
+        return 7.0;
+    }
+
     protected function mockTransitDays(string $service): int
     {
         return $service === 'express' ? 2 : 4;

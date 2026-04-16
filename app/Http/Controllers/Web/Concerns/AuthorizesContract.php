@@ -30,7 +30,7 @@ trait AuthorizesContract
     protected function authorizeContractParty(Contract $contract): void
     {
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             abort(404);
         }
         if ($user->isAdmin() || $user->isGovernment()) {
@@ -44,7 +44,7 @@ trait AuthorizesContract
             ->unique()
             ->all();
 
-        if (!in_array($user->company_id, $partyCompanyIds, true)) {
+        if (! in_array($user->company_id, $partyCompanyIds, true)) {
             abort(404);
         }
     }

@@ -38,7 +38,8 @@ use RuntimeException;
  */
 class InvoiceNumberAllocator
 {
-    public const SERIES_INVOICE     = 'INV';
+    public const SERIES_INVOICE = 'INV';
+
     public const SERIES_CREDIT_NOTE = 'CN';
 
     /**
@@ -55,7 +56,7 @@ class InvoiceNumberAllocator
         $on = $on ?? CarbonImmutable::now();
         $year = (int) $on->year;
 
-        if (!in_array($series, [self::SERIES_INVOICE, self::SERIES_CREDIT_NOTE], true)) {
+        if (! in_array($series, [self::SERIES_INVOICE, self::SERIES_CREDIT_NOTE], true)) {
             throw new RuntimeException("Unknown invoice series: {$series}");
         }
 
@@ -66,8 +67,8 @@ class InvoiceNumberAllocator
             // proceed into the row lock below.
             DB::table('invoice_number_sequences')->insertOrIgnore([
                 'company_id' => $companyId,
-                'series'     => $series,
-                'year'       => $year,
+                'series' => $series,
+                'year' => $year,
                 'next_value' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -83,7 +84,7 @@ class InvoiceNumberAllocator
                 ->lockForUpdate()
                 ->first();
 
-            if (!$row) {
+            if (! $row) {
                 // Should be impossible after the insertOrIgnore above —
                 // bail loudly so the bug surfaces, don't continue with a
                 // wrong number.

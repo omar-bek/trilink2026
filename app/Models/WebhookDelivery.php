@@ -16,8 +16,10 @@ class WebhookDelivery extends Model
     use HasFactory;
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_SUCCESS = 'success';
-    public const STATUS_FAILED  = 'failed';
+
+    public const STATUS_FAILED = 'failed';
 
     protected $fillable = [
         'webhook_endpoint_id',
@@ -32,9 +34,9 @@ class WebhookDelivery extends Model
     protected function casts(): array
     {
         return [
-            'payload'         => 'array',
+            'payload' => 'array',
             'response_status' => 'integer',
-            'attempt'         => 'integer',
+            'attempt' => 'integer',
         ];
     }
 

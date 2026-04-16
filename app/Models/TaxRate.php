@@ -38,11 +38,11 @@ class TaxRate extends Model
     protected function casts(): array
     {
         return [
-            'rate'           => 'decimal:2',
-            'is_active'      => 'boolean',
-            'is_default'     => 'boolean',
+            'rate' => 'decimal:2',
+            'is_active' => 'boolean',
+            'is_default' => 'boolean',
             'effective_from' => 'date',
-            'effective_to'   => 'date',
+            'effective_to' => 'date',
         ];
     }
 

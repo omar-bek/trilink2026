@@ -22,6 +22,7 @@ use Illuminate\Notifications\DatabaseNotification;
 class CleanupOldNotificationsCommand extends Command
 {
     protected $signature = 'notifications:cleanup {--days=60 : Drop notifications read more than this many days ago}';
+
     protected $description = 'Delete read notifications older than the retention window.';
 
     public function handle(): int
@@ -29,6 +30,7 @@ class CleanupOldNotificationsCommand extends Command
         $days = (int) $this->option('days');
         if ($days <= 0) {
             $this->error('--days must be greater than zero.');
+
             return self::FAILURE;
         }
 
@@ -47,6 +49,7 @@ class CleanupOldNotificationsCommand extends Command
             });
 
         $this->info("Deleted {$deleted} read notification(s) older than {$days} days.");
+
         return self::SUCCESS;
     }
 }

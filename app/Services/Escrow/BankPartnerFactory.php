@@ -26,7 +26,7 @@ class BankPartnerFactory
             // partnership is signed. Until then any unknown key (including
             // 'mock') falls back to the safe in-memory adapter so escrow
             // demos still work.
-            default => new MockBankPartner(),
+            default => new MockBankPartner,
         };
     }
 

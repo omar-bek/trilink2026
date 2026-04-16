@@ -12,7 +12,9 @@ class CategoryRoutingService
     {
         return Company::whereHas('categories', function ($q) use ($categoryId) {
             $category = Category::find($categoryId);
-            if (!$category) return;
+            if (! $category) {
+                return;
+            }
 
             $q->where('categories.id', $categoryId);
 
@@ -33,12 +35,16 @@ class CategoryRoutingService
     public function canCompanyViewPurchaseRequest(int $companyId, int $categoryId): bool
     {
         $company = Company::find($companyId);
-        if (!$company) return false;
+        if (! $company) {
+            return false;
+        }
 
         return $company->categories()
             ->where(function ($q) use ($categoryId) {
                 $category = Category::find($categoryId);
-                if (!$category) return;
+                if (! $category) {
+                    return;
+                }
 
                 $q->where('categories.id', $categoryId);
 
@@ -47,7 +53,7 @@ class CategoryRoutingService
                 }
 
                 $ancestorIds = $this->getAncestorIds($category);
-                if (!empty($ancestorIds)) {
+                if (! empty($ancestorIds)) {
                     $q->orWhereIn('categories.id', $ancestorIds);
                 }
             })
@@ -62,7 +68,9 @@ class CategoryRoutingService
         while ($current->parent_id) {
             $ids[] = $current->parent_id;
             $current = Category::find($current->parent_id);
-            if (!$current) break;
+            if (! $current) {
+                break;
+            }
         }
 
         return $ids;

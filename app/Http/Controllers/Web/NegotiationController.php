@@ -33,9 +33,7 @@ class NegotiationController extends Controller
 {
     use FormatsForViews;
 
-    public function __construct(private readonly ContractService $contracts)
-    {
-    }
+    public function __construct(private readonly ContractService $contracts) {}
 
     public function show(string $id): View
     {
@@ -52,23 +50,23 @@ class NegotiationController extends Controller
             $offer = null;
             if ($m->kind === 'counter_offer' && is_array($m->offer)) {
                 $offer = [
-                    'amount'         => $this->money((float) ($m->offer['amount'] ?? 0), $m->offer['currency'] ?? 'AED'),
-                    'delivery_days'  => (int) ($m->offer['delivery_days'] ?? 0),
-                    'payment_terms'  => $m->offer['payment_terms'] ?? '—',
-                    'reason'         => $m->offer['reason'] ?? '',
+                    'amount' => $this->money((float) ($m->offer['amount'] ?? 0), $m->offer['currency'] ?? 'AED'),
+                    'delivery_days' => (int) ($m->offer['delivery_days'] ?? 0),
+                    'payment_terms' => $m->offer['payment_terms'] ?? '—',
+                    'reason' => $m->offer['reason'] ?? '',
                 ];
             }
 
             return [
-                'id'     => $m->id,
-                'side'   => $m->sender_side,                    // 'buyer' or 'supplier'
-                'mine'   => $m->sender_side === $side,
-                'author' => trim(($m->sender?->first_name ?? '') . ' ' . ($m->sender?->last_name ?? ''))
+                'id' => $m->id,
+                'side' => $m->sender_side,                    // 'buyer' or 'supplier'
+                'mine' => $m->sender_side === $side,
+                'author' => trim(($m->sender?->first_name ?? '').' '.($m->sender?->last_name ?? ''))
                     ?: ($m->sender_side === 'buyer' ? __('negotiation.buyer_team') : $m->bid?->company?->name),
-                'kind'   => $m->kind,
-                'body'   => $m->body,
-                'offer'  => $offer,
-                'time'   => $m->created_at?->format('M j, Y g:i A'),
+                'kind' => $m->kind,
+                'body' => $m->body,
+                'offer' => $offer,
+                'time' => $m->created_at?->format('M j, Y g:i A'),
             ];
         })->all();
 
@@ -79,8 +77,8 @@ class NegotiationController extends Controller
             ->first();
 
         $currentAmount = $latestCounter ? (float) ($latestCounter->offer['amount'] ?? $bid->price) : (float) $bid->price;
-        $currentDays   = $latestCounter ? (int) ($latestCounter->offer['delivery_days'] ?? $bid->delivery_time_days) : (int) ($bid->delivery_time_days ?? 0);
-        $currentTerms  = $latestCounter ? ($latestCounter->offer['payment_terms'] ?? $bid->payment_terms) : ($bid->payment_terms ?? '—');
+        $currentDays = $latestCounter ? (int) ($latestCounter->offer['delivery_days'] ?? $bid->delivery_time_days) : (int) ($bid->delivery_time_days ?? 0);
+        $currentTerms = $latestCounter ? ($latestCounter->offer['payment_terms'] ?? $bid->payment_terms) : ($bid->payment_terms ?? '—');
 
         $originalBudget = (float) ($bid->rfq?->budget ?? $bid->price);
         // Suggested "target price" = 10% under the original budget — a common
@@ -91,32 +89,32 @@ class NegotiationController extends Controller
         $diffFromBudget = $originalBudget - $currentAmount;
 
         $view = [
-            'bid_id'       => 'BID-' . ($bid->created_at?->format('Y') ?? date('Y')) . '-' . str_pad((string) $bid->id, 4, '0', STR_PAD_LEFT),
-            'numeric_id'   => $bid->id,
-            'rfq_number'   => $bid->rfq?->rfq_number ?? '—',
-            'rfq_title'    => $bid->rfq?->title ?? '—',
-            'supplier'     => $bid->company?->name ?? '—',
-            'status'       => $this->mapBidStatus($this->statusValue($bid->status)),
-            'is_active'    => in_array($this->statusValue($bid->status), ['submitted', 'under_review'], true),
-            'current'      => [
-                'amount'        => $this->money($currentAmount, $bid->currency ?? 'AED'),
-                'amount_raw'    => $currentAmount,
+            'bid_id' => 'BID-'.($bid->created_at?->format('Y') ?? date('Y')).'-'.str_pad((string) $bid->id, 4, '0', STR_PAD_LEFT),
+            'numeric_id' => $bid->id,
+            'rfq_number' => $bid->rfq?->rfq_number ?? '—',
+            'rfq_title' => $bid->rfq?->title ?? '—',
+            'supplier' => $bid->company?->name ?? '—',
+            'status' => $this->mapBidStatus($this->statusValue($bid->status)),
+            'is_active' => in_array($this->statusValue($bid->status), ['submitted', 'under_review'], true),
+            'current' => [
+                'amount' => $this->money($currentAmount, $bid->currency ?? 'AED'),
+                'amount_raw' => $currentAmount,
                 'delivery_days' => $currentDays,
-                'terms'         => $currentTerms,
-                'valid_until'   => $this->longDate($bid->validity_date),
-                'diff_label'    => $diffFromBudget >= 0
-                    ? $this->money($diffFromBudget, $bid->currency ?? 'AED') . ' ' . __('negotiation.below_budget')
-                    : $this->money(abs($diffFromBudget), $bid->currency ?? 'AED') . ' ' . __('negotiation.above_budget'),
+                'terms' => $currentTerms,
+                'valid_until' => $this->longDate($bid->validity_date),
+                'diff_label' => $diffFromBudget >= 0
+                    ? $this->money($diffFromBudget, $bid->currency ?? 'AED').' '.__('negotiation.below_budget')
+                    : $this->money(abs($diffFromBudget), $bid->currency ?? 'AED').' '.__('negotiation.above_budget'),
                 'diff_positive' => $diffFromBudget >= 0,
             ],
-            'analysis'     => [
+            'analysis' => [
                 'original_budget' => $this->money($originalBudget, $bid->currency ?? 'AED'),
-                'current_offer'   => $this->money($currentAmount, $bid->currency ?? 'AED'),
-                'target_price'    => $this->money($targetPrice, $bid->currency ?? 'AED'),
+                'current_offer' => $this->money($currentAmount, $bid->currency ?? 'AED'),
+                'target_price' => $this->money($targetPrice, $bid->currency ?? 'AED'),
             ],
-            'messages'     => $messages,
-            'my_side'      => $side,
-            'can_act'      => $side !== null && in_array($this->statusValue($bid->status), ['submitted', 'under_review'], true),
+            'messages' => $messages,
+            'my_side' => $side,
+            'can_act' => $side !== null && in_array($this->statusValue($bid->status), ['submitted', 'under_review'], true),
         ];
 
         return view('dashboard.negotiations.show', ['n' => $view]);
@@ -133,11 +131,11 @@ class NegotiationController extends Controller
         ]);
 
         NegotiationMessage::create([
-            'bid_id'      => $bid->id,
-            'sender_id'   => $user->id,
+            'bid_id' => $bid->id,
+            'sender_id' => $user->id,
             'sender_side' => $this->sideFor($bid, $user),
-            'kind'        => 'text',
-            'body'        => $data['body'],
+            'kind' => 'text',
+            'body' => $data['body'],
         ]);
 
         return redirect()->route('dashboard.negotiations.show', ['id' => $bid->id]);
@@ -150,24 +148,24 @@ class NegotiationController extends Controller
         $this->authorizeParticipant($bid, $user);
 
         $data = $request->validate([
-            'amount'         => ['required', 'numeric', 'min:1'],
-            'delivery_days'  => ['required', 'integer', 'min:1', 'max:3650'],
-            'payment_terms'  => ['required', 'string', 'max:255'],
-            'reason'         => ['nullable', 'string', 'max:1000'],
+            'amount' => ['required', 'numeric', 'min:1'],
+            'delivery_days' => ['required', 'integer', 'min:1', 'max:3650'],
+            'payment_terms' => ['required', 'string', 'max:255'],
+            'reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         NegotiationMessage::create([
-            'bid_id'      => $bid->id,
-            'sender_id'   => $user->id,
+            'bid_id' => $bid->id,
+            'sender_id' => $user->id,
             'sender_side' => $this->sideFor($bid, $user),
-            'kind'        => 'counter_offer',
-            'body'        => $data['reason'] ?? null,
-            'offer'       => [
-                'amount'        => (float) $data['amount'],
-                'currency'      => $bid->currency ?? 'AED',
+            'kind' => 'counter_offer',
+            'body' => $data['reason'] ?? null,
+            'offer' => [
+                'amount' => (float) $data['amount'],
+                'currency' => $bid->currency ?? 'AED',
                 'delivery_days' => (int) $data['delivery_days'],
                 'payment_terms' => $data['payment_terms'],
-                'reason'        => $data['reason'] ?? '',
+                'reason' => $data['reason'] ?? '',
             ],
         ]);
 
@@ -198,9 +196,9 @@ class NegotiationController extends Controller
 
             $update = ['status' => BidStatus::ACCEPTED];
             if ($latestCounter && is_array($latestCounter->offer)) {
-                $update['price']              = (float) ($latestCounter->offer['amount'] ?? $bid->price);
+                $update['price'] = (float) ($latestCounter->offer['amount'] ?? $bid->price);
                 $update['delivery_time_days'] = (int) ($latestCounter->offer['delivery_days'] ?? $bid->delivery_time_days);
-                $update['payment_terms']      = $latestCounter->offer['payment_terms'] ?? $bid->payment_terms;
+                $update['payment_terms'] = $latestCounter->offer['payment_terms'] ?? $bid->payment_terms;
             }
             $bid->update($update);
 
@@ -249,7 +247,7 @@ class NegotiationController extends Controller
      */
     private function sideFor(Bid $bid, $user): ?string
     {
-        if (!$user) {
+        if (! $user) {
             return null;
         }
 
@@ -277,13 +275,13 @@ class NegotiationController extends Controller
     private function mapBidStatus(string $status): string
     {
         return match ($status) {
-            'draft'        => 'draft',
-            'submitted'    => 'submitted',
+            'draft' => 'draft',
+            'submitted' => 'submitted',
             'under_review' => 'under_review',
-            'accepted'     => 'accepted',
-            'rejected'     => 'rejected',
-            'withdrawn'    => 'closed',
-            default        => 'draft',
+            'accepted' => 'accepted',
+            'rejected' => 'rejected',
+            'withdrawn' => 'closed',
+            default => 'draft',
         };
     }
 }

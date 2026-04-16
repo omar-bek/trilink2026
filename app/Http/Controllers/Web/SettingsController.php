@@ -36,14 +36,14 @@ class SettingsController extends Controller
         abort_unless($user?->company_id, 403);
 
         $data = $request->validate([
-            'name'                => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
             'registration_number' => ['nullable', 'string', 'max:100'],
-            'description'         => ['nullable', 'string', 'max:2000'],
-            'email'               => ['nullable', 'email', 'max:255'],
-            'phone'               => ['nullable', 'string', 'max:30'],
-            'address'             => ['nullable', 'string', 'max:500'],
-            'city'                => ['nullable', 'string', 'max:100'],
-            'country'             => ['nullable', 'string', 'max:10'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'address' => ['nullable', 'string', 'max:500'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'country' => ['nullable', 'string', 'max:10'],
         ]);
 
         Company::where('id', $user->company_id)->update($data);
@@ -58,9 +58,9 @@ class SettingsController extends Controller
 
         $data = $request->validate([
             'first_name' => ['required', 'string', 'max:100'],
-            'last_name'  => ['nullable', 'string', 'max:100'],
-            'email'      => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
-            'phone'      => ['nullable', 'string', 'max:30'],
+            'last_name' => ['nullable', 'string', 'max:100'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$user->id],
+            'phone' => ['nullable', 'string', 'max:30'],
         ]);
 
         $user->update($data);
@@ -77,11 +77,11 @@ class SettingsController extends Controller
         // under a `notifications` key — keeps the schema additive.
         $existing = $user->custom_permissions ?? [];
         $existing['notifications'] = [
-            'rfq_matches'         => $request->boolean('rfq_matches'),
-            'bid_updates'         => $request->boolean('bid_updates'),
+            'rfq_matches' => $request->boolean('rfq_matches'),
+            'bid_updates' => $request->boolean('bid_updates'),
             'contract_milestones' => $request->boolean('contract_milestones'),
-            'messages'            => $request->boolean('messages'),
-            'marketing'           => $request->boolean('marketing'),
+            'messages' => $request->boolean('messages'),
+            'marketing' => $request->boolean('marketing'),
             // Phase 1 / task 1.7 — minimum match score that the daily
             // saved-search digest will surface. Clamped to 0..100.
             'rfq_match_threshold' => max(0, min(100, (int) $request->input('rfq_match_threshold', 50))),
@@ -97,12 +97,12 @@ class SettingsController extends Controller
     {
         $data = $request->validate([
             'current_password' => ['required', 'string'],
-            'password'         => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
         $user = $request->user();
 
-        if (!Hash::check($data['current_password'], $user->password)) {
+        if (! Hash::check($data['current_password'], $user->password)) {
             return back()->withErrors(['current_password' => __('auth.incorrect_password')]);
         }
 
@@ -130,23 +130,23 @@ class SettingsController extends Controller
         abort_unless($user?->company_id, 403);
 
         $data = $request->validate([
-            'bank_holder'         => ['nullable', 'string', 'max:200'],
-            'bank_name'           => ['nullable', 'string', 'max:200'],
-            'bank_iban'           => ['nullable', 'string', 'max:50'],
-            'bank_swift'          => ['nullable', 'string', 'max:20'],
+            'bank_holder' => ['nullable', 'string', 'max:200'],
+            'bank_name' => ['nullable', 'string', 'max:200'],
+            'bank_iban' => ['nullable', 'string', 'max:50'],
+            'bank_swift' => ['nullable', 'string', 'max:20'],
             'bank_account_number' => ['nullable', 'string', 'max:50'],
-            'bank_currency'       => ['nullable', 'string', 'size:3'],
+            'bank_currency' => ['nullable', 'string', 'size:3'],
         ]);
 
         CompanyBankDetail::updateOrCreate(
             ['company_id' => $user->company_id],
             [
-                'holder_name' => $data['bank_holder']         ?? null,
-                'bank_name'   => $data['bank_name']           ?? null,
-                'iban'        => $data['bank_iban']           ?? null,
-                'swift'       => $data['bank_swift']          ?? null,
-                'notes'       => $data['bank_account_number'] ?? null,
-                'currency'    => $data['bank_currency']       ?? null,
+                'holder_name' => $data['bank_holder'] ?? null,
+                'bank_name' => $data['bank_name'] ?? null,
+                'iban' => $data['bank_iban'] ?? null,
+                'swift' => $data['bank_swift'] ?? null,
+                'notes' => $data['bank_account_number'] ?? null,
+                'currency' => $data['bank_currency'] ?? null,
             ]
         );
 

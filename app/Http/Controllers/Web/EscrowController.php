@@ -33,9 +33,7 @@ class EscrowController extends Controller
 {
     use FormatsForViews;
 
-    public function __construct(private readonly EscrowService $escrowService)
-    {
-    }
+    public function __construct(private readonly EscrowService $escrowService) {}
 
     /**
      * Buyer activates escrow on a signed contract. Idempotent — calling
@@ -44,7 +42,7 @@ class EscrowController extends Controller
     public function activate(string $id): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('escrow.activate'), 403);
         $this->authorizeBuyer($contract, $user);
@@ -67,7 +65,7 @@ class EscrowController extends Controller
     public function deposit(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('escrow.deposit'), 403);
         $this->authorizeBuyer($contract, $user);
@@ -76,7 +74,7 @@ class EscrowController extends Controller
         abort_unless($account, 404, 'No escrow account on this contract');
 
         $validated = $request->validate([
-            'amount'   => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'size:3'],
         ]);
 
@@ -104,7 +102,7 @@ class EscrowController extends Controller
     public function manualRelease(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('escrow.release'), 403);
         $this->authorizeBuyer($contract, $user);
@@ -113,14 +111,14 @@ class EscrowController extends Controller
         abort_unless($account, 404, 'No escrow account on this contract');
 
         $validated = $request->validate([
-            'amount'     => ['required', 'numeric', 'min:0.01'],
-            'milestone'  => ['nullable', 'string', 'max:100'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'milestone' => ['nullable', 'string', 'max:100'],
             'payment_id' => ['nullable', 'integer', 'exists:payments,id'],
-            'notes'      => ['nullable', 'string', 'max:500'],
+            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         $payment = null;
-        if (!empty($validated['payment_id'])) {
+        if (! empty($validated['payment_id'])) {
             $payment = Payment::where('contract_id', $contract->id)
                 ->where('id', $validated['payment_id'])
                 ->first();
@@ -153,7 +151,7 @@ class EscrowController extends Controller
     public function refund(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('escrow.release'), 403);
         $this->authorizeBuyer($contract, $user);
@@ -190,10 +188,10 @@ class EscrowController extends Controller
      */
     public function dashboard(Request $request): View
     {
-        $user      = auth()->user();
+        $user = auth()->user();
         abort_unless($user?->hasPermission('escrow.view'), 403);
 
-        $companyId  = $this->currentCompanyId();
+        $companyId = $this->currentCompanyId();
 
         // Pull every escrow account whose contract has the current company
         // as a party — buyer side OR supplier side. A dual-role company
@@ -203,7 +201,7 @@ class EscrowController extends Controller
         $accounts = EscrowAccount::query()
             ->with(['contract:id,contract_number,title,buyer_company_id,parties,currency,total_amount', 'releases'])
             ->whereHas('contract', function ($q) use ($companyId) {
-                if (!$companyId) {
+                if (! $companyId) {
                     return;
                 }
                 $q->where(function ($q2) use ($companyId) {
@@ -216,13 +214,13 @@ class EscrowController extends Controller
 
         // KPI strip across the top of the dashboard.
         $kpis = [
-            'total_held'     => 0.0,
+            'total_held' => 0.0,
             'total_released' => 0.0,
-            'active_count'   => 0,
-            'closed_count'   => 0,
+            'active_count' => 0,
+            'closed_count' => 0,
         ];
         foreach ($accounts as $account) {
-            $kpis['total_held']     += (float) $account->availableBalance();
+            $kpis['total_held'] += (float) $account->availableBalance();
             $kpis['total_released'] += (float) $account->total_released;
             if ($account->isActive()) {
                 $kpis['active_count']++;
@@ -233,9 +231,9 @@ class EscrowController extends Controller
         }
 
         return view('dashboard.escrow.index', [
-            'accounts'    => $accounts,
-            'kpis'        => $kpis,
-            'company_id'  => $companyId,
+            'accounts' => $accounts,
+            'kpis' => $kpis,
+            'company_id' => $companyId,
         ]);
     }
 
@@ -248,6 +246,7 @@ class EscrowController extends Controller
         if (str_starts_with($id, 'CTR-') || str_starts_with($id, 'CNT-')) {
             return Contract::where('contract_number', $id)->firstOrFail();
         }
+
         return Contract::findOrFail((int) $id);
     }
 

@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\Schema;
  * the file path + expiry so ContractService can surface a warning
  * when a cross-border contract is being signed without a valid TRC.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('companies', function (Blueprint $table) {

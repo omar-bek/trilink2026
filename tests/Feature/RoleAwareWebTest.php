@@ -34,31 +34,31 @@ class RoleAwareWebTest extends TestCase
     private function makeUser(UserRole $role, ?CompanyType $companyType = null): User
     {
         $type = $companyType ?? match ($role) {
-            UserRole::SUPPLIER         => CompanyType::SUPPLIER,
-            UserRole::LOGISTICS        => CompanyType::LOGISTICS,
-            UserRole::CLEARANCE        => CompanyType::CLEARANCE,
+            UserRole::SUPPLIER => CompanyType::SUPPLIER,
+            UserRole::LOGISTICS => CompanyType::LOGISTICS,
+            UserRole::CLEARANCE => CompanyType::CLEARANCE,
             UserRole::SERVICE_PROVIDER => CompanyType::SERVICE_PROVIDER,
-            UserRole::GOVERNMENT       => CompanyType::GOVERNMENT,
-            default                    => CompanyType::BUYER,
+            UserRole::GOVERNMENT => CompanyType::GOVERNMENT,
+            default => CompanyType::BUYER,
         };
 
         $company = Company::create([
-            'name'                => ucfirst($role->value) . ' Co',
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => $role->value . '@test.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => ucfirst($role->value).' Co',
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => $role->value.'@test.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         return User::create([
             'first_name' => ucfirst($role->value),
-            'last_name'  => 'Tester',
-            'email'      => $role->value . '-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'Tester',
+            'email' => $role->value.'-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -72,7 +72,7 @@ class RoleAwareWebTest extends TestCase
         $user = $this->makeUser(UserRole::BUYER);
 
         $response = $this->post('/login', [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'secret-pass',
         ]);
 
@@ -84,7 +84,7 @@ class RoleAwareWebTest extends TestCase
         $user = $this->makeUser(UserRole::ADMIN);
 
         $this->post('/login', [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'secret-pass',
         ])->assertRedirect(route('admin.index'));
     }
@@ -94,7 +94,7 @@ class RoleAwareWebTest extends TestCase
         $user = $this->makeUser(UserRole::GOVERNMENT);
 
         $this->post('/login', [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'secret-pass',
         ])->assertRedirect(route('gov.index'));
     }
@@ -109,9 +109,9 @@ class RoleAwareWebTest extends TestCase
 
         $this->actingAs($supplier)
             ->post('/dashboard/purchase-requests', [
-                'title'         => 'Forbidden',
-                'budget'        => 100,
-                'currency'      => 'AED',
+                'title' => 'Forbidden',
+                'budget' => 100,
+                'currency' => 'AED',
                 'required_date' => now()->addDays(10)->format('Y-m-d'),
             ])
             ->assertForbidden()
@@ -186,14 +186,14 @@ class RoleAwareWebTest extends TestCase
         $this->actingAs($manager)
             ->post(route('company.users.store'), [
                 'first_name' => 'New',
-                'last_name'  => 'Hire',
-                'email'      => 'newhire@team.test',
-                'role'       => UserRole::SUPPLIER->value,
+                'last_name' => 'Hire',
+                'email' => 'newhire@team.test',
+                'role' => UserRole::SUPPLIER->value,
             ])
             ->assertRedirect();
 
         $this->assertDatabaseHas('users', [
-            'email'      => 'newhire@team.test',
+            'email' => 'newhire@team.test',
             'company_id' => $manager->company_id,
         ]);
     }
@@ -219,9 +219,9 @@ class RoleAwareWebTest extends TestCase
         $this->actingAs($user)
             ->patch(route('profile.update'), [
                 'first_name' => 'Renamed',
-                'last_name'  => 'User',
-                'email'      => $user->email,
-                'phone'      => '+971500000000',
+                'last_name' => 'User',
+                'email' => $user->email,
+                'phone' => '+971500000000',
             ])
             ->assertRedirect(route('profile.edit'));
 
@@ -234,8 +234,8 @@ class RoleAwareWebTest extends TestCase
 
         $this->actingAs($user)
             ->patch(route('profile.password'), [
-                'current_password'      => 'secret-pass',
-                'password'              => 'brand-new-pass',
+                'current_password' => 'secret-pass',
+                'password' => 'brand-new-pass',
                 'password_confirmation' => 'brand-new-pass',
             ])
             ->assertRedirect(route('profile.edit'));

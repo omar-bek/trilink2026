@@ -40,11 +40,12 @@ use Throwable;
  *     job as failed in the failed_jobs table; an admin can re-trigger
  *     manually from the finance UI ("Re-issue invoice" button).
  */
-class IssueTaxInvoiceJob implements ShouldQueue, ShouldBeUnique
+class IssueTaxInvoiceJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $backoff = 30;
 
     public function __construct(
@@ -58,14 +59,14 @@ class IssueTaxInvoiceJob implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        return 'issue-tax-invoice:' . $this->paymentId;
+        return 'issue-tax-invoice:'.$this->paymentId;
     }
 
     public function handle(TaxInvoiceService $service): void
     {
         $payment = Payment::find($this->paymentId);
 
-        if (!$payment) {
+        if (! $payment) {
             // Payment was deleted between dispatch and processing — drop
             // the job silently rather than failing it.
             return;

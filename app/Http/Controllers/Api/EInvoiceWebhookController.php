@@ -35,8 +35,7 @@ class EInvoiceWebhookController extends Controller
 {
     public function __construct(
         private readonly EInvoiceDispatcher $dispatcher,
-    ) {
-    }
+    ) {}
 
     public function handle(Request $request, string $provider): JsonResponse
     {
@@ -48,17 +47,17 @@ class EInvoiceWebhookController extends Controller
         }
 
         $signature = (string) $request->header('X-EInvoice-Signature', '');
-        $body      = $request->getContent();
-        $expected  = hash_hmac('sha256', $body, $secret);
+        $body = $request->getContent();
+        $expected = hash_hmac('sha256', $body, $secret);
 
-        if (!hash_equals($expected, $signature)) {
+        if (! hash_equals($expected, $signature)) {
             return response()->json(['error' => 'Invalid signature'], 400);
         }
 
         $payload = $request->json()->all();
 
         $submissionId = $payload['submission_id'] ?? null;
-        if (!$submissionId) {
+        if (! $submissionId) {
             return response()->json(['error' => 'Missing submission_id'], 422);
         }
 
@@ -69,7 +68,7 @@ class EInvoiceWebhookController extends Controller
             ->where('asp_submission_id', $submissionId)
             ->first();
 
-        if (!$submission) {
+        if (! $submission) {
             return response()->json(['error' => 'Unknown submission'], 404);
         }
 

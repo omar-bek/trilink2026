@@ -26,6 +26,7 @@ class CategoryController extends Controller
     public function show(int $id): JsonResponse
     {
         $category = $this->service->find($id);
+
         return $category ? $this->success($category) : $this->notFound();
     }
 
@@ -53,6 +54,7 @@ class CategoryController extends Controller
         ]);
 
         $category = $this->service->update($id, $data);
+
         return $category ? $this->success($category) : $this->notFound();
     }
 

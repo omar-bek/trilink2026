@@ -66,8 +66,8 @@ class Shipment extends Model
     protected static function booted(): void
     {
         static::creating(function (Shipment $shipment) {
-            if (!$shipment->tracking_number) {
-                $shipment->tracking_number = 'SHP-' . strtoupper(uniqid());
+            if (! $shipment->tracking_number) {
+                $shipment->tracking_number = 'SHP-'.strtoupper(uniqid());
             }
         });
     }
@@ -85,12 +85,12 @@ class Shipment extends Model
     public function realProgress(): int
     {
         $phases = [
-            ShipmentStatus::IN_PRODUCTION->value    => 20,
+            ShipmentStatus::IN_PRODUCTION->value => 20,
             ShipmentStatus::READY_FOR_PICKUP->value => 35,
-            ShipmentStatus::IN_TRANSIT->value       => 60,
-            ShipmentStatus::IN_CLEARANCE->value     => 75,
-            ShipmentStatus::DELIVERED->value        => 100,
-            ShipmentStatus::CANCELLED->value        => 0,
+            ShipmentStatus::IN_TRANSIT->value => 60,
+            ShipmentStatus::IN_CLEARANCE->value => 75,
+            ShipmentStatus::DELIVERED->value => 100,
+            ShipmentStatus::CANCELLED->value => 0,
         ];
 
         $value = $this->status instanceof \BackedEnum ? $this->status->value : (string) $this->status;

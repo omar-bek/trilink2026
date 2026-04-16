@@ -2,6 +2,7 @@
 
 namespace App\Services\Procurement;
 
+use App\Models\AuditLog;
 use App\Models\Rfq;
 use Illuminate\Support\Collection;
 
@@ -51,7 +52,7 @@ class AntiCollusionService
     /**
      * Analyze an RFQ's bids for collusion patterns.
      *
-     * @return \Illuminate\Support\Collection<int, array{type: string, severity: string, evidence: array}>
+     * @return Collection<int, array{type: string, severity: string, evidence: array}>
      */
     public function analyzeRfq(Rfq $rfq): Collection
     {
@@ -85,7 +86,7 @@ class AntiCollusionService
     private function detectSelfBidding(Rfq $rfq, Collection $bids): Collection
     {
         $ownerCompanyId = $rfq->company_id;
-        if (!$ownerCompanyId) {
+        if (! $ownerCompanyId) {
             return collect();
         }
 
@@ -95,12 +96,12 @@ class AntiCollusionService
         }
 
         return collect([[
-            'type'     => 'self_bidding',
+            'type' => 'self_bidding',
             'severity' => 'critical',
             'evidence' => [
                 'rfq_owner_company_id' => $ownerCompanyId,
-                'bid_ids'              => $selfBids->pluck('id')->all(),
-                'company_ids'          => [$ownerCompanyId],
+                'bid_ids' => $selfBids->pluck('id')->all(),
+                'company_ids' => [$ownerCompanyId],
             ],
         ]]);
     }
@@ -126,12 +127,13 @@ class AntiCollusionService
         // out of the IP analysis (no false positives from missing data).
         $bidIps = $bids->mapWithKeys(function ($bid) {
             $ip = $bid->provider?->last_login_ip
-                ?? \App\Models\AuditLog::query()
+                ?? AuditLog::query()
                     ->where('resource_type', 'Bid')
                     ->where('resource_id', $bid->id)
                     ->whereIn('action', ['create', 'submit'])
                     ->orderByDesc('id')
                     ->value('ip_address');
+
             return [$bid->id => $ip];
         });
 
@@ -145,11 +147,11 @@ class AntiCollusionService
                 continue;
             }
             $findings->push([
-                'type'     => 'shared_ip',
+                'type' => 'shared_ip',
                 'severity' => 'high',
                 'evidence' => [
-                    'ip'          => $ip,
-                    'bid_ids'     => $group->pluck('id')->all(),
+                    'ip' => $ip,
+                    'bid_ids' => $group->pluck('id')->all(),
                     'company_ids' => $distinctCompanies->all(),
                 ],
             ]);
@@ -174,10 +176,11 @@ class AntiCollusionService
         // Build a flat list of (bid_id, company_id, id_number_hash) tuples.
         $tuples = $bids->flatMap(function ($bid) {
             $bos = $bid->company?->beneficialOwners ?? collect();
+
             return $bos->map(fn ($bo) => [
-                'bid_id'        => $bid->id,
-                'company_id'    => $bid->company_id,
-                'id_number_hash'=> $bo->id_number ? sha1((string) $bo->id_number) : null,
+                'bid_id' => $bid->id,
+                'company_id' => $bid->company_id,
+                'id_number_hash' => $bo->id_number ? sha1((string) $bo->id_number) : null,
             ]);
         })->filter(fn ($t) => $t['id_number_hash'] !== null);
 
@@ -188,12 +191,12 @@ class AntiCollusionService
                 continue;
             }
             $findings->push([
-                'type'     => 'shared_beneficial_owner',
+                'type' => 'shared_beneficial_owner',
                 'severity' => 'critical',
                 'evidence' => [
                     'id_number_hash' => $hash,
-                    'bid_ids'        => $group->pluck('bid_id')->unique()->all(),
-                    'company_ids'    => $distinctCompanies->all(),
+                    'bid_ids' => $group->pluck('bid_id')->unique()->all(),
+                    'company_ids' => $distinctCompanies->all(),
                 ],
             ]);
         }
@@ -217,6 +220,7 @@ class AntiCollusionService
         $domainMap = $bids->mapWithKeys(function ($bid) {
             $email = $bid->company?->email ?? '';
             $domain = mb_strtolower(substr(strrchr($email, '@') ?: '', 1));
+
             return [$bid->id => ['company_id' => $bid->company_id, 'domain' => $domain]];
         })->filter(fn ($d) => $d['domain'] !== '');
 
@@ -230,11 +234,11 @@ class AntiCollusionService
                 continue;
             }
             $findings->push([
-                'type'     => 'shared_email_domain',
+                'type' => 'shared_email_domain',
                 'severity' => 'medium',
                 'evidence' => [
-                    'domain'      => $domain,
-                    'bid_ids'     => array_keys($group->all()),
+                    'domain' => $domain,
+                    'bid_ids' => array_keys($group->all()),
                     'company_ids' => $distinctCompanies->all(),
                 ],
             ]);
@@ -268,14 +272,14 @@ class AntiCollusionService
             $distinctCompanies = $cluster->pluck('company_id')->unique();
             if ($distinctCompanies->count() >= 2) {
                 $findings->push([
-                    'type'     => 'timing_clustering',
+                    'type' => 'timing_clustering',
                     'severity' => 'high',
                     'evidence' => [
                         'window_minutes' => $windowMinutes,
-                        'bid_ids'        => $cluster->pluck('id')->all(),
-                        'company_ids'    => $distinctCompanies->all(),
-                        'earliest'       => $cluster->min('created_at')?->toIso8601String(),
-                        'latest'         => $cluster->max('created_at')?->toIso8601String(),
+                        'bid_ids' => $cluster->pluck('id')->all(),
+                        'company_ids' => $distinctCompanies->all(),
+                        'earliest' => $cluster->min('created_at')?->toIso8601String(),
+                        'latest' => $cluster->max('created_at')?->toIso8601String(),
                     ],
                 ]);
                 // Skip past this cluster so we don't emit overlapping findings.
@@ -302,6 +306,7 @@ class AntiCollusionService
             // works regardless of how the phone was entered.
             $phone = preg_replace('/^(\+?00?971|0)/', '', $phone);
             $prefix = mb_substr($phone, 0, 8);
+
             return [$bid->id => ['company_id' => $bid->company_id, 'prefix' => $prefix]];
         })->filter(fn ($d) => mb_strlen($d['prefix']) >= 6);
 
@@ -312,11 +317,11 @@ class AntiCollusionService
                 continue;
             }
             $findings->push([
-                'type'     => 'shared_phone_prefix',
+                'type' => 'shared_phone_prefix',
                 'severity' => 'medium',
                 'evidence' => [
-                    'prefix'      => $prefix,
-                    'bid_ids'     => array_keys($group->all()),
+                    'prefix' => $prefix,
+                    'bid_ids' => array_keys($group->all()),
                     'company_ids' => $distinctCompanies->all(),
                 ],
             ]);

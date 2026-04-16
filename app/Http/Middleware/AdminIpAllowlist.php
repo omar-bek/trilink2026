@@ -50,7 +50,7 @@ class AdminIpAllowlist
 
     private function ipMatches(string $ip, string $cidr): bool
     {
-        if (!str_contains($cidr, '/')) {
+        if (! str_contains($cidr, '/')) {
             return $ip === $cidr;
         }
 
@@ -64,6 +64,7 @@ class AdminIpAllowlist
         }
 
         $mask = -1 << (32 - $bits);
+
         return ($ipLong & $mask) === ($subnetLong & $mask);
     }
 }

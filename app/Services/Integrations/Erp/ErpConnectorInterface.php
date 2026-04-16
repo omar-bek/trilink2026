@@ -4,6 +4,7 @@ namespace App\Services\Integrations\Erp;
 
 use App\Models\Contract;
 use App\Models\ErpConnector;
+use App\Models\Payment;
 
 /**
  * Phase 7 — contract every ERP connector adapter must implement. Adding
@@ -39,5 +40,5 @@ interface ErpConnectorInterface
      * Push a payment milestone into the ERP. Used by listeners hooked
      * into PaymentProcessed.
      */
-    public function pushPayment(ErpConnector $connector, \App\Models\Payment $payment): array;
+    public function pushPayment(ErpConnector $connector, Payment $payment): array;
 }

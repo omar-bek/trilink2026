@@ -58,11 +58,11 @@ class ComtrustTspProvider implements TrustServiceProviderInterface
         // verification — but for now we defer until the real signer
         // is wired up.
         return [
-            'valid'        => false,
-            'reason'       => 'Comtrust verifier not implemented in skeleton.',
-            'signed_at'    => $envelope['signed_at'] ?? null,
+            'valid' => false,
+            'reason' => 'Comtrust verifier not implemented in skeleton.',
+            'signed_at' => $envelope['signed_at'] ?? null,
             'tsp_provider' => 'comtrust',
-            'cert_chain'   => [],
+            'cert_chain' => [],
         ];
     }
 }

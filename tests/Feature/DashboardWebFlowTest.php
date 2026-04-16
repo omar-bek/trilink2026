@@ -14,6 +14,7 @@ use App\Enums\RfqType;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Events\ShipmentLocationUpdated;
 use App\Models\Bid;
 use App\Models\Category;
 use App\Models\Company;
@@ -26,6 +27,7 @@ use App\Models\Shipment;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 /**
@@ -50,26 +52,26 @@ class DashboardWebFlowTest extends TestCase
     private function loginAsBuyer(): array
     {
         $company = Company::create([
-            'name'                => 'Acme Buyers LLC',
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => CompanyType::BUYER,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => 'buyer@acme.test',
-            'phone'               => '+971500000001',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => 'Acme Buyers LLC',
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => CompanyType::BUYER,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => 'buyer@acme.test',
+            'phone' => '+971500000001',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         $this->attachValidTradeLicense($company);
 
         $user = User::create([
             'first_name' => 'Bob',
-            'last_name'  => 'Buyer',
-            'email'      => 'bob@acme.test',
-            'password'   => 'secret-pass',
-            'phone'      => '+971500000002',
-            'role'       => UserRole::BUYER,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'Buyer',
+            'email' => 'bob@acme.test',
+            'password' => 'secret-pass',
+            'phone' => '+971500000002',
+            'role' => UserRole::BUYER,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
 
@@ -81,26 +83,26 @@ class DashboardWebFlowTest extends TestCase
     private function loginAsSupplier(): array
     {
         $company = Company::create([
-            'name'                => 'Widgets Co',
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => CompanyType::SUPPLIER,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => 'sup@widgets.test',
-            'phone'               => '+971500000003',
-            'city'                => 'Sharjah',
-            'country'             => 'UAE',
+            'name' => 'Widgets Co',
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => CompanyType::SUPPLIER,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => 'sup@widgets.test',
+            'phone' => '+971500000003',
+            'city' => 'Sharjah',
+            'country' => 'UAE',
         ]);
 
         $this->attachValidTradeLicense($company);
 
         $user = User::create([
             'first_name' => 'Sara',
-            'last_name'  => 'Supplier',
-            'email'      => 'sara@widgets.test',
-            'password'   => 'secret-pass',
-            'phone'      => '+971500000004',
-            'role'       => UserRole::SUPPLIER,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'Supplier',
+            'email' => 'sara@widgets.test',
+            'password' => 'secret-pass',
+            'phone' => '+971500000004',
+            'role' => UserRole::SUPPLIER,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
 
@@ -121,11 +123,11 @@ class DashboardWebFlowTest extends TestCase
     {
         CompanyDocument::create([
             'company_id' => $company->id,
-            'type'       => DocumentType::TRADE_LICENSE,
-            'label'      => 'Trade License',
-            'file_path'  => 'test/trade-license.pdf',
-            'status'     => CompanyDocument::STATUS_VERIFIED,
-            'issued_at'  => now()->subYear(),
+            'type' => DocumentType::TRADE_LICENSE,
+            'label' => 'Trade License',
+            'file_path' => 'test/trade-license.pdf',
+            'status' => CompanyDocument::STATUS_VERIFIED,
+            'issued_at' => now()->subYear(),
             'expires_at' => now()->addYear(),
         ]);
     }
@@ -160,31 +162,31 @@ class DashboardWebFlowTest extends TestCase
 
         // Mine
         PurchaseRequest::create([
-            'title'       => 'My PR',
-            'company_id'  => $company->id,
-            'buyer_id'    => auth()->id(),
-            'status'      => PurchaseRequestStatus::DRAFT,
-            'budget'      => 50000,
-            'currency'    => 'AED',
-            'items'       => [],
+            'title' => 'My PR',
+            'company_id' => $company->id,
+            'buyer_id' => auth()->id(),
+            'status' => PurchaseRequestStatus::DRAFT,
+            'budget' => 50000,
+            'currency' => 'AED',
+            'items' => [],
             'required_date' => now()->addDays(30),
         ]);
 
         // Other company's PR — must NOT appear.
         $other = Company::create([
-            'name'                => 'Other LLC',
+            'name' => 'Other LLC',
             'registration_number' => 'TRN-OTHER',
-            'type'                => CompanyType::BUYER,
-            'status'              => CompanyStatus::ACTIVE,
+            'type' => CompanyType::BUYER,
+            'status' => CompanyStatus::ACTIVE,
         ]);
         PurchaseRequest::create([
-            'title'       => 'Hidden PR',
-            'company_id'  => $other->id,
-            'buyer_id'    => auth()->id(),
-            'status'      => PurchaseRequestStatus::DRAFT,
-            'budget'      => 99999,
-            'currency'    => 'AED',
-            'items'       => [],
+            'title' => 'Hidden PR',
+            'company_id' => $other->id,
+            'buyer_id' => auth()->id(),
+            'status' => PurchaseRequestStatus::DRAFT,
+            'budget' => 99999,
+            'currency' => 'AED',
+            'items' => [],
             'required_date' => now()->addDays(30),
         ]);
 
@@ -199,17 +201,17 @@ class DashboardWebFlowTest extends TestCase
         $this->loginAsBuyer();
 
         // StorePurchaseRequestRequest requires category_id (exists check).
-        $category = Category::create(['name' => 'Office Furniture', 'slug' => 'office-furniture-' . uniqid()]);
+        $category = Category::create(['name' => 'Office Furniture', 'slug' => 'office-furniture-'.uniqid()]);
 
         $payload = [
-            'title'       => 'Office Chairs',
+            'title' => 'Office Chairs',
             'description' => 'Ergonomic chairs for new branch',
             'category_id' => $category->id,
-            'budget'      => 25000,
-            'currency'    => 'AED',
+            'budget' => 25000,
+            'currency' => 'AED',
             'required_date' => now()->addDays(45)->format('Y-m-d'),
             'delivery_address' => 'Dubai Silicon Oasis',
-            'delivery_city'    => 'Dubai',
+            'delivery_city' => 'Dubai',
             'items' => [
                 ['name' => 'Mesh Chair', 'qty' => 50, 'unit' => 'pcs', 'spec' => 'Adjustable'],
             ],
@@ -219,8 +221,8 @@ class DashboardWebFlowTest extends TestCase
             ->assertRedirect();
 
         $this->assertDatabaseHas('purchase_requests', [
-            'title'    => 'Office Chairs',
-            'budget'   => 25000,
+            'title' => 'Office Chairs',
+            'budget' => 25000,
             'buyer_id' => auth()->id(),
         ]);
     }
@@ -230,9 +232,9 @@ class DashboardWebFlowTest extends TestCase
         $this->loginAsSupplier();
 
         $this->post('/dashboard/purchase-requests', [
-            'title'         => 'Forbidden',
-            'budget'        => 100,
-            'currency'      => 'AED',
+            'title' => 'Forbidden',
+            'budget' => 100,
+            'currency' => 'AED',
             'required_date' => now()->addDays(10)->format('Y-m-d'),
         ])->assertForbidden();
     }
@@ -241,21 +243,21 @@ class DashboardWebFlowTest extends TestCase
     {
         // Buyer creates company + RFQ.
         $buyerCompany = Company::create([
-            'name'                => 'BuyCo',
+            'name' => 'BuyCo',
             'registration_number' => 'TRN-BUY',
-            'type'                => CompanyType::BUYER,
-            'status'              => CompanyStatus::ACTIVE,
+            'type' => CompanyType::BUYER,
+            'status' => CompanyStatus::ACTIVE,
         ]);
 
         $rfq = Rfq::create([
-            'title'      => 'Need Steel',
+            'title' => 'Need Steel',
             'company_id' => $buyerCompany->id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'budget'     => 100000,
-            'currency'   => 'AED',
-            'items'      => [],
-            'deadline'   => now()->addDays(15),
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'budget' => 100000,
+            'currency' => 'AED',
+            'items' => [],
+            'deadline' => now()->addDays(15),
         ]);
 
         $this->loginAsSupplier();
@@ -264,23 +266,23 @@ class DashboardWebFlowTest extends TestCase
         // + tax_treatment are validated by StoreBidRequest. Without them
         // the form fails validation and no bid row is created.
         $payload = [
-            'price'              => 95000,
-            'currency'           => 'AED',
+            'price' => 95000,
+            'currency' => 'AED',
             'delivery_time_days' => 30,
-            'payment_terms'      => '30/70',
-            'validity_date'      => now()->addDays(30)->format('Y-m-d'),
-            'notes'              => 'High-quality steel',
-            'incoterm'           => 'CIF',
-            'country_of_origin'  => 'AE',
-            'tax_treatment'      => 'exclusive',
+            'payment_terms' => '30/70',
+            'validity_date' => now()->addDays(30)->format('Y-m-d'),
+            'notes' => 'High-quality steel',
+            'incoterm' => 'CIF',
+            'country_of_origin' => 'AE',
+            'tax_treatment' => 'exclusive',
         ];
 
         $this->post("/dashboard/rfqs/{$rfq->id}/bids", $payload)
             ->assertRedirect();
 
         $this->assertDatabaseHas('bids', [
-            'rfq_id'      => $rfq->id,
-            'price'       => 95000,
+            'rfq_id' => $rfq->id,
+            'price' => 95000,
             'provider_id' => auth()->id(),
         ]);
     }
@@ -297,34 +299,34 @@ class DashboardWebFlowTest extends TestCase
         $this->attachValidTradeLicense($supplierB);
 
         $rfq = Rfq::create([
-            'title'      => 'Cables',
+            'title' => 'Cables',
             'company_id' => $buyerCompany->id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'budget'     => 50000,
-            'currency'   => 'AED',
-            'items'      => [],
-            'deadline'   => now()->addDays(10),
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'budget' => 50000,
+            'currency' => 'AED',
+            'items' => [],
+            'deadline' => now()->addDays(10),
         ]);
 
         $bidA = Bid::create([
-            'rfq_id'     => $rfq->id,
+            'rfq_id' => $rfq->id,
             'company_id' => $supplierA->id,
             'provider_id' => $buyerUser->id,
-            'status'     => BidStatus::SUBMITTED,
-            'price'      => 48000,
-            'currency'   => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => 48000,
+            'currency' => 'AED',
             'delivery_time_days' => 20,
             'validity_date' => now()->addDays(20),
         ]);
 
         $bidB = Bid::create([
-            'rfq_id'     => $rfq->id,
+            'rfq_id' => $rfq->id,
             'company_id' => $supplierB->id,
             'provider_id' => $buyerUser->id,
-            'status'     => BidStatus::SUBMITTED,
-            'price'      => 49000,
-            'currency'   => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => 49000,
+            'currency' => 'AED',
             'delivery_time_days' => 25,
             'validity_date' => now()->addDays(20),
         ]);
@@ -360,14 +362,14 @@ class DashboardWebFlowTest extends TestCase
         [, $company] = $this->loginAsBuyer();
 
         $contract = Contract::create([
-            'title'            => 'Steel Supply',
+            'title' => 'Steel Supply',
             'buyer_company_id' => $company->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [['company_id' => $company->id, 'role' => 'buyer']],
-            'total_amount'     => 100000,
-            'currency'         => 'AED',
-            'start_date'       => now(),
-            'end_date'         => now()->addMonths(3),
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [['company_id' => $company->id, 'role' => 'buyer']],
+            'total_amount' => 100000,
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonths(3),
         ]);
 
         $response = $this->get("/dashboard/contracts/{$contract->id}/pdf");
@@ -379,14 +381,14 @@ class DashboardWebFlowTest extends TestCase
     {
         $other = Company::create(['name' => 'OutCo', 'registration_number' => 'OUT', 'type' => CompanyType::BUYER, 'status' => CompanyStatus::ACTIVE]);
         $contract = Contract::create([
-            'title'            => 'Private Contract',
+            'title' => 'Private Contract',
             'buyer_company_id' => $other->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [['company_id' => $other->id, 'role' => 'buyer']],
-            'total_amount'     => 1,
-            'currency'         => 'AED',
-            'start_date'       => now(),
-            'end_date'         => now()->addMonth(),
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [['company_id' => $other->id, 'role' => 'buyer']],
+            'total_amount' => 1,
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonth(),
         ]);
 
         $this->loginAsBuyer();
@@ -399,22 +401,22 @@ class DashboardWebFlowTest extends TestCase
         [, $company] = $this->loginAsBuyer();
 
         $contract = Contract::create([
-            'title'            => 'C', 'buyer_company_id' => $company->id,
-            'status'           => ContractStatus::ACTIVE, 'parties' => [],
-            'total_amount'     => 10000, 'currency' => 'AED',
-            'start_date'       => now(), 'end_date' => now()->addMonth(),
+            'title' => 'C', 'buyer_company_id' => $company->id,
+            'status' => ContractStatus::ACTIVE, 'parties' => [],
+            'total_amount' => 10000, 'currency' => 'AED',
+            'start_date' => now(), 'end_date' => now()->addMonth(),
         ]);
 
         $payment = Payment::create([
-            'contract_id'    => $contract->id,
-            'company_id'     => $company->id,
+            'contract_id' => $contract->id,
+            'company_id' => $company->id,
             'recipient_company_id' => $company->id,
-            'buyer_id'       => auth()->id(),
-            'status'         => PaymentStatus::PENDING_APPROVAL,
-            'amount'         => 5000,
-            'vat_rate'       => 5,
-            'currency'       => 'AED',
-            'milestone'      => 'Advance Payment',
+            'buyer_id' => auth()->id(),
+            'status' => PaymentStatus::PENDING_APPROVAL,
+            'amount' => 5000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
+            'milestone' => 'Advance Payment',
         ]);
 
         $this->get("/dashboard/payments/{$payment->id}")
@@ -424,7 +426,7 @@ class DashboardWebFlowTest extends TestCase
 
     public function test_shipment_track_event_dispatches_broadcast(): void
     {
-        \Illuminate\Support\Facades\Event::fake([\App\Events\ShipmentLocationUpdated::class]);
+        Event::fake([ShipmentLocationUpdated::class]);
 
         $logisticsCompany = Company::create(['name' => 'Log', 'registration_number' => 'L9', 'type' => CompanyType::LOGISTICS, 'status' => CompanyStatus::ACTIVE]);
         $user = User::create([
@@ -436,31 +438,31 @@ class DashboardWebFlowTest extends TestCase
         $this->actingAs($user);
 
         $contract = Contract::create([
-            'title'            => 'C',
+            'title' => 'C',
             'buyer_company_id' => $logisticsCompany->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [],
-            'total_amount'     => 1,
-            'currency'         => 'AED',
-            'start_date'       => now(),
-            'end_date'         => now()->addMonth(),
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [],
+            'total_amount' => 1,
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonth(),
         ]);
 
         $shipment = Shipment::create([
             'contract_id' => $contract->id,
-            'company_id'  => $logisticsCompany->id,
-            'status'      => ShipmentStatus::IN_TRANSIT,
-            'origin'      => ['city' => 'Dubai'],
+            'company_id' => $logisticsCompany->id,
+            'status' => ShipmentStatus::IN_TRANSIT,
+            'origin' => ['city' => 'Dubai'],
             'destination' => ['city' => 'AbuDhabi'],
         ]);
 
         $this->post("/dashboard/shipments/{$shipment->id}/track", [
-            'status'      => 'in_transit',
+            'status' => 'in_transit',
             'description' => 'Crossed Sharjah',
-            'lat'         => 25.31,
-            'lng'         => 55.50,
+            'lat' => 25.31,
+            'lng' => 55.50,
         ])->assertRedirect();
 
-        \Illuminate\Support\Facades\Event::assertDispatched(\App\Events\ShipmentLocationUpdated::class);
+        Event::assertDispatched(ShipmentLocationUpdated::class);
     }
 }

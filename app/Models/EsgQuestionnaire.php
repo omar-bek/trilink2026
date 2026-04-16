@@ -31,11 +31,11 @@ class EsgQuestionnaire extends Model
     {
         return [
             'environmental_score' => 'integer',
-            'social_score'        => 'integer',
-            'governance_score'    => 'integer',
-            'overall_score'       => 'integer',
-            'answers'             => 'array',
-            'submitted_at'        => 'datetime',
+            'social_score' => 'integer',
+            'governance_score' => 'integer',
+            'overall_score' => 'integer',
+            'answers' => 'array',
+            'submitted_at' => 'datetime',
         ];
     }
 

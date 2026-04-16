@@ -38,7 +38,7 @@ class PaymentInvoiceObserver
         // Only act on transitions INTO completed. A payment that was
         // already completed and is being touched for some other column
         // (notes, escrow link, etc.) shouldn't re-issue.
-        if (!$payment->wasChanged('status')) {
+        if (! $payment->wasChanged('status')) {
             return;
         }
 

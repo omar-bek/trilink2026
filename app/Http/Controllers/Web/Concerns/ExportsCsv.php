@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Web\Concerns;
 
+use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -17,17 +18,17 @@ trait ExportsCsv
     /**
      * Stream an iterable of rows as a CSV download.
      *
-     * @param  iterable<int,array<string,mixed>>  $rows     Each row is a
-     *         flat assoc array. Keys of the FIRST row become the headers,
-     *         later rows are normalised against those keys.
-     * @param  string                              $filename The download filename
-     *         (without timestamp). A timestamp suffix is appended automatically.
+     * @param  iterable<int,array<string,mixed>>  $rows  Each row is a
+     *                                                   flat assoc array. Keys of the FIRST row become the headers,
+     *                                                   later rows are normalised against those keys.
+     * @param  string  $filename  The download filename
+     *                            (without timestamp). A timestamp suffix is appended automatically.
      */
     protected function streamCsv(iterable $rows, string $filename): StreamedResponse
     {
         $stamped = pathinfo($filename, PATHINFO_FILENAME)
-            . '-' . now()->format('Ymd-His')
-            . '.csv';
+            .'-'.now()->format('Ymd-His')
+            .'.csv';
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
@@ -68,7 +69,7 @@ trait ExportsCsv
     }
 
     /** Convenience: detect `?export=csv` on the request. */
-    protected function isCsvExport(\Illuminate\Http\Request $request): bool
+    protected function isCsvExport(Request $request): bool
     {
         return strtolower((string) $request->query('export', '')) === 'csv';
     }

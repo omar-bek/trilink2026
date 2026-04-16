@@ -37,14 +37,14 @@ class CartService
             ->latest('id')
             ->first();
 
-        if ($cart || !$create) {
+        if ($cart || ! $create) {
             return $cart;
         }
 
         return Cart::create([
-            'user_id'    => $user->id,
+            'user_id' => $user->id,
             'company_id' => $user->company_id,
-            'status'     => Cart::STATUS_OPEN,
+            'status' => Cart::STATUS_OPEN,
         ]);
     }
 
@@ -60,13 +60,13 @@ class CartService
         if ($product->company_id === $user->company_id) {
             throw new RuntimeException('cart.cannot_buy_own');
         }
-        if (!$product->isPurchasable()) {
+        if (! $product->isPurchasable()) {
             throw new RuntimeException('cart.not_purchasable');
         }
         if ($variant && $variant->product_id !== $product->id) {
             throw new RuntimeException('cart.variant_mismatch');
         }
-        if ($variant && !$variant->isPurchasable()) {
+        if ($variant && ! $variant->isPurchasable()) {
             throw new RuntimeException('cart.variant_unavailable');
         }
 
@@ -81,8 +81,8 @@ class CartService
         }
 
         $unitPrice = $variant ? $variant->effectivePrice() : (float) $product->base_price;
-        $currency  = $product->currency ?: 'AED';
-        $name      = $variant ? ($product->name . ' — ' . $variant->name) : $product->name;
+        $currency = $product->currency ?: 'AED';
+        $name = $variant ? ($product->name.' — '.$variant->name) : $product->name;
 
         return DB::transaction(function () use ($user, $product, $variant, $quantity, $unitPrice, $currency, $name, $stockSource) {
             $cart = $this->current($user);
@@ -103,14 +103,14 @@ class CartService
                 $existing->update(['quantity' => $newQty]);
             } else {
                 CartItem::create([
-                    'cart_id'             => $cart->id,
-                    'product_id'          => $product->id,
-                    'product_variant_id'  => $variant?->id,
+                    'cart_id' => $cart->id,
+                    'product_id' => $product->id,
+                    'product_variant_id' => $variant?->id,
                     'supplier_company_id' => $product->company_id,
-                    'quantity'            => $quantity,
-                    'unit_price'          => $unitPrice,
-                    'currency'            => $currency,
-                    'name_snapshot'       => $name,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'currency' => $currency,
+                    'name_snapshot' => $name,
                     'attributes_snapshot' => $variant?->attributes,
                 ]);
             }
@@ -126,7 +126,7 @@ class CartService
     public function updateQuantity(User $user, int $itemId, int $quantity): Cart
     {
         $cart = $this->current($user, create: false);
-        if (!$cart) {
+        if (! $cart) {
             throw new RuntimeException('cart.not_found');
         }
 
@@ -134,6 +134,7 @@ class CartService
 
         if ($quantity <= 0) {
             $item->delete();
+
             return $cart->fresh('items');
         }
 
@@ -147,27 +148,30 @@ class CartService
         }
 
         $item->update(['quantity' => $quantity]);
+
         return $cart->fresh('items');
     }
 
     public function remove(User $user, int $itemId): Cart
     {
         $cart = $this->current($user, create: false);
-        if (!$cart) {
+        if (! $cart) {
             throw new RuntimeException('cart.not_found');
         }
 
         $cart->items()->where('id', $itemId)->delete();
+
         return $cart->fresh('items');
     }
 
     public function clear(User $user): ?Cart
     {
         $cart = $this->current($user, create: false);
-        if (!$cart) {
+        if (! $cart) {
             return null;
         }
         $cart->items()->delete();
+
         return $cart->fresh('items');
     }
 
@@ -179,9 +183,10 @@ class CartService
     public function markCheckedOut(Cart $cart): Cart
     {
         $cart->update([
-            'status'         => Cart::STATUS_CHECKED_OUT,
+            'status' => Cart::STATUS_CHECKED_OUT,
             'checked_out_at' => now(),
         ]);
+
         return $cart->fresh();
     }
 
@@ -208,8 +213,8 @@ class CartService
         // line items table on contracts (Phase 5+), so heuristically
         // recover the buy-now product via the title + supplier.
         $supplierParty = collect($contract->parties ?? [])->firstWhere('role', 'supplier');
-        $supplierId    = $supplierParty['company_id'] ?? null;
-        if (!$supplierId) {
+        $supplierId = $supplierParty['company_id'] ?? null;
+        if (! $supplierId) {
             return 0;
         }
 
@@ -218,7 +223,7 @@ class CartService
             ->where('name', $contract->title)
             ->first();
 
-        if (!$product || !$product->isPurchasable()) {
+        if (! $product || ! $product->isPurchasable()) {
             return 0;
         }
 

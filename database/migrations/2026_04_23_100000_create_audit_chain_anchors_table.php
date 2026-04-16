@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Schema;
  * with, comparing the current chain head against the anchored value
  * exposes the discrepancy instantly.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('audit_chain_anchors', function (Blueprint $table) {

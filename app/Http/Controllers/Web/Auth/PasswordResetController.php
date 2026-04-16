@@ -44,8 +44,8 @@ class PasswordResetController extends Controller
     public function reset(Request $request): RedirectResponse
     {
         $request->validate([
-            'token'    => ['required'],
-            'email'    => ['required', 'email'],
+            'token' => ['required'],
+            'email' => ['required', 'email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
@@ -53,8 +53,8 @@ class PasswordResetController extends Controller
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function ($user, $password) {
                 $user->forceFill([
-                    'password'        => $password,
-                    'remember_token'  => Str::random(60),
+                    'password' => $password,
+                    'remember_token' => Str::random(60),
                 ])->save();
 
                 event(new PasswordReset($user));

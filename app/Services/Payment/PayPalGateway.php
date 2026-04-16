@@ -11,7 +11,7 @@ class PayPalGateway implements PaymentGatewayInterface
 
     public function __construct()
     {
-        $this->client = new PayPalClient();
+        $this->client = new PayPalClient;
         $this->client->setApiCredentials(config('paypal'));
         $this->client->getAccessToken();
     }

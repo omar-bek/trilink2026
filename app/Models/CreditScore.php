@@ -29,9 +29,9 @@ class CreditScore extends Model
     protected function casts(): array
     {
         return [
-            'reasons'     => 'array',
+            'reasons' => 'array',
             'reported_at' => 'datetime',
-            'score'       => 'integer',
+            'score' => 'integer',
         ];
     }
 

@@ -23,7 +23,8 @@ use Illuminate\Support\Facades\Schema;
  * new version, but never edit or delete an existing row — the audit
  * trail depends on every previous text being preserved verbatim.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('privacy_policy_versions', function (Blueprint $table) {

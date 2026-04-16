@@ -42,11 +42,11 @@ class EsspTspProvider implements TrustServiceProviderInterface
     public function verify(string $contractHash, array $envelope): array
     {
         return [
-            'valid'        => false,
-            'reason'       => 'ESSP verifier not implemented in skeleton.',
-            'signed_at'    => $envelope['signed_at'] ?? null,
+            'valid' => false,
+            'reason' => 'ESSP verifier not implemented in skeleton.',
+            'signed_at' => $envelope['signed_at'] ?? null,
             'tsp_provider' => 'essp',
-            'cert_chain'   => [],
+            'cert_chain' => [],
         ];
     }
 }

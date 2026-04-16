@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Procurement\IcvScoringService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,21 +16,28 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * a verified copy + the score so buyer-side bid evaluation can
  * weight the price signal by the supplier's local economic footprint.
  *
- * See {@see \App\Services\Procurement\IcvScoringService} for the
+ * See {@see IcvScoringService} for the
  * composite-score formula.
  */
 class IcvCertificate extends Model
 {
     use HasFactory, SoftDeletes;
 
-    public const ISSUER_MOIAT    = 'moiat';
-    public const ISSUER_ADNOC    = 'adnoc';
+    public const ISSUER_MOIAT = 'moiat';
+
+    public const ISSUER_ADNOC = 'adnoc';
+
     public const ISSUER_MUBADALA = 'mubadala';
-    public const ISSUER_EGA      = 'ega';
-    public const ISSUER_EWEC     = 'ewec';
-    public const ISSUER_ETIHAD   = 'etihad';
-    public const ISSUER_EMSTEEL  = 'emsteel';
-    public const ISSUER_OTHER    = 'other';
+
+    public const ISSUER_EGA = 'ega';
+
+    public const ISSUER_EWEC = 'ewec';
+
+    public const ISSUER_ETIHAD = 'etihad';
+
+    public const ISSUER_EMSTEEL = 'emsteel';
+
+    public const ISSUER_OTHER = 'other';
 
     public const ALL_ISSUERS = [
         self::ISSUER_MOIAT,
@@ -42,10 +50,13 @@ class IcvCertificate extends Model
         self::ISSUER_OTHER,
     ];
 
-    public const STATUS_PENDING  = 'pending';
+    public const STATUS_PENDING = 'pending';
+
     public const STATUS_VERIFIED = 'verified';
+
     public const STATUS_REJECTED = 'rejected';
-    public const STATUS_EXPIRED  = 'expired';
+
+    public const STATUS_EXPIRED = 'expired';
 
     protected $fillable = [
         'company_id',
@@ -71,11 +82,11 @@ class IcvCertificate extends Model
     protected function casts(): array
     {
         return [
-            'score'        => 'decimal:2',
-            'issued_date'  => 'date',
+            'score' => 'decimal:2',
+            'issued_date' => 'date',
             'expires_date' => 'date',
-            'file_size'    => 'integer',
-            'verified_at'  => 'datetime',
+            'file_size' => 'integer',
+            'verified_at' => 'datetime',
         ];
     }
 
@@ -109,9 +120,10 @@ class IcvCertificate extends Model
 
     public function daysUntilExpiry(): int
     {
-        if (!$this->expires_date) {
+        if (! $this->expires_date) {
             return 0;
         }
+
         return (int) max(0, now()->diffInDays($this->expires_date, false));
     }
 }

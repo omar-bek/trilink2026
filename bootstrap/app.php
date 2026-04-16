@@ -1,8 +1,25 @@
 <?php
 
+use App\Enums\CompanyStatus;
+use App\Http\Middleware\AuditMiddleware;
+use App\Http\Middleware\CheckOwnership;
+use App\Http\Middleware\EnsureCompanyApproved;
+use App\Http\Middleware\EnsureUserHasRole;
+use App\Http\Middleware\JwtAuthenticate;
+use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\SetLocale;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Sentry\Laravel\Integration;
+use Spatie\Permission\Middleware\PermissionMiddleware;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,20 +31,20 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
-            'jwt.auth' => \App\Http\Middleware\JwtAuthenticate::class,
-            'audit' => \App\Http\Middleware\AuditMiddleware::class,
-            'ownership' => \App\Http\Middleware\CheckOwnership::class,
-            'setlocale' => \App\Http\Middleware\SetLocale::class,
-            'web.role' => \App\Http\Middleware\EnsureUserHasRole::class,
-            'company.approved' => \App\Http\Middleware\EnsureCompanyApproved::class,
-            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
-            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
-            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            'jwt.auth' => JwtAuthenticate::class,
+            'audit' => AuditMiddleware::class,
+            'ownership' => CheckOwnership::class,
+            'setlocale' => SetLocale::class,
+            'web.role' => EnsureUserHasRole::class,
+            'company.approved' => EnsureCompanyApproved::class,
+            'role' => RoleMiddleware::class,
+            'permission' => PermissionMiddleware::class,
+            'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
 
         $middleware->web(append: [
-            \App\Http\Middleware\SetLocale::class,
-            \App\Http\Middleware\SecurityHeaders::class,
+            SetLocale::class,
+            SecurityHeaders::class,
         ]);
 
         // When the `guest` middleware blocks an already-authenticated user,
@@ -35,25 +52,25 @@ return Application::configure(basePath: dirname(__DIR__))
         // `/home` (which doesn't exist here). Pending company managers go to
         // the registration-success holding page; everyone else lands on
         // their normal post-login URL.
-        $middleware->redirectUsersTo(function (\Illuminate\Http\Request $request) {
+        $middleware->redirectUsersTo(function (Request $request) {
             $user = $request->user();
             $company = $user?->company;
 
-            if ($company && $company->status !== \App\Enums\CompanyStatus::ACTIVE) {
+            if ($company && $company->status !== CompanyStatus::ACTIVE) {
                 return route('register.success');
             }
 
             return match ($user?->role?->value) {
-                'admin'      => route('admin.index'),
+                'admin' => route('admin.index'),
                 'government' => route('gov.index'),
-                default      => route('dashboard'),
+                default => route('dashboard'),
             };
         });
 
         $middleware->api(prepend: [
-            \Illuminate\Cookie\Middleware\EncryptCookies::class,
-            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
-            \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+            EncryptCookies::class,
+            AddQueuedCookiesToResponse::class,
+            ThrottleRequests::class.':api',
         ]);
 
     })
@@ -61,7 +78,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Forward every reported exception to Sentry. The SDK auto-skips
         // when SENTRY_LARAVEL_DSN is empty, so local and CI runs are
         // unaffected — only production with a real DSN sends events.
-        \Sentry\Laravel\Integration::handles($exceptions);
+        Integration::handles($exceptions);
 
         $exceptions->shouldRenderJsonWhen(function ($request) {
             return $request->is('api/*') || $request->expectsJson();
@@ -69,7 +86,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Render a friendly 403 page for web requests instead of the default
         // Symfony error template — keeps the role-denial UX consistent.
-        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, \Illuminate\Http\Request $request) {
+        $exceptions->render(function (HttpException $e, Request $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return null; // Let the JSON renderer handle it.
             }

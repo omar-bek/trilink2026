@@ -27,7 +27,8 @@ use Illuminate\Support\Facades\Schema;
  * service picks the most recent verified active one for each
  * evaluation.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('icv_certificates', function (Blueprint $table) {

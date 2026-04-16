@@ -11,9 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseRequestService
 {
-    public function __construct(private readonly RfqService $rfqService)
-    {
-    }
+    public function __construct(private readonly RfqService $rfqService) {}
 
     public function list(array $filters = []): LengthAwarePaginator
     {
@@ -40,15 +38,19 @@ class PurchaseRequestService
     public function update(int $id, array $data): ?PurchaseRequest
     {
         $pr = PurchaseRequest::find($id);
-        if (!$pr) return null;
+        if (! $pr) {
+            return null;
+        }
 
         $pr->update($data);
+
         return $pr->fresh(['buyer', 'category']);
     }
 
     public function delete(int $id): bool
     {
         $pr = PurchaseRequest::find($id);
+
         return $pr ? $pr->delete() : false;
     }
 
@@ -62,7 +64,7 @@ class PurchaseRequestService
     public function approve(int $id, int $approverId): ?PurchaseRequest
     {
         $pr = PurchaseRequest::find($id);
-        if (!$pr) {
+        if (! $pr) {
             return null;
         }
 
@@ -71,7 +73,7 @@ class PurchaseRequestService
             PurchaseRequestStatus::PENDING_APPROVAL,
         ];
 
-        if (!in_array($pr->status, $approvable, true)) {
+        if (! in_array($pr->status, $approvable, true)) {
             return null;
         }
 
@@ -90,7 +92,7 @@ class PurchaseRequestService
 
             // Auto-generate the RFQ from the approved PR. We only do this once
             // per PR — if an RFQ already exists, leave it alone (idempotent).
-            if (!$pr->rfq_generated) {
+            if (! $pr->rfq_generated) {
                 $this->rfqService->create($this->buildRfqDataFromPr($pr));
             }
 
@@ -104,7 +106,7 @@ class PurchaseRequestService
     public function reject(int $id, int $approverId, ?string $reason = null): ?PurchaseRequest
     {
         $pr = PurchaseRequest::find($id);
-        if (!$pr) {
+        if (! $pr) {
             return null;
         }
 
@@ -113,7 +115,7 @@ class PurchaseRequestService
             PurchaseRequestStatus::PENDING_APPROVAL,
         ];
 
-        if (!in_array($pr->status, $rejectable, true)) {
+        if (! in_array($pr->status, $rejectable, true)) {
             return null;
         }
 
@@ -141,22 +143,22 @@ class PurchaseRequestService
     private function buildRfqDataFromPr(PurchaseRequest $pr): array
     {
         return [
-            'title'               => $pr->title,
-            'description'         => $pr->description,
-            'company_id'          => $pr->company_id,
-            'branch_id'           => $pr->branch_id,
+            'title' => $pr->title,
+            'description' => $pr->description,
+            'company_id' => $pr->company_id,
+            'branch_id' => $pr->branch_id,
             'purchase_request_id' => $pr->id,
-            'type'                => RfqType::SUPPLIER->value,
-            'status'              => RfqStatus::OPEN->value,
-            'items'               => $pr->items ?? [],
-            'budget'              => $pr->budget,
-            'currency'            => $pr->currency,
-            'deadline'            => $pr->required_date,
-            'delivery_location'   => is_array($pr->delivery_location)
+            'type' => RfqType::SUPPLIER->value,
+            'status' => RfqStatus::OPEN->value,
+            'items' => $pr->items ?? [],
+            'budget' => $pr->budget,
+            'currency' => $pr->currency,
+            'deadline' => $pr->required_date,
+            'delivery_location' => is_array($pr->delivery_location)
                 ? json_encode($pr->delivery_location)
                 : $pr->delivery_location,
-            'is_anonymous'        => false,
-            'category_id'         => $pr->category_id,
+            'is_anonymous' => false,
+            'category_id' => $pr->category_id,
         ];
     }
 }

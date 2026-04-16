@@ -9,29 +9,35 @@ use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Http\Requests\Bid\StoreBidRequest;
 use App\Models\Bid;
 use App\Models\CompanySupplier;
+use App\Models\Contract;
 use App\Models\NegotiationMessage;
 use App\Models\Rfq;
+use App\Notifications\BidAcceptedNotification;
+use App\Notifications\BidRejectedNotification;
+use App\Notifications\LosingBidNotification;
 use App\Services\BidService;
 use App\Services\ContractService;
 use App\Services\NegotiationService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BidController extends Controller
 {
-    use FormatsForViews, ExportsCsv;
+    use ExportsCsv, FormatsForViews;
 
     public function __construct(
         private readonly BidService $service,
         private readonly ContractService $contracts,
         private readonly NegotiationService $negotiations,
-    ) {
-    }
+    ) {}
 
     /**
      * Display label for a bid. We don't have a `bid_number` column yet, so
@@ -56,29 +62,30 @@ class BidController extends Controller
     {
         $timeline = $this->negotiations->timeline($bid)->map(function (NegotiationMessage $m) use ($bid) {
             $offer = $m->offer ?? null;
+
             return [
-                'id'           => $m->id,
-                'kind'         => $m->kind,
-                'side'         => $m->sender_side,
-                'sender'       => $m->sender?->full_name ?? '—',
-                'body'         => $m->body,
-                'round'        => $m->round_number,
+                'id' => $m->id,
+                'kind' => $m->kind,
+                'side' => $m->sender_side,
+                'sender' => $m->sender?->full_name ?? '—',
+                'body' => $m->body,
+                'round' => $m->round_number,
                 'round_status' => $m->round_status,
-                'when'         => $m->created_at?->format('M j, Y g:i A') ?? '—',
-                'offer'        => $offer ? [
-                    'amount'         => isset($offer['amount']) ? $this->money((float) $offer['amount'], $bid->currency ?? 'AED') : null,
-                    'amount_raw'     => isset($offer['amount']) ? (float) $offer['amount'] : null,
-                    'currency'       => $offer['currency'] ?? $bid->currency ?? 'AED',
-                    'delivery_days'  => $offer['delivery_days'] ?? null,
-                    'payment_terms'  => $offer['payment_terms'] ?? null,
-                    'reason'         => $offer['reason'] ?? null,
+                'when' => $m->created_at?->format('M j, Y g:i A') ?? '—',
+                'offer' => $offer ? [
+                    'amount' => isset($offer['amount']) ? $this->money((float) $offer['amount'], $bid->currency ?? 'AED') : null,
+                    'amount_raw' => isset($offer['amount']) ? (float) $offer['amount'] : null,
+                    'currency' => $offer['currency'] ?? $bid->currency ?? 'AED',
+                    'delivery_days' => $offer['delivery_days'] ?? null,
+                    'payment_terms' => $offer['payment_terms'] ?? null,
+                    'reason' => $offer['reason'] ?? null,
                 ] : null,
             ];
         })->toArray();
 
         $latestOpen = $this->negotiations->latestOpenRound($bid);
-        $user       = auth()->user();
-        $userSide   = $user && $user->company_id === $bid->company_id ? 'supplier' : 'buyer';
+        $user = auth()->user();
+        $userSide = $user && $user->company_id === $bid->company_id ? 'supplier' : 'buyer';
 
         $canAct = false;
         if ($latestOpen) {
@@ -92,22 +99,22 @@ class BidController extends Controller
         }
 
         return [
-            'timeline'      => $timeline,
-            'has_open'      => (bool) $latestOpen,
-            'open_round'    => $latestOpen?->round_number,
-            'open_amount'   => $latestOpen ? $this->money((float) ($latestOpen->offer['amount'] ?? 0), $bid->currency ?? 'AED') : null,
-            'can_act'       => $canAct,
-            'user_side'     => $userSide,
-            'next_round'    => ($latestOpen?->round_number ?? 0) + 1,
+            'timeline' => $timeline,
+            'has_open' => (bool) $latestOpen,
+            'open_round' => $latestOpen?->round_number,
+            'open_amount' => $latestOpen ? $this->money((float) ($latestOpen->offer['amount'] ?? 0), $bid->currency ?? 'AED') : null,
+            'can_act' => $canAct,
+            'user_side' => $userSide,
+            'next_round' => ($latestOpen?->round_number ?? 0) + 1,
         ];
     }
 
-    public function index(\Illuminate\Http\Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function index(Request $request): View|StreamedResponse
     {
         abort_unless(auth()->user()?->hasPermission('bid.view'), 403);
 
         $companyId = $this->currentCompanyId();
-        $query     = trim((string) $request->query('q', ''));
+        $query = trim((string) $request->query('q', ''));
         $statusFilter = $request->query('status');
 
         // Company-centric tabs. The same company can have bids it RECEIVED
@@ -124,7 +131,7 @@ class BidController extends Controller
         // attached to dual-role companies — now both sides are always
         // reachable from a single, unified index page.
         $tabCounts = [
-            'received'  => $companyId
+            'received' => $companyId
                 ? Bid::query()->whereHas('rfq', fn ($q) => $q->where('company_id', $companyId))->count()
                 : Bid::query()->count(),
             'submitted' => $companyId
@@ -156,15 +163,15 @@ class BidController extends Controller
         if ($this->isCsvExport($request)) {
             $rows = (clone $base)->with(['rfq', 'company'])->latest()->get()
                 ->map(fn (Bid $bid) => [
-                    'id'          => $bid->id,
-                    'bid_number'  => $this->bidDisplayNumber($bid),
-                    'rfq_number'  => $bid->rfq?->rfq_number ?? '',
-                    'rfq_title'   => $bid->rfq?->title ?? '',
-                    'supplier'    => $bid->company?->name ?? '',
-                    'price'       => (float) $bid->price,
-                    'currency'    => $bid->currency,
+                    'id' => $bid->id,
+                    'bid_number' => $this->bidDisplayNumber($bid),
+                    'rfq_number' => $bid->rfq?->rfq_number ?? '',
+                    'rfq_title' => $bid->rfq?->title ?? '',
+                    'supplier' => $bid->company?->name ?? '',
+                    'price' => (float) $bid->price,
+                    'currency' => $bid->currency,
                     'delivery_days' => (int) ($bid->delivery_time_days ?? 0),
-                    'status'      => $this->statusValue($bid->status),
+                    'status' => $this->statusValue($bid->status),
                     'submitted_at' => $bid->created_at?->toDateTimeString(),
                 ]);
 
@@ -172,51 +179,51 @@ class BidController extends Controller
         }
 
         $stats = [
-            'total'        => (clone $base)->count(),
+            'total' => (clone $base)->count(),
             'under_review' => (clone $base)->where('status', BidStatus::UNDER_REVIEW->value)->count(),
-            'shortlisted'  => (clone $base)->where('status', BidStatus::SUBMITTED->value)->count(),
-            'accepted'     => (clone $base)->where('status', BidStatus::ACCEPTED->value)->count(),
-            'rejected'     => (clone $base)->where('status', BidStatus::REJECTED->value)->count(),
+            'shortlisted' => (clone $base)->where('status', BidStatus::SUBMITTED->value)->count(),
+            'accepted' => (clone $base)->where('status', BidStatus::ACCEPTED->value)->count(),
+            'rejected' => (clone $base)->where('status', BidStatus::REJECTED->value)->count(),
         ];
 
         // Eager-load rfq.bids so the per-row "received" count uses the
         // already-loaded collection (`->bids->count()`) instead of firing a
         // fresh query per bid. Same idea for the supplier rating: prefetch
         // averages for every distinct company in one query (Phase 0 / 0.5).
-        $bidRows  = (clone $base)->with(['rfq.bids', 'company'])->latest()->get();
-        $ratings  = $this->batchResolveSupplierRatings($bidRows->pluck('company_id')->filter()->unique()->all());
+        $bidRows = (clone $base)->with(['rfq.bids', 'company'])->latest()->get();
+        $ratings = $this->batchResolveSupplierRatings($bidRows->pluck('company_id')->filter()->unique()->all());
 
         $bids = $bidRows
             ->map(function (Bid $bid) use ($ratings) {
                 $rfqBudget = (float) ($bid->rfq?->budget ?? $bid->price);
-                $diff      = $rfqBudget > 0 ? round((($rfqBudget - (float) $bid->price) / $rfqBudget) * 100, 1) : 0;
+                $diff = $rfqBudget > 0 ? round((($rfqBudget - (float) $bid->price) / $rfqBudget) * 100, 1) : 0;
                 $statusKey = $this->mapBidStatus($this->statusValue($bid->status));
 
                 return [
-                    'id'           => $this->bidDisplayNumber($bid),
-                    'numeric_id'   => $bid->id,
-                    'status'       => $statusKey,
-                    'shortlisted'  => in_array($statusKey, ['submitted', 'shortlisted', 'accepted'], true),
-                    'rfq'          => $bid->rfq?->rfq_number ?? '—',
-                    'rfq_title'    => $bid->rfq?->title ?? '—',
+                    'id' => $this->bidDisplayNumber($bid),
+                    'numeric_id' => $bid->id,
+                    'status' => $statusKey,
+                    'shortlisted' => in_array($statusKey, ['submitted', 'shortlisted', 'accepted'], true),
+                    'rfq' => $bid->rfq?->rfq_number ?? '—',
+                    'rfq_title' => $bid->rfq?->title ?? '—',
                     // Anonymise the supplier name on the buyer-facing list
                     // until the bid is accepted; we surface the full company
                     // name on the show page only.
-                    'supplier'     => $bid->company?->name ?? '—',
+                    'supplier' => $bid->company?->name ?? '—',
                     // Phase 2 / Sprint 8 / task 2.8 — verification tier shown
                     // next to the supplier name on the bid card.
                     'verification_level' => $bid->company?->verification_level,
-                    'rating'       => $ratings[$bid->company_id] ?? null,
-                    'received'     => $bid->rfq?->bids->count() ?? 0,
-                    'submitted'    => $this->date($bid->created_at),
-                    'expires'      => $this->date($bid->validity_date),
-                    'amount'       => $this->money((float) $bid->price, $bid->currency),
-                    'old_amount'   => $this->money($rfqBudget, $bid->currency),
-                    'diff'         => abs($diff),
-                    'days'         => (int) ($bid->delivery_time_days ?? 0),
-                    'terms'        => $bid->payment_terms ?? '—',
+                    'rating' => $ratings[$bid->company_id] ?? null,
+                    'received' => $bid->rfq?->bids->count() ?? 0,
+                    'submitted' => $this->date($bid->created_at),
+                    'expires' => $this->date($bid->validity_date),
+                    'amount' => $this->money((float) $bid->price, $bid->currency),
+                    'old_amount' => $this->money($rfqBudget, $bid->currency),
+                    'diff' => abs($diff),
+                    'days' => (int) ($bid->delivery_time_days ?? 0),
+                    'terms' => $bid->payment_terms ?? '—',
                     'show_actions' => $statusKey === 'submitted',
-                    'price_up'     => $diff < 0,
+                    'price_up' => $diff < 0,
                 ];
             })
             ->toArray();
@@ -233,10 +240,10 @@ class BidController extends Controller
      * total value, win rate).
      *
      * @param  array{received:int,submitted:int}|null  $tabCounts  Headline counts
-     *         for the company-centric view-switcher tabs at the top of the page.
-     *         Computed in index() so both branches stay consistent.
+     *                                                             for the company-centric view-switcher tabs at the top of the page.
+     *                                                             Computed in index() so both branches stay consistent.
      */
-    private function supplierIndex(?int $companyId, string $query = '', ?string $statusFilter = null, ?\Illuminate\Http\Request $request = null, ?array $tabCounts = null): View|StreamedResponse
+    private function supplierIndex(?int $companyId, string $query = '', ?string $statusFilter = null, ?Request $request = null, ?array $tabCounts = null): View|StreamedResponse
     {
         $base = Bid::query()->when($companyId, fn ($q) => $q->where('company_id', $companyId));
 
@@ -254,25 +261,25 @@ class BidController extends Controller
         if ($request && $this->isCsvExport($request)) {
             $rows = (clone $base)->with(['rfq.company'])->latest()->get()
                 ->map(fn (Bid $bid) => [
-                    'id'           => $bid->id,
-                    'bid_number'   => $this->bidDisplayNumber($bid),
-                    'rfq_number'   => $bid->rfq?->rfq_number ?? '',
-                    'rfq_title'    => $bid->rfq?->title ?? '',
-                    'buyer'        => $bid->rfq?->company?->name ?? '',
-                    'price'        => (float) $bid->price,
-                    'currency'     => $bid->currency,
+                    'id' => $bid->id,
+                    'bid_number' => $this->bidDisplayNumber($bid),
+                    'rfq_number' => $bid->rfq?->rfq_number ?? '',
+                    'rfq_title' => $bid->rfq?->title ?? '',
+                    'buyer' => $bid->rfq?->company?->name ?? '',
+                    'price' => (float) $bid->price,
+                    'currency' => $bid->currency,
                     'delivery_days' => (int) ($bid->delivery_time_days ?? 0),
-                    'status'       => $this->statusValue($bid->status),
+                    'status' => $this->statusValue($bid->status),
                     'submitted_at' => $bid->created_at?->toDateTimeString(),
                 ]);
 
             return $this->streamCsv($rows, 'my-bids');
         }
 
-        $totalCount    = (clone $base)->count();
-        $wonCount      = (clone $base)->where('status', BidStatus::ACCEPTED->value)->count();
-        $lostCount     = (clone $base)->where('status', BidStatus::REJECTED->value)->count();
-        $activeCount   = (clone $base)->whereIn('status', [
+        $totalCount = (clone $base)->count();
+        $wonCount = (clone $base)->where('status', BidStatus::ACCEPTED->value)->count();
+        $lostCount = (clone $base)->where('status', BidStatus::REJECTED->value)->count();
+        $activeCount = (clone $base)->whereIn('status', [
             BidStatus::SUBMITTED->value,
             BidStatus::UNDER_REVIEW->value,
         ])->count();
@@ -287,22 +294,23 @@ class BidController extends Controller
         ])->count();
 
         $totalValue = (float) (clone $base)->sum('price');
-        $winRate    = $totalCount > 0 ? round(($wonCount / $totalCount) * 100, 1) : 0;
+        $winRate = $totalCount > 0 ? round(($wonCount / $totalCount) * 100, 1) : 0;
 
         $map = function (Bid $bid): array {
             $statusKey = $this->mapBidStatus($this->statusValue($bid->status));
+
             return [
-                'id'         => $this->bidDisplayNumber($bid),
+                'id' => $this->bidDisplayNumber($bid),
                 'numeric_id' => $bid->id,
-                'status'     => $statusKey,
-                'rfq'        => $bid->rfq?->rfq_number ?? '—',
-                'rfq_title'  => $bid->rfq?->title ?? '—',
-                'buyer'      => $bid->rfq?->is_anonymous
-                    ? 'Buyer #' . str_pad((string) (($bid->rfq->company_id ?? 0) * 137 % 9999), 4, '0', STR_PAD_LEFT)
+                'status' => $statusKey,
+                'rfq' => $bid->rfq?->rfq_number ?? '—',
+                'rfq_title' => $bid->rfq?->title ?? '—',
+                'buyer' => $bid->rfq?->is_anonymous
+                    ? 'Buyer #'.str_pad((string) (($bid->rfq->company_id ?? 0) * 137 % 9999), 4, '0', STR_PAD_LEFT)
                     : ($bid->rfq?->company?->name ?? '—'),
-                'amount'     => $this->money((float) $bid->price, $bid->currency ?? 'AED'),
-                'submitted'  => $this->date($bid->created_at),
-                'ago'        => $bid->created_at?->diffForHumans(null, true) ?? '',
+                'amount' => $this->money((float) $bid->price, $bid->currency ?? 'AED'),
+                'submitted' => $this->date($bid->created_at),
+                'ago' => $bid->created_at?->diffForHumans(null, true) ?? '',
                 'can_withdraw' => in_array($statusKey, ['submitted', 'under_review'], true),
             ];
         };
@@ -348,22 +356,22 @@ class BidController extends Controller
             // Total/UnderReview/Shortlisted/Accepted/Rejected). The view
             // picks the right stat block based on $activeTab.
             'stats' => [
-                'active'      => $activeCount,
-                'won'         => $wonCount,
-                'lost'        => $lostCount,
-                'draft'       => $draftCount,
-                'total'       => $totalCount,
+                'active' => $activeCount,
+                'won' => $wonCount,
+                'lost' => $lostCount,
+                'draft' => $draftCount,
+                'total' => $totalCount,
                 'total_value' => $this->money($totalValue, 'AED'),
-                'win_rate'    => $winRate,
+                'win_rate' => $winRate,
             ],
             'active_bids' => $activeBids,
-            'won_bids'    => $wonBids,
-            'lost_bids'   => $lostBids,
-            'draft_bids'  => $draftBids,
+            'won_bids' => $wonBids,
+            'lost_bids' => $lostBids,
+            'draft_bids' => $draftBids,
             // Use the same variable names as the buyer-side index() so the
             // unified blade can read them without conditionally aliasing.
-            'tabCounts'   => $tabCounts,
-            'activeTab'   => 'submitted',
+            'tabCounts' => $tabCounts,
+            'activeTab' => 'submitted',
         ]);
     }
 
@@ -378,12 +386,13 @@ class BidController extends Controller
      */
     private function resolveSupplierRating(?int $companyId): ?float
     {
-        if (!$companyId || !\Illuminate\Support\Facades\Schema::hasTable('feedback')) {
+        if (! $companyId || ! Schema::hasTable('feedback')) {
             return null;
         }
         $avg = \DB::table('feedback')
             ->where('target_company_id', $companyId)
             ->avg('rating');
+
         return $avg ? round((float) $avg, 1) : null;
     }
 
@@ -392,12 +401,12 @@ class BidController extends Controller
      * of company ids, returned as [company_id => rating]. Eliminates the
      * per-row N+1 the index pages used to suffer.
      *
-     * @param  array<int,int> $companyIds
+     * @param  array<int,int>  $companyIds
      * @return array<int,float>
      */
     private function batchResolveSupplierRatings(array $companyIds): array
     {
-        if ($companyIds === [] || !\Illuminate\Support\Facades\Schema::hasTable('feedback')) {
+        if ($companyIds === [] || ! Schema::hasTable('feedback')) {
             return [];
         }
 
@@ -411,27 +420,27 @@ class BidController extends Controller
     }
 
     /**
-     *
      * @return array<int, array{milestone:string, percentage:float, amount:string, stage:string}>
      */
     private function buildPaymentSchedule($bid, float $price): array
     {
         $currency = $bid->currency ?? 'AED';
-        $stored   = $bid->payment_schedule ?? [];
+        $stored = $bid->payment_schedule ?? [];
 
-        if (is_array($stored) && !empty($stored)) {
+        if (is_array($stored) && ! empty($stored)) {
             return collect($stored)->map(function ($row) use ($price, $currency) {
                 $pct = (float) ($row['percentage'] ?? 0);
+
                 return [
-                    'milestone'  => (string) ($row['milestone'] ?? ''),
+                    'milestone' => (string) ($row['milestone'] ?? ''),
                     'percentage' => $pct,
-                    'amount'     => $this->money(
+                    'amount' => $this->money(
                         isset($row['amount']) && (float) $row['amount'] > 0
                             ? (float) $row['amount']
                             : round($price * $pct / 100, 2),
                         $currency
                     ),
-                    'stage'      => $this->milestoneStage((string) ($row['milestone'] ?? '')),
+                    'stage' => $this->milestoneStage((string) ($row['milestone'] ?? '')),
                 ];
             })->values()->all();
         }
@@ -447,14 +456,15 @@ class BidController extends Controller
         $labels = ['Advance Payment', 'On Production', 'On Delivery', 'Final Settlement', 'Retention'];
         $out = [];
         foreach ($pcts as $i => $pct) {
-            $label = $labels[$i] ?? ('Milestone ' . ($i + 1));
+            $label = $labels[$i] ?? ('Milestone '.($i + 1));
             $out[] = [
-                'milestone'  => $label,
+                'milestone' => $label,
                 'percentage' => (float) $pct,
-                'amount'     => $this->money(round($price * $pct / 100, 2), $currency),
-                'stage'      => $this->milestoneStage($label),
+                'amount' => $this->money(round($price * $pct / 100, 2), $currency),
+                'stage' => $this->milestoneStage($label),
             ];
         }
+
         return $out;
     }
 
@@ -465,6 +475,7 @@ class BidController extends Controller
     private function milestoneStage(string $name): string
     {
         $n = strtolower($name);
+
         return match (true) {
             str_contains($n, 'advance') || str_contains($n, 'upfront') => 'advance',
             str_contains($n, 'production') || str_contains($n, 'manufactur') => 'production',
@@ -491,25 +502,25 @@ class BidController extends Controller
         // across different bids: we are the supplier when WE submitted the
         // bid, the buyer when WE own the parent RFQ. Buyer wins when both
         // are true (a company bidding on its own RFQ — defensive only).
-        $myCompanyId      = auth()->user()?->company_id;
-        $isMyReceivedBid  = $myCompanyId && $bid->rfq && (int) $bid->rfq->company_id === (int) $myCompanyId;
+        $myCompanyId = auth()->user()?->company_id;
+        $isMyReceivedBid = $myCompanyId && $bid->rfq && (int) $bid->rfq->company_id === (int) $myCompanyId;
         $isMySubmittedBid = $myCompanyId && (int) $bid->company_id === (int) $myCompanyId;
-        $myRole           = $isMyReceivedBid ? 'buyer' : ($isMySubmittedBid ? 'supplier' : 'buyer');
-        $direction        = $myRole === 'buyer' ? 'incoming' : 'outgoing';
+        $myRole = $isMyReceivedBid ? 'buyer' : ($isMySubmittedBid ? 'supplier' : 'buyer');
+        $direction = $myRole === 'buyer' ? 'incoming' : 'outgoing';
 
         $rfqBudget = (float) ($bid->rfq?->budget ?? $bid->price);
-        $diff      = $rfqBudget > 0 ? round((($rfqBudget - (float) $bid->price) / $rfqBudget) * 100, 1) : 0;
-        $price     = (float) $bid->price;
+        $diff = $rfqBudget > 0 ? round((($rfqBudget - (float) $bid->price) / $rfqBudget) * 100, 1) : 0;
+        $price = (float) $bid->price;
 
         // --- Payment terms split (Terms & Conditions tab) --------------------
         // `payment_terms` is usually a short label like "30% advance, 70% on
         // delivery". We derive the split from the first two numbers we find,
         // falling back to 30/70.
         $advancePct = 30;
-        $finalPct   = 70;
+        $finalPct = 70;
         if (preg_match_all('/(\d+)\s*%/', (string) $bid->payment_terms, $m)) {
             $advancePct = (int) ($m[1][0] ?? 30);
-            $finalPct   = (int) ($m[1][1] ?? (100 - $advancePct));
+            $finalPct = (int) ($m[1][1] ?? (100 - $advancePct));
         }
 
         // --- Documents (Documents tab) ---------------------------------------
@@ -520,15 +531,15 @@ class BidController extends Controller
             $size = is_array($doc) ? ($doc['size'] ?? null) : null;
             // Newer rows have a `path` and we stream them through the download
             // action; older rows may carry a pre-baked URL.
-            $url  = is_array($doc)
+            $url = is_array($doc)
                 ? ($doc['url'] ?? route('dashboard.bids.attachment.download', ['id' => $bid->id, 'idx' => $idx]))
                 : '#';
 
             return [
-                'name'     => $name,
-                'size'     => $size ? (is_numeric($size) ? round($size / 1024 / 1024, 1) . ' MB' : $size) : '—',
+                'name' => $name,
+                'size' => $size ? (is_numeric($size) ? round($size / 1024 / 1024, 1).' MB' : $size) : '—',
                 'uploaded' => '—',
-                'url'      => $url,
+                'url' => $url,
             ];
         })->toArray();
 
@@ -538,23 +549,23 @@ class BidController extends Controller
         $history = [];
         $history[] = [
             'title' => __('bids.history.submitted'),
-            'who'   => $bid->company?->name ?? '—',
-            'desc'  => __('bids.history.submitted_desc'),
-            'when'  => $bid->created_at?->format('M j, Y g:i A') ?? '—',
+            'who' => $bid->company?->name ?? '—',
+            'desc' => __('bids.history.submitted_desc'),
+            'when' => $bid->created_at?->format('M j, Y g:i A') ?? '—',
         ];
         if ($bid->updated_at && $bid->updated_at->gt($bid->created_at)) {
             $statusLabel = match ($this->statusValue($bid->status)) {
                 'under_review' => __('bids.history.reviewed'),
-                'accepted'     => __('bids.history.accepted'),
-                'rejected'     => __('bids.history.rejected'),
-                'withdrawn'    => __('bids.history.withdrawn'),
-                default        => __('bids.history.updated'),
+                'accepted' => __('bids.history.accepted'),
+                'rejected' => __('bids.history.rejected'),
+                'withdrawn' => __('bids.history.withdrawn'),
+                default => __('bids.history.updated'),
             };
             $history[] = [
                 'title' => $statusLabel,
-                'who'   => __('bids.history.buyer_team'),
-                'desc'  => __('bids.history.status_change_desc'),
-                'when'  => $bid->updated_at->format('M j, Y g:i A'),
+                'who' => __('bids.history.buyer_team'),
+                'desc' => __('bids.history.status_change_desc'),
+                'when' => $bid->updated_at->format('M j, Y g:i A'),
             ];
         }
 
@@ -569,7 +580,7 @@ class BidController extends Controller
         // through the contract_parties junction.
         $completedCount = 0;
         if ($supplier) {
-            $completedCount = \App\Models\Contract::query()
+            $completedCount = Contract::query()
                 ->forCompany($supplier->id)
                 ->whereIn('status', ['completed', 'active', 'signed'])
                 ->count();
@@ -580,7 +591,7 @@ class BidController extends Controller
         // handles the "no reviews" empty state.
         $rating = null;
         $reviewCount = 0;
-        if ($supplier && \Illuminate\Support\Facades\Schema::hasTable('feedback')) {
+        if ($supplier && Schema::hasTable('feedback')) {
             $row = \DB::table('feedback')
                 ->where('target_company_id', $supplier->id)
                 ->selectRaw('AVG(rating) as avg, COUNT(*) as cnt')
@@ -599,16 +610,16 @@ class BidController extends Controller
             ->all();
 
         $supplierInfo = [
-            'id'                 => $supplier?->id,
-            'name'               => $supplier?->name ?? '—',
-            'location'           => trim(($supplier?->city ?? '') . ($supplier?->country ? ', ' . $supplier->country : '')) ?: '—',
-            'registration'       => $supplier?->registration_number ?? '—',
-            'rating'             => $rating,
-            'reviews'            => $reviewCount,
-            'completed'          => $completedCount,
-            'years'              => $supplier?->created_at ? max(1, (int) $supplier->created_at->diffInYears(now())) : 0,
-            'certifications'     => $certs,
-            'description'        => $supplier?->description ?? '—',
+            'id' => $supplier?->id,
+            'name' => $supplier?->name ?? '—',
+            'location' => trim(($supplier?->city ?? '').($supplier?->country ? ', '.$supplier->country : '')) ?: '—',
+            'registration' => $supplier?->registration_number ?? '—',
+            'rating' => $rating,
+            'reviews' => $reviewCount,
+            'completed' => $completedCount,
+            'years' => $supplier?->created_at ? max(1, (int) $supplier->created_at->diffInYears(now())) : 0,
+            'certifications' => $certs,
+            'description' => $supplier?->description ?? '—',
             // Phase 2 / Sprint 8 / task 2.8 — surface the trust tier so the
             // bid show header (and the comparison view) can render the
             // verification badge inline with the supplier name.
@@ -622,14 +633,14 @@ class BidController extends Controller
         // historical bids.
         $hasVatSnapshot = $bid->subtotal_excl_tax !== null;
         $vat = [
-            'treatment'  => $bid->tax_treatment ?? 'exclusive',
-            'rate'       => $hasVatSnapshot ? (float) $bid->tax_rate_snapshot : 0.0,
-            'subtotal'   => $hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price,
+            'treatment' => $bid->tax_treatment ?? 'exclusive',
+            'rate' => $hasVatSnapshot ? (float) $bid->tax_rate_snapshot : 0.0,
+            'subtotal' => $hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price,
             'tax_amount' => $hasVatSnapshot ? (float) $bid->tax_amount : 0.0,
-            'total'      => $hasVatSnapshot ? (float) $bid->total_incl_tax : $price,
-            'subtotal_fmt'   => $this->money($hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price, $bid->currency),
+            'total' => $hasVatSnapshot ? (float) $bid->total_incl_tax : $price,
+            'subtotal_fmt' => $this->money($hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price, $bid->currency),
             'tax_amount_fmt' => $this->money($hasVatSnapshot ? (float) $bid->tax_amount : 0.0, $bid->currency),
-            'total_fmt'      => $this->money($hasVatSnapshot ? (float) $bid->total_incl_tax : $price, $bid->currency),
+            'total_fmt' => $this->money($hasVatSnapshot ? (float) $bid->total_incl_tax : $price, $bid->currency),
             'exemption_reason' => $bid->tax_exemption_reason,
         ];
 
@@ -644,7 +655,7 @@ class BidController extends Controller
         // profile. Falls back to an empty array if the supplier hasn't
         // uploaded any policies (or hasn't been verified yet).
         $insurancePolicies = [];
-        if ($supplier && \Illuminate\Support\Facades\Schema::hasTable('company_insurances')) {
+        if ($supplier && Schema::hasTable('company_insurances')) {
             $insurancePolicies = \DB::table('company_insurances')
                 ->where('company_id', $supplier->id)
                 ->where('status', 'verified')
@@ -653,10 +664,10 @@ class BidController extends Controller
                 ->orderBy('expires_at', 'desc')
                 ->get(['type', 'insurer', 'coverage_amount', 'currency', 'expires_at'])
                 ->map(fn ($row) => [
-                    'type'     => $row->type,
-                    'insurer'  => $row->insurer,
+                    'type' => $row->type,
+                    'insurer' => $row->insurer,
                     'coverage' => $this->money((float) $row->coverage_amount, $row->currency ?? 'AED'),
-                    'expires'  => $this->longDate(\Carbon\Carbon::parse($row->expires_at)),
+                    'expires' => $this->longDate(Carbon::parse($row->expires_at)),
                 ])
                 ->all();
         }
@@ -667,143 +678,143 @@ class BidController extends Controller
         // when the current company is the bid SUBMITTER the view can render
         // the same supplier-side sections without dispatching elsewhere.
         $supplierStatusKey = $this->mapBidStatus($statusKey);
-        $statusValueRaw    = $this->statusValue($bid->status);
+        $statusValueRaw = $this->statusValue($bid->status);
 
         $timeline = [
             [
                 'title' => __('bids.history.submitted'),
-                'when'  => $bid->created_at?->format('M j, Y · g:i A') ?? '—',
-                'done'  => true,
+                'when' => $bid->created_at?->format('M j, Y · g:i A') ?? '—',
+                'done' => true,
             ],
             [
                 'title' => __('bids.history.reviewed'),
-                'when'  => $bid->updated_at?->format('M j, Y · g:i A') ?? '—',
-                'done'  => in_array($statusValueRaw, ['under_review', 'accepted', 'rejected'], true),
+                'when' => $bid->updated_at?->format('M j, Y · g:i A') ?? '—',
+                'done' => in_array($statusValueRaw, ['under_review', 'accepted', 'rejected'], true),
             ],
             [
                 'title' => match ($statusValueRaw) {
                     'accepted' => __('bids.history.accepted'),
                     'rejected' => __('bids.history.rejected'),
-                    default    => __('bids.awaiting_decision') ?? 'Pending Decision',
+                    default => __('bids.awaiting_decision') ?? 'Pending Decision',
                 },
-                'when'  => match ($statusValueRaw) {
+                'when' => match ($statusValueRaw) {
                     'accepted', 'rejected' => $bid->updated_at?->format('M j, Y · g:i A') ?? '—',
-                    default                => __('bids.awaiting_buyer_response') ?? 'Awaiting buyer response',
+                    default => __('bids.awaiting_buyer_response') ?? 'Awaiting buyer response',
                 },
-                'done'  => in_array($statusValueRaw, ['accepted', 'rejected'], true),
+                'done' => in_array($statusValueRaw, ['accepted', 'rejected'], true),
             ],
         ];
 
         // Competition: peer bids on the same RFQ. Same data both sides see.
-        $sibling    = $bid->rfq ? $bid->rfq->bids()->get() : collect();
-        $prices     = $sibling->map(fn ($b) => (float) $b->price)->filter();
-        $sortedSib  = $sibling->sortBy('price')->values();
+        $sibling = $bid->rfq ? $bid->rfq->bids()->get() : collect();
+        $prices = $sibling->map(fn ($b) => (float) $b->price)->filter();
+        $sortedSib = $sibling->sortBy('price')->values();
         $myPosition = $sortedSib->search(fn ($b) => $b->id === $bid->id);
         $myPosition = $myPosition !== false ? $myPosition + 1 : null;
         $competition = [
-            'count'       => $sibling->count(),
-            'lowest'      => $prices->isNotEmpty() ? $this->money($prices->min(), $bid->currency) : '—',
-            'average'     => $prices->isNotEmpty() ? $this->money($prices->avg(), $bid->currency) : '—',
+            'count' => $sibling->count(),
+            'lowest' => $prices->isNotEmpty() ? $this->money($prices->min(), $bid->currency) : '—',
+            'average' => $prices->isNotEmpty() ? $this->money($prices->avg(), $bid->currency) : '—',
             'my_position' => $myPosition,
-            'my_bid'      => $this->money($price, $bid->currency),
+            'my_bid' => $this->money($price, $bid->currency),
         ];
 
         // Buyer info (used when current viewer is the supplier).
         $buyerInfo = [
-            'name'     => $bid->rfq?->is_anonymous
-                ? 'Buyer #' . str_pad((string) (($bid->rfq->company_id ?? 0) * 137 % 9999), 4, '0', STR_PAD_LEFT)
+            'name' => $bid->rfq?->is_anonymous
+                ? 'Buyer #'.str_pad((string) (($bid->rfq->company_id ?? 0) * 137 % 9999), 4, '0', STR_PAD_LEFT)
                 : ($bid->rfq?->company?->name ?? '—'),
             'category' => $bid->rfq?->category?->name ?? '—',
-            'rfq_ref'  => '#' . ($bid->rfq?->rfq_number ?? '—'),
+            'rfq_ref' => '#'.($bid->rfq?->rfq_number ?? '—'),
         ];
 
         $bidData = [
-            'id'             => $this->bidDisplayNumber($bid),
-            'numeric_id'     => $bid->id,
-            'status'         => $this->mapBidStatus($statusKey),
+            'id' => $this->bidDisplayNumber($bid),
+            'numeric_id' => $bid->id,
+            'status' => $this->mapBidStatus($statusKey),
             // Per-bid role-aware fields used by the unified view to flip
             // between buyer-side and supplier-side sections without a
             // separate template.
-            'my_role'        => $myRole,
-            'direction'      => $direction,
+            'my_role' => $myRole,
+            'direction' => $direction,
             // The "shortlisted" star pill on the bid show header is only true
             // when the bid is in an active, decision-pending state. Anything
             // already accepted/rejected/withdrawn isn't on the shortlist.
-            'shortlisted'    => in_array($statusKey, ['submitted', 'shortlisted'], true),
-            'rfq'            => $bid->rfq?->rfq_number ?? '—',
+            'shortlisted' => in_array($statusKey, ['submitted', 'shortlisted'], true),
+            'rfq' => $bid->rfq?->rfq_number ?? '—',
             'rfq_numeric_id' => $bid->rfq?->id,
-            'rfq_title'      => $bid->rfq?->title ?? '—',
-            'rfq_category'   => $bid->rfq?->category?->name ?? '—',
-            'supplier'       => $supplier?->name ?? '—',
-            'supplier_info'  => $supplierInfo,
+            'rfq_title' => $bid->rfq?->title ?? '—',
+            'rfq_category' => $bid->rfq?->category?->name ?? '—',
+            'supplier' => $supplier?->name ?? '—',
+            'supplier_info' => $supplierInfo,
             // Phase 2 — supplier's TRN, surfaced on the bid header so the
             // buyer can verify the tax invoice party.
-            'supplier_trn'   => $supplier?->tax_number,
-            'amount'         => $this->money($price, $bid->currency),
-            'amount_raw'     => $price,
-            'currency'       => $bid->currency ?? 'AED',
-            'old_amount'     => $this->money($rfqBudget, $bid->currency),
-            'diff'           => abs($diff),
-            'savings'        => $this->money(max(0, $rfqBudget - $price), $bid->currency),
-            'price_up'       => $diff < 0,
-            'days'           => (int) ($bid->delivery_time_days ?? 0),
+            'supplier_trn' => $supplier?->tax_number,
+            'amount' => $this->money($price, $bid->currency),
+            'amount_raw' => $price,
+            'currency' => $bid->currency ?? 'AED',
+            'old_amount' => $this->money($rfqBudget, $bid->currency),
+            'diff' => abs($diff),
+            'savings' => $this->money(max(0, $rfqBudget - $price), $bid->currency),
+            'price_up' => $diff < 0,
+            'days' => (int) ($bid->delivery_time_days ?? 0),
             'estimated_delivery' => $bid->created_at
                 ? $this->longDate($bid->created_at->copy()->addDays((int) ($bid->delivery_time_days ?? 0)))
                 : '—',
             // Phase 2 — trade fidelity fields take precedence over the
             // legacy items[0] fallbacks.
-            'incoterm'       => $bid->incoterm,
-            'country_of_origin'      => $bid->country_of_origin,
+            'incoterm' => $bid->incoterm,
+            'country_of_origin' => $bid->country_of_origin,
             'country_of_origin_name' => $countryOfOriginName,
-            'hs_code'        => $bid->hs_code,
-            'vat'            => $vat,
+            'hs_code' => $bid->hs_code,
+            'vat' => $vat,
             'insurance_policies' => $insurancePolicies,
             // Logistics + commercial terms come from the bid's items JSON if
             // the supplier provided them, otherwise from the RFQ-level
             // delivery terms. Defaults to a dash so the UI never shows a
             // fabricated value.
             'shipping_method' => $bid->items[0]['shipping_method'] ?? $bid->rfq?->items[0]['shipping_method'] ?? '—',
-            'incoterms'       => $bid->incoterm ?? $bid->items[0]['incoterms'] ?? $bid->rfq?->items[0]['delivery_terms'] ?? '—',
-            'warranty'        => $bid->items[0]['warranty'] ?? '—',
-            'packaging'       => $bid->items[0]['packaging'] ?? '—',
-            'quality_certs'   => is_array($bid->items[0]['quality_certs'] ?? null)
+            'incoterms' => $bid->incoterm ?? $bid->items[0]['incoterms'] ?? $bid->rfq?->items[0]['delivery_terms'] ?? '—',
+            'warranty' => $bid->items[0]['warranty'] ?? '—',
+            'packaging' => $bid->items[0]['packaging'] ?? '—',
+            'quality_certs' => is_array($bid->items[0]['quality_certs'] ?? null)
                 ? $bid->items[0]['quality_certs']
                 : (is_array($supplier?->certifications) ? collect($supplier->certifications)->map(fn ($c) => is_array($c) ? ($c['name'] ?? null) : $c)->filter()->values()->all() : []),
-            'tech_spec'       => $bid->rfq?->description ?? '—',
-            'terms'           => $bid->payment_terms ?? '—',
-            'advance_pct'     => $advancePct,
-            'final_pct'       => $finalPct,
-            'advance_amount'  => $this->money($price * $advancePct / 100, $bid->currency),
-            'final_amount'    => $this->money($price * $finalPct / 100, $bid->currency),
-            'payment_schedule'=> $this->buildPaymentSchedule($bid, $price),
+            'tech_spec' => $bid->rfq?->description ?? '—',
+            'terms' => $bid->payment_terms ?? '—',
+            'advance_pct' => $advancePct,
+            'final_pct' => $finalPct,
+            'advance_amount' => $this->money($price * $advancePct / 100, $bid->currency),
+            'final_amount' => $this->money($price * $finalPct / 100, $bid->currency),
+            'payment_schedule' => $this->buildPaymentSchedule($bid, $price),
             // Available payment rails on the platform — sourced from config
             // so a manager can add/remove options without a code change.
             'payment_methods' => config('procurement.payment_methods', ['Bank Transfer', 'Letter of Credit', 'Trade Finance']),
-            'validity'        => $this->longDate($bid->validity_date),
-            'submitted'       => $this->longDate($bid->created_at),
-            'expires'         => $this->longDate($bid->validity_date),
-            'notes'           => $bid->notes ?? '',
-            'items'           => collect($bid->items ?? [])->values()->map(function ($it, $i) use ($bid) {
+            'validity' => $this->longDate($bid->validity_date),
+            'submitted' => $this->longDate($bid->created_at),
+            'expires' => $this->longDate($bid->validity_date),
+            'notes' => $bid->notes ?? '',
+            'items' => collect($bid->items ?? [])->values()->map(function ($it, $i) use ($bid) {
                 return [
-                    'n'          => $i + 1,
-                    'name'       => $it['name'] ?? 'Item',
-                    'qty'        => (int) ($it['qty'] ?? 0),
-                    'unit'       => $it['unit'] ?? '',
+                    'n' => $i + 1,
+                    'name' => $it['name'] ?? 'Item',
+                    'qty' => (int) ($it['qty'] ?? 0),
+                    'unit' => $it['unit'] ?? '',
                     'unit_price' => $this->money((float) ($it['unit_price'] ?? 0), $bid->currency),
                 ];
             })->toArray(),
-            'documents'       => $documents,
-            'history'         => $history,
-            'ai_score'        => $bid->ai_score['overall'] ?? $bid->ai_score['score'] ?? null,
-            'negotiation'     => $this->negotiationViewModel($bid),
+            'documents' => $documents,
+            'history' => $history,
+            'ai_score' => $bid->ai_score['overall'] ?? $bid->ai_score['score'] ?? null,
+            'negotiation' => $this->negotiationViewModel($bid),
             // ----- Supplier-side fields (rendered by the unified view
             // when $bid['my_role'] === 'supplier') ----------------------
-            'delivery_days'  => (int) ($bid->delivery_time_days ?? 0),
-            'valid_until'    => $bid->validity_date ? $bid->validity_date->format('M j, Y') : '—',
-            'timeline'       => $timeline,
-            'competition'    => $competition,
-            'buyer'          => $buyerInfo,
-            'can_withdraw'   => $myRole === 'supplier' && in_array($statusKey, ['submitted', 'under_review'], true),
+            'delivery_days' => (int) ($bid->delivery_time_days ?? 0),
+            'valid_until' => $bid->validity_date ? $bid->validity_date->format('M j, Y') : '—',
+            'timeline' => $timeline,
+            'competition' => $competition,
+            'buyer' => $buyerInfo,
+            'can_withdraw' => $myRole === 'supplier' && in_array($statusKey, ['submitted', 'under_review'], true),
             // True when the bidder is in the buyer's registered-supplier list.
             // Soft signal — no longer blocks the bid, but the buyer sees a
             // badge and the supplier saw a notice at submit time.
@@ -824,7 +835,7 @@ class BidController extends Controller
      */
     private function supplierShow(Bid $bid): View
     {
-        $price    = (float) $bid->price;
+        $price = (float) $bid->price;
         $currency = $bid->currency ?? 'AED';
         $statusKey = $this->mapBidStatus($this->statusValue($bid->status));
 
@@ -833,32 +844,32 @@ class BidController extends Controller
         $timeline = [
             [
                 'title' => 'Bid Submitted',
-                'when'  => $bid->created_at?->format('M j, Y · g:i A') ?? '—',
-                'done'  => true,
+                'when' => $bid->created_at?->format('M j, Y · g:i A') ?? '—',
+                'done' => true,
             ],
             [
                 'title' => 'Under Review',
-                'when'  => $bid->updated_at?->format('M j, Y · g:i A') ?? '—',
-                'done'  => in_array($statusValue, ['under_review', 'accepted', 'rejected'], true),
+                'when' => $bid->updated_at?->format('M j, Y · g:i A') ?? '—',
+                'done' => in_array($statusValue, ['under_review', 'accepted', 'rejected'], true),
             ],
             [
                 'title' => match ($statusValue) {
                     'accepted' => 'Bid Accepted',
                     'rejected' => 'Bid Rejected',
-                    default    => 'Pending Decision',
+                    default => 'Pending Decision',
                 },
-                'when'  => match ($statusValue) {
+                'when' => match ($statusValue) {
                     'accepted', 'rejected' => $bid->updated_at?->format('M j, Y · g:i A') ?? '—',
-                    default                => 'Awaiting buyer response',
+                    default => 'Awaiting buyer response',
                 },
-                'done'  => in_array($statusValue, ['accepted', 'rejected'], true),
+                'done' => in_array($statusValue, ['accepted', 'rejected'], true),
             ],
         ];
 
         // Competition: other bids on the same RFQ.
         $sibling = $bid->rfq ? $bid->rfq->bids()->get() : collect();
-        $prices  = $sibling->map(fn ($b) => (float) $b->price)->filter();
-        $sorted  = $sibling->sortBy('price')->values();
+        $prices = $sibling->map(fn ($b) => (float) $b->price)->filter();
+        $sorted = $sibling->sortBy('price')->values();
         $myPosition = $sorted->search(fn ($b) => $b->id === $bid->id);
         $myPosition = $myPosition !== false ? $myPosition + 1 : null;
 
@@ -869,34 +880,36 @@ class BidController extends Controller
             $name = is_array($doc) ? ($doc['name'] ?? $doc['filename'] ?? 'document') : (string) $doc;
             $size = is_array($doc) ? ($doc['size'] ?? null) : null;
             $mime = is_array($doc) ? ($doc['mime'] ?? 'application/octet-stream') : 'application/octet-stream';
-            $url  = is_array($doc)
+            $url = is_array($doc)
                 ? ($doc['url'] ?? route('dashboard.bids.attachment.download', ['id' => $bid->id, 'idx' => $idx]))
                 : '#';
+
             return [
                 'name' => $name,
                 'type' => strtoupper(pathinfo($name, PATHINFO_EXTENSION) ?: 'FILE'),
-                'size' => $size ? (is_numeric($size) ? round($size / 1024 / 1024, 1) . ' MB' : $size) : '—',
-                'url'  => $url,
+                'size' => $size ? (is_numeric($size) ? round($size / 1024 / 1024, 1).' MB' : $size) : '—',
+                'url' => $url,
             ];
         })->all();
 
         // Payment-terms split for the Terms & Conditions card.
         $advancePct = 30;
-        $finalPct   = 70;
+        $finalPct = 70;
         if (preg_match_all('/(\d+)\s*%/', (string) $bid->payment_terms, $m)) {
             $advancePct = (int) ($m[1][0] ?? 30);
-            $finalPct   = (int) ($m[1][1] ?? (100 - $advancePct));
+            $finalPct = (int) ($m[1][1] ?? (100 - $advancePct));
         }
 
         $lineItems = collect($bid->items ?? [])->values()->map(function ($it) use ($currency) {
-            $qty   = (float) ($it['qty'] ?? 0);
+            $qty = (float) ($it['qty'] ?? 0);
             $price = (float) ($it['unit_price'] ?? 0);
+
             return [
-                'name'       => $it['name'] ?? 'Item',
-                'qty'        => $qty,
-                'unit'       => $it['unit'] ?? '',
+                'name' => $it['name'] ?? 'Item',
+                'qty' => $qty,
+                'unit' => $it['unit'] ?? '',
                 'unit_price' => $this->money($price, $currency),
-                'total'      => $this->money($price * max($qty, 1), $currency),
+                'total' => $this->money($price * max($qty, 1), $currency),
             ];
         })->all();
 
@@ -905,14 +918,14 @@ class BidController extends Controller
         // legacy bid submitted before the migration, fall back gracefully.
         $hasVatSnapshot = $bid->subtotal_excl_tax !== null;
         $vat = [
-            'treatment'  => $bid->tax_treatment ?? 'exclusive',
-            'rate'       => $hasVatSnapshot ? (float) $bid->tax_rate_snapshot : 0.0,
-            'subtotal'   => $hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price,
+            'treatment' => $bid->tax_treatment ?? 'exclusive',
+            'rate' => $hasVatSnapshot ? (float) $bid->tax_rate_snapshot : 0.0,
+            'subtotal' => $hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price,
             'tax_amount' => $hasVatSnapshot ? (float) $bid->tax_amount : 0.0,
-            'total'      => $hasVatSnapshot ? (float) $bid->total_incl_tax : $price,
-            'subtotal_fmt'   => $this->money($hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price, $currency),
+            'total' => $hasVatSnapshot ? (float) $bid->total_incl_tax : $price,
+            'subtotal_fmt' => $this->money($hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price, $currency),
             'tax_amount_fmt' => $this->money($hasVatSnapshot ? (float) $bid->tax_amount : 0.0, $currency),
-            'total_fmt'      => $this->money($hasVatSnapshot ? (float) $bid->total_incl_tax : $price, $currency),
+            'total_fmt' => $this->money($hasVatSnapshot ? (float) $bid->total_incl_tax : $price, $currency),
             'exemption_reason' => $bid->tax_exemption_reason,
         ];
 
@@ -926,7 +939,7 @@ class BidController extends Controller
         // so the supplier can confirm what coverage is being shown to
         // buyers alongside their bid.
         $insurancePolicies = [];
-        if ($bid->company_id && \Illuminate\Support\Facades\Schema::hasTable('company_insurances')) {
+        if ($bid->company_id && Schema::hasTable('company_insurances')) {
             $insurancePolicies = \DB::table('company_insurances')
                 ->where('company_id', $bid->company_id)
                 ->where('status', 'verified')
@@ -935,76 +948,76 @@ class BidController extends Controller
                 ->orderBy('expires_at', 'desc')
                 ->get(['type', 'insurer', 'coverage_amount', 'currency', 'expires_at'])
                 ->map(fn ($row) => [
-                    'type'     => $row->type,
-                    'insurer'  => $row->insurer,
+                    'type' => $row->type,
+                    'insurer' => $row->insurer,
                     'coverage' => $this->money((float) $row->coverage_amount, $row->currency ?? 'AED'),
-                    'expires'  => $this->longDate(\Carbon\Carbon::parse($row->expires_at)),
+                    'expires' => $this->longDate(Carbon::parse($row->expires_at)),
                 ])
                 ->all();
         }
 
         $data = [
-            'id'           => $this->bidDisplayNumber($bid),
-            'numeric_id'   => $bid->id,
-            'status'       => $statusKey,
-            'rfq'          => $bid->rfq?->rfq_number ?? '—',
-            'rfq_title'    => $bid->rfq?->title ?? '—',
+            'id' => $this->bidDisplayNumber($bid),
+            'numeric_id' => $bid->id,
+            'status' => $statusKey,
+            'rfq' => $bid->rfq?->rfq_number ?? '—',
+            'rfq_title' => $bid->rfq?->title ?? '—',
             'rfq_numeric_id' => $bid->rfq?->id,
             'rfq_category' => $bid->rfq?->category?->name ?? '—',
-            'amount'       => $this->money($price, $currency),
-            'submitted'    => $bid->created_at?->format('M j, Y') ?? '—',
-            'valid_until'  => $bid->validity_date ? $bid->validity_date->format('M j, Y') : '—',
-            'items'        => $lineItems,
-            'delivery_days'=> (int) ($bid->delivery_time_days ?? 0),
-            'terms'        => $bid->payment_terms ?? '—',
-            'advance_pct'  => $advancePct,
-            'final_pct'    => $finalPct,
+            'amount' => $this->money($price, $currency),
+            'submitted' => $bid->created_at?->format('M j, Y') ?? '—',
+            'valid_until' => $bid->validity_date ? $bid->validity_date->format('M j, Y') : '—',
+            'items' => $lineItems,
+            'delivery_days' => (int) ($bid->delivery_time_days ?? 0),
+            'terms' => $bid->payment_terms ?? '—',
+            'advance_pct' => $advancePct,
+            'final_pct' => $finalPct,
             'payment_schedule' => $this->buildPaymentSchedule($bid, $price),
             // Pull warranty from the bid's items JSON if the supplier added
             // it; nothing fabricated.
-            'warranty'     => $bid->items[0]['warranty'] ?? '—',
-            'notes'        => $bid->notes ?? '',
-            'documents'    => $documents,
-            'timeline'     => $timeline,
+            'warranty' => $bid->items[0]['warranty'] ?? '—',
+            'notes' => $bid->notes ?? '',
+            'documents' => $documents,
+            'timeline' => $timeline,
             // Phase 2 — trade fidelity fields.
-            'incoterm'     => $bid->incoterm,
+            'incoterm' => $bid->incoterm,
             'country_of_origin' => $bid->country_of_origin,
             'country_of_origin_name' => $countryOfOriginName,
-            'hs_code'      => $bid->hs_code,
-            'vat'          => $vat,
+            'hs_code' => $bid->hs_code,
+            'vat' => $vat,
             'insurance_policies' => $insurancePolicies,
-            'currency'     => $currency,
+            'currency' => $currency,
             'buyer' => [
-                'name'     => $bid->rfq?->is_anonymous ? 'Buyer #' . str_pad((string) (($bid->rfq->company_id ?? 0) * 137 % 9999), 4, '0', STR_PAD_LEFT) : ($bid->rfq?->company?->name ?? '—'),
+                'name' => $bid->rfq?->is_anonymous ? 'Buyer #'.str_pad((string) (($bid->rfq->company_id ?? 0) * 137 % 9999), 4, '0', STR_PAD_LEFT) : ($bid->rfq?->company?->name ?? '—'),
                 'category' => $bid->rfq?->category?->name ?? '—',
-                'rfq_ref'  => '#' . ($bid->rfq?->rfq_number ?? '—'),
+                'rfq_ref' => '#'.($bid->rfq?->rfq_number ?? '—'),
             ],
             'competition' => [
-                'count'       => $sibling->count(),
-                'lowest'      => $prices->isNotEmpty() ? $this->money($prices->min(), $currency) : '—',
+                'count' => $sibling->count(),
+                'lowest' => $prices->isNotEmpty() ? $this->money($prices->min(), $currency) : '—',
                 'my_position' => $myPosition,
-                'my_bid'      => $this->money($price, $currency),
+                'my_bid' => $this->money($price, $currency),
             ],
             'can_withdraw' => in_array($statusKey, ['submitted', 'under_review'], true),
-            'negotiation'  => $this->negotiationViewModel($bid),
+            'negotiation' => $this->negotiationViewModel($bid),
 
             // Buyer-view-compatible keys. The unified show.blade.php was
             // written for the buyer surface first, so we populate every
             // key it reads with safe defaults — the view still renders
             // correctly for the supplier because the accept / reject
             // controls are policy-gated (@can) and hide automatically.
-            'supplier'      => $bid->company?->name ?? '—',
+            'supplier' => $bid->company?->name ?? '—',
             'supplier_info' => [
-                'id'                 => $bid->company_id,
-                'rating'             => null,
-                'reviews'            => 0,
+                'id' => $bid->company_id,
+                'rating' => null,
+                'reviews' => 0,
                 'verification_level' => $bid->company?->verification_level?->value ?? null,
-                'category'           => $bid->rfq?->category?->name ?? '—',
+                'category' => $bid->rfq?->category?->name ?? '—',
             ],
-            'old_amount'  => $this->money($price, $currency),
-            'savings'     => $this->money(0, $currency),
-            'diff'        => 0,
-            'price_up'    => false,
+            'old_amount' => $this->money($price, $currency),
+            'savings' => $this->money(0, $currency),
+            'diff' => 0,
+            'price_up' => false,
             'shortlisted' => false,
         ];
 
@@ -1014,20 +1027,20 @@ class BidController extends Controller
     public function store(StoreBidRequest $request, int $rfq): RedirectResponse
     {
         $rfqModel = Rfq::findOrFail($rfq);
-        $user     = $request->user();
+        $user = $request->user();
 
         abort_unless($user?->hasPermission('bid.submit'), 403, 'Forbidden: missing bids.create permission.');
-        abort_if($user->isAdmin() || !$user->company_id, 403, 'Only supplier/buyer accounts can submit bids.');
+        abort_if($user->isAdmin() || ! $user->company_id, 403, 'Only supplier/buyer accounts can submit bids.');
 
         // Normalize payment schedule: compute each milestone's amount from the
         // total price + percentage so downstream consumers (contract creation,
         // payment tracking) don't have to recompute it later.
-        $price    = (float) $request->input('price');
+        $price = (float) $request->input('price');
         $schedule = collect($request->input('payment_schedule', []))
             ->map(fn ($row) => [
-                'milestone'  => $row['milestone'] ?? '',
+                'milestone' => $row['milestone'] ?? '',
                 'percentage' => (float) ($row['percentage'] ?? 0),
-                'amount'     => round($price * ((float) ($row['percentage'] ?? 0)) / 100, 2),
+                'amount' => round($price * ((float) ($row['percentage'] ?? 0)) / 100, 2),
             ])
             ->values()
             ->all();
@@ -1041,7 +1054,7 @@ class BidController extends Controller
         $stagedAttachments = [];
         if ($request->hasFile('attachments')) {
             foreach ($request->file('attachments') as $file) {
-                if (!$file || !$file->isValid()) {
+                if (! $file || ! $file->isValid()) {
                     continue;
                 }
                 $path = $file->store('bid-attachments/staging', 'local');
@@ -1057,30 +1070,30 @@ class BidController extends Controller
         try {
             $result = DB::transaction(function () use ($request, $rfqModel, $user, $price, $schedule, $stagedAttachments) {
                 $created = $this->service->create([
-                    'rfq_id'             => $rfqModel->id,
-                    'company_id'         => $user->company_id,
-                    'provider_id'        => $user->id,
-                    'status'             => BidStatus::SUBMITTED,
-                    'price'              => $price,
-                    'currency'           => $request->input('currency', $rfqModel->currency ?? 'AED'),
+                    'rfq_id' => $rfqModel->id,
+                    'company_id' => $user->company_id,
+                    'provider_id' => $user->id,
+                    'status' => BidStatus::SUBMITTED,
+                    'price' => $price,
+                    'currency' => $request->input('currency', $rfqModel->currency ?? 'AED'),
                     'delivery_time_days' => $request->input('delivery_time_days'),
-                    'payment_terms'      => $request->input('payment_terms'),
-                    'payment_schedule'   => $schedule,
-                    'validity_date'      => $request->input('validity_date'),
-                    'notes'              => $request->input('notes'),
-                    'items'              => $request->input('items', []),
+                    'payment_terms' => $request->input('payment_terms'),
+                    'payment_schedule' => $schedule,
+                    'validity_date' => $request->input('validity_date'),
+                    'notes' => $request->input('notes'),
+                    'items' => $request->input('items', []),
                     // Phase 2 trade fields. The StoreBidRequest::prepareForValidation
                     // already computed and merged subtotal/tax/total based on the
                     // supplier's chosen treatment, so we just pass them through.
-                    'incoterm'             => $request->input('incoterm'),
-                    'country_of_origin'    => $request->input('country_of_origin'),
-                    'hs_code'              => $request->input('hs_code'),
-                    'tax_treatment'        => $request->input('tax_treatment'),
+                    'incoterm' => $request->input('incoterm'),
+                    'country_of_origin' => $request->input('country_of_origin'),
+                    'hs_code' => $request->input('hs_code'),
+                    'tax_treatment' => $request->input('tax_treatment'),
                     'tax_exemption_reason' => $request->input('tax_exemption_reason'),
-                    'tax_rate_snapshot'    => $request->input('tax_rate_snapshot'),
-                    'subtotal_excl_tax'    => $request->input('subtotal_excl_tax'),
-                    'tax_amount'           => $request->input('tax_amount'),
-                    'total_incl_tax'       => $request->input('total_incl_tax'),
+                    'tax_rate_snapshot' => $request->input('tax_rate_snapshot'),
+                    'subtotal_excl_tax' => $request->input('subtotal_excl_tax'),
+                    'tax_amount' => $request->input('tax_amount'),
+                    'total_incl_tax' => $request->input('total_incl_tax'),
                 ]);
 
                 // Business rule violation from the service — abort the
@@ -1089,10 +1102,10 @@ class BidController extends Controller
                     return $created;
                 }
 
-                if (!empty($stagedAttachments)) {
+                if (! empty($stagedAttachments)) {
                     $moved = [];
                     foreach ($stagedAttachments as $att) {
-                        $finalPath = "bid-attachments/{$created->id}/" . basename($att['path']);
+                        $finalPath = "bid-attachments/{$created->id}/".basename($att['path']);
                         Storage::disk('local')->move($att['path'], $finalPath);
                         $moved[] = array_merge($att, ['path' => $finalPath]);
                     }
@@ -1113,6 +1126,7 @@ class BidController extends Controller
             foreach ($stagedAttachments as $att) {
                 Storage::disk('local')->delete($att['path']);
             }
+
             return back()->withErrors(['bid' => $result])->withInput();
         }
 
@@ -1155,14 +1169,14 @@ class BidController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (!$lockedBid) {
+            if (! $lockedBid) {
                 abort(404);
             }
 
             // Lock the RFQ too — the createFromBid() side flips the RFQ
             // status to AWARDED and we don't want a sibling accept to
             // re-award the same RFQ in parallel.
-            \App\Models\Rfq::whereKey($lockedBid->rfq_id)->lockForUpdate()->first();
+            Rfq::whereKey($lockedBid->rfq_id)->lockForUpdate()->first();
 
             $currentStatus = $lockedBid->status instanceof \BackedEnum
                 ? $lockedBid->status->value
@@ -1172,7 +1186,7 @@ class BidController extends Controller
             // UNDER_REVIEW. Anything else (already accepted, rejected,
             // withdrawn) means the race lost — return a 409 so the buyer
             // sees a clear error instead of a confusing "second contract".
-            if (!in_array($currentStatus, [BidStatus::SUBMITTED->value, BidStatus::UNDER_REVIEW->value], true)) {
+            if (! in_array($currentStatus, [BidStatus::SUBMITTED->value, BidStatus::UNDER_REVIEW->value], true)) {
                 abort(409, 'This bid is no longer in an acceptable state — it may already have been accepted or withdrawn.');
             }
 
@@ -1201,7 +1215,7 @@ class BidController extends Controller
         // doesn't roll back the accept).
         $winningBid = $bid->fresh(['rfq.category', 'company', 'provider']);
         if ($winningBid->provider) {
-            $winningBid->provider->notify(new \App\Notifications\BidAcceptedNotification($winningBid, $contract));
+            $winningBid->provider->notify(new BidAcceptedNotification($winningBid, $contract));
         }
 
         // Notify rejected submitters with the procurement-grade "losing
@@ -1211,7 +1225,7 @@ class BidController extends Controller
         // rejected", which is what mature procurement platforms do.
         foreach ($rejectedBids as $rejected) {
             if ($rejected->provider) {
-                $rejected->provider->notify(new \App\Notifications\LosingBidNotification($rejected));
+                $rejected->provider->notify(new LosingBidNotification($rejected));
             }
         }
 
@@ -1226,18 +1240,18 @@ class BidController extends Controller
      * RFQ owner can reject) so a single bad id won't kill the whole batch.
      * Used by the "Reject Selected" button on the buyer's bid list.
      */
-    public function bulkReject(\Illuminate\Http\Request $request): RedirectResponse
+    public function bulkReject(Request $request): RedirectResponse
     {
         $user = auth()->user();
         abort_unless($user?->hasPermission('bid.accept'), 403, 'Forbidden: missing bids.evaluate permission.');
 
         $data = $request->validate([
-            'ids'   => ['required', 'array', 'min:1'],
+            'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer'],
         ]);
 
         $rejected = 0;
-        $skipped  = 0;
+        $skipped = 0;
 
         $bids = Bid::with(['rfq', 'provider'])->whereIn('id', $data['ids'])->get();
 
@@ -1245,6 +1259,7 @@ class BidController extends Controller
             // Same authorisation rule as the single-bid action: must own the RFQ.
             if ($bid->rfq?->company_id !== $user->company_id) {
                 $skipped++;
+
                 continue;
             }
 
@@ -1252,6 +1267,7 @@ class BidController extends Controller
             $statusValue = $this->statusValue($bid->status);
             if (! in_array($statusValue, ['submitted', 'under_review'], true)) {
                 $skipped++;
+
                 continue;
             }
 
@@ -1259,13 +1275,13 @@ class BidController extends Controller
             $rejected++;
 
             if ($bid->provider) {
-                $bid->provider->notify(new \App\Notifications\BidRejectedNotification($bid));
+                $bid->provider->notify(new BidRejectedNotification($bid));
             }
         }
 
         return back()->with('status', __('bids.bulk_reject_summary', [
             'rejected' => $rejected,
-            'skipped'  => $skipped,
+            'skipped' => $skipped,
         ]));
     }
 
@@ -1279,7 +1295,7 @@ class BidController extends Controller
 
         $result = $this->service->withdraw($bid->id);
 
-        if (!$result) {
+        if (! $result) {
             return back()->withErrors(['bid' => __('bids.cannot_withdraw')]);
         }
 
@@ -1295,7 +1311,7 @@ class BidController extends Controller
      */
     public function downloadAttachment(string $id, int $idx): StreamedResponse
     {
-        $bid  = $this->findOrFail($id)->load('rfq');
+        $bid = $this->findOrFail($id)->load('rfq');
         abort_unless(auth()->user()?->hasPermission('bid.view'), 403);
         $this->authorizeBidParticipant($bid);
 
@@ -1322,11 +1338,11 @@ class BidController extends Controller
 
         $price = (float) $bid->price;
         $pdf = Pdf::loadView('dashboard.bids.pdf', [
-            'bid'      => $bid,
+            'bid' => $bid,
             'schedule' => $this->buildPaymentSchedule($bid, $price),
         ]);
 
-        return $pdf->download($this->bidDisplayNumber($bid) . '.pdf');
+        return $pdf->download($this->bidDisplayNumber($bid).'.pdf');
     }
 
     private function findOrFail(string $id): Bid
@@ -1348,7 +1364,7 @@ class BidController extends Controller
     private function authorizeBidParticipant(Bid $bid): void
     {
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             abort(404);
         }
         if (method_exists($user, 'isAdmin') && $user->isAdmin()) {
@@ -1362,8 +1378,8 @@ class BidController extends Controller
             abort(404);
         }
         $isSupplier = $userCompanyId === (int) $bid->company_id;
-        $isBuyer    = $userCompanyId === (int) ($bid->rfq?->company_id ?? 0);
-        if (!$isSupplier && !$isBuyer) {
+        $isBuyer = $userCompanyId === (int) ($bid->rfq?->company_id ?? 0);
+        if (! $isSupplier && ! $isBuyer) {
             abort(404);
         }
     }
@@ -1371,13 +1387,13 @@ class BidController extends Controller
     private function mapBidStatus(string $status): string
     {
         return match ($status) {
-            'draft'        => 'draft',
-            'submitted'    => 'submitted',
+            'draft' => 'draft',
+            'submitted' => 'submitted',
             'under_review' => 'under_review',
-            'accepted'     => 'accepted',
-            'rejected'     => 'rejected',
-            'withdrawn'    => 'closed',
-            default        => 'draft',
+            'accepted' => 'accepted',
+            'rejected' => 'rejected',
+            'withdrawn' => 'closed',
+            default => 'draft',
         };
     }
 }

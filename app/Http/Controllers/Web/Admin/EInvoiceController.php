@@ -19,8 +19,7 @@ class EInvoiceController extends Controller
 {
     public function __construct(
         private readonly EInvoiceDispatcher $dispatcher,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): View
     {
@@ -35,31 +34,31 @@ class EInvoiceController extends Controller
         if ($q = $request->query('q')) {
             $query->where(function ($w) use ($q) {
                 $w->where('asp_submission_id', 'like', "%{$q}%")
-                  ->orWhere('fta_clearance_id', 'like', "%{$q}%")
-                  ->orWhereHas('taxInvoice', fn ($t) => $t->where('invoice_number', 'like', "%{$q}%"));
+                    ->orWhere('fta_clearance_id', 'like', "%{$q}%")
+                    ->orWhereHas('taxInvoice', fn ($t) => $t->where('invoice_number', 'like', "%{$q}%"));
             });
         }
 
         $submissions = $query->paginate(20)->withQueryString();
 
         $stats = [
-            'queued'    => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_QUEUED)->count(),
+            'queued' => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_QUEUED)->count(),
             'submitted' => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_SUBMITTED)->count(),
-            'accepted'  => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_ACCEPTED)->count(),
-            'rejected'  => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_REJECTED)->count(),
-            'failed'    => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_FAILED)->count(),
+            'accepted' => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_ACCEPTED)->count(),
+            'rejected' => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_REJECTED)->count(),
+            'failed' => EInvoiceSubmission::where('status', EInvoiceSubmission::STATUS_FAILED)->count(),
         ];
 
         return view('dashboard.admin.e-invoice.index', [
-            'submissions'     => $submissions,
-            'stats'           => $stats,
-            'filters'         => [
-                'q'      => $request->query('q'),
+            'submissions' => $submissions,
+            'stats' => $stats,
+            'filters' => [
+                'q' => $request->query('q'),
                 'status' => $request->query('status'),
             ],
             'einvoiceEnabled' => $this->dispatcher->isEnabled(),
             'currentProvider' => (string) config('einvoice.default_provider', 'mock'),
-            'currentEnv'      => (string) config('einvoice.environment', 'sandbox'),
+            'currentEnv' => (string) config('einvoice.environment', 'sandbox'),
         ]);
     }
 
@@ -69,7 +68,7 @@ class EInvoiceController extends Controller
 
         $submission = EInvoiceSubmission::findOrFail($id);
 
-        if (!$submission->isRetryable()) {
+        if (! $submission->isRetryable()) {
             return back()->withErrors(['retry' => __('einvoice.only_failed_can_retry')]);
         }
 

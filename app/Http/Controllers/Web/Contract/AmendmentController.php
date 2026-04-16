@@ -15,6 +15,7 @@ use App\Notifications\ContractAmendmentDecidedNotification;
 use App\Notifications\ContractAmendmentMessageNotification;
 use App\Notifications\ContractAmendmentProposedNotification;
 use App\Services\ContractService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -41,8 +42,7 @@ class AmendmentController extends Controller
 
     public function __construct(
         private readonly ContractService $service,
-    ) {
-    }
+    ) {}
 
     /**
      * Propose a new amendment. Stored as PENDING_APPROVAL; the contract's
@@ -52,33 +52,33 @@ class AmendmentController extends Controller
     public function propose(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
 
-        if (!$this->canAmendNow($contract)) {
+        if (! $this->canAmendNow($contract)) {
             return back()->withErrors(['amendment' => __('contracts.amendment_window_closed')]);
         }
 
         $validated = $request->validate([
-            'kind'          => ['required', 'in:modify,add'],
+            'kind' => ['required', 'in:modify,add'],
             'section_index' => ['required', 'integer', 'min:0'],
-            'item_index'    => ['nullable', 'integer', 'min:0'],
-            'new_text'      => ['required', 'string', 'max:2000'],
-            'reason'        => ['nullable', 'string', 'max:500'],
+            'item_index' => ['nullable', 'integer', 'min:0'],
+            'new_text' => ['required', 'string', 'max:2000'],
+            'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
         $sections = $this->parseTermsSections($contract->terms);
         $si = (int) $validated['section_index'];
-        if (!isset($sections[$si])) {
+        if (! isset($sections[$si])) {
             return back()->withErrors(['amendment' => __('contracts.amendment_section_missing')]);
         }
 
         $oldText = null;
         if ($validated['kind'] === 'modify') {
             $ii = (int) ($validated['item_index'] ?? -1);
-            if ($ii < 0 || !isset($sections[$si]['items'][$ii])) {
+            if ($ii < 0 || ! isset($sections[$si]['items'][$ii])) {
                 return back()->withErrors(['amendment' => __('contracts.amendment_clause_missing')]);
             }
             $oldText = $sections[$si]['items'][$ii];
@@ -90,25 +90,25 @@ class AmendmentController extends Controller
         $detectedLang = preg_match('/[\x{0600}-\x{06FF}]/u', $validated['new_text']) ? 'ar' : 'en';
 
         $amendment = ContractAmendment::create([
-            'contract_id'  => $contract->id,
+            'contract_id' => $contract->id,
             'from_version' => $contract->version,
-            'changes'      => [
-                'kind'          => $validated['kind'],
+            'changes' => [
+                'kind' => $validated['kind'],
                 'section_index' => $si,
                 'section_title' => $sections[$si]['title'] ?? '',
-                'item_index'    => $validated['kind'] === 'modify' ? (int) $validated['item_index'] : null,
-                'old_text'      => $oldText,
-                'new_text'      => $validated['new_text'],
-                'lang'          => $detectedLang,
+                'item_index' => $validated['kind'] === 'modify' ? (int) $validated['item_index'] : null,
+                'old_text' => $oldText,
+                'new_text' => $validated['new_text'],
+                'lang' => $detectedLang,
             ],
-            'reason'           => $validated['reason'] ?? null,
-            'status'           => AmendmentStatus::PENDING_APPROVAL,
-            'requested_by'     => $user->id,
+            'reason' => $validated['reason'] ?? null,
+            'status' => AmendmentStatus::PENDING_APPROVAL,
+            'requested_by' => $user->id,
             'approval_history' => [[
-                'event'      => 'proposed',
-                'user_id'    => $user->id,
+                'event' => 'proposed',
+                'user_id' => $user->id,
                 'company_id' => $user->company_id,
-                'at'         => now()->toIso8601String(),
+                'at' => now()->toIso8601String(),
             ]],
         ]);
 
@@ -133,12 +133,12 @@ class AmendmentController extends Controller
     public function approve(string $id, int $amendmentId): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
 
-        if (!$this->canAmendNow($contract)) {
+        if (! $this->canAmendNow($contract)) {
             return back()->withErrors(['amendment' => __('contracts.amendment_window_closed')]);
         }
 
@@ -155,20 +155,20 @@ class AmendmentController extends Controller
 
         DB::transaction(function () use ($contract, $amendment, $user) {
             $changes = $amendment->changes ?? [];
-            $si      = (int) ($changes['section_index'] ?? -1);
-            $ii      = (int) ($changes['item_index'] ?? -1);
-            $kind    = $changes['kind'] ?? '';
+            $si = (int) ($changes['section_index'] ?? -1);
+            $ii = (int) ($changes['item_index'] ?? -1);
+            $kind = $changes['kind'] ?? '';
             $newText = (string) ($changes['new_text'] ?? '');
 
             $decoded = is_string($contract->terms) ? json_decode($contract->terms, true) : $contract->terms;
             $isBilingual = is_array($decoded) && (isset($decoded['en']) || isset($decoded['ar']));
 
             $applyToSections = function (array $sections) use ($si, $ii, $kind, $newText) {
-                if (!isset($sections[$si])) {
+                if (! isset($sections[$si])) {
                     abort(422, __('contracts.amendment_section_missing'));
                 }
                 if ($kind === 'modify') {
-                    if ($ii < 0 || !isset($sections[$si]['items'][$ii])) {
+                    if ($ii < 0 || ! isset($sections[$si]['items'][$ii])) {
                         abort(422, __('contracts.amendment_clause_missing'));
                     }
                     $sections[$si]['items'][$ii] = $newText;
@@ -178,6 +178,7 @@ class AmendmentController extends Controller
                 foreach ($sections as $idx => $sec) {
                     $sections[$idx]['items'] = array_values($sec['items'] ?? []);
                 }
+
                 return array_values($sections);
             };
 
@@ -209,28 +210,28 @@ class AmendmentController extends Controller
             }
 
             $contract->update([
-                'terms'   => json_encode($newTerms, JSON_UNESCAPED_UNICODE),
+                'terms' => json_encode($newTerms, JSON_UNESCAPED_UNICODE),
                 'version' => $contract->version + 1,
             ]);
 
             $history = $amendment->approval_history ?? [];
             $history[] = [
-                'event'      => 'approved',
-                'user_id'    => $user->id,
+                'event' => 'approved',
+                'user_id' => $user->id,
                 'company_id' => $user->company_id,
-                'at'         => now()->toIso8601String(),
+                'at' => now()->toIso8601String(),
             ];
 
             $amendment->update([
-                'status'           => AmendmentStatus::APPROVED,
+                'status' => AmendmentStatus::APPROVED,
                 'approval_history' => $history,
             ]);
 
             ContractVersion::create([
                 'contract_id' => $contract->id,
-                'version'     => $contract->version,
-                'snapshot'    => $contract->fresh()->toArray(),
-                'created_by'  => $user->id,
+                'version' => $contract->version,
+                'snapshot' => $contract->fresh()->toArray(),
+                'created_by' => $user->id,
             ]);
         });
 
@@ -253,12 +254,12 @@ class AmendmentController extends Controller
     public function reject(string $id, int $amendmentId, Request $request): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
 
-        if (!$this->canAmendNow($contract)) {
+        if (! $this->canAmendNow($contract)) {
             return back()->withErrors(['amendment' => __('contracts.amendment_window_closed')]);
         }
 
@@ -279,15 +280,15 @@ class AmendmentController extends Controller
 
         $history = $amendment->approval_history ?? [];
         $history[] = [
-            'event'      => 'rejected',
-            'user_id'    => $user->id,
+            'event' => 'rejected',
+            'user_id' => $user->id,
             'company_id' => $user->company_id,
-            'reason'     => $validated['rejection_reason'] ?? null,
-            'at'         => now()->toIso8601String(),
+            'reason' => $validated['rejection_reason'] ?? null,
+            'at' => now()->toIso8601String(),
         ];
 
         $amendment->update([
-            'status'           => AmendmentStatus::REJECTED,
+            'status' => AmendmentStatus::REJECTED,
             'approval_history' => $history,
         ]);
 
@@ -311,7 +312,7 @@ class AmendmentController extends Controller
     public function cancel(string $id, int $amendmentId): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
@@ -328,14 +329,14 @@ class AmendmentController extends Controller
 
         $history = $amendment->approval_history ?? [];
         $history[] = [
-            'event'      => 'cancelled',
-            'user_id'    => $user->id,
+            'event' => 'cancelled',
+            'user_id' => $user->id,
             'company_id' => $user->company_id,
-            'at'         => now()->toIso8601String(),
+            'at' => now()->toIso8601String(),
         ];
 
         $amendment->update([
-            'status'           => AmendmentStatus::REJECTED,
+            'status' => AmendmentStatus::REJECTED,
             'approval_history' => $history,
         ]);
 
@@ -351,7 +352,7 @@ class AmendmentController extends Controller
     public function postMessage(string $id, int $amendmentId, Request $request): RedirectResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
@@ -359,7 +360,7 @@ class AmendmentController extends Controller
         // Once the contract has moved out of the pre-signature window the
         // amendment thread is closed; a stale browser tab must not be
         // able to keep appending messages after the contract is signed.
-        if (!$this->canAmendNow($contract)) {
+        if (! $this->canAmendNow($contract)) {
             return back()->withErrors(['amendment' => __('contracts.amendment_window_closed')]);
         }
 
@@ -371,9 +372,9 @@ class AmendmentController extends Controller
 
         $message = ContractAmendmentMessage::create([
             'contract_amendment_id' => $amendment->id,
-            'user_id'               => $user->id,
-            'company_id'            => $user->company_id,
-            'body'                  => trim($validated['body']),
+            'user_id' => $user->id,
+            'company_id' => $user->company_id,
+            'body' => trim($validated['body']),
         ]);
 
         $this->notifyAmendment(
@@ -385,7 +386,7 @@ class AmendmentController extends Controller
 
         return redirect()
             ->route('dashboard.contracts.show', ['id' => $contract->id])
-            ->withFragment('amendment-' . $amendment->id);
+            ->withFragment('amendment-'.$amendment->id);
     }
 
     /**
@@ -396,14 +397,14 @@ class AmendmentController extends Controller
     public function pollMessages(string $id, int $amendmentId, Request $request): JsonResponse
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
 
         $amendment = ContractAmendment::where('contract_id', $contract->id)->findOrFail($amendmentId);
 
-        $since  = $request->query('since');
+        $since = $request->query('since');
         $before = $request->query('before');
 
         $query = ContractAmendmentMessage::where('contract_amendment_id', $amendment->id)
@@ -413,14 +414,14 @@ class AmendmentController extends Controller
         if ($before !== null && $before !== '') {
             $beforeId = (int) $before;
             $query->where('id', '<', $beforeId)
-                  ->orderBy('created_at', 'desc')
-                  ->limit(20);
+                ->orderBy('created_at', 'desc')
+                ->limit(20);
             $messages = $query->get()->reverse()->values();
         } else {
             $sinceCarbon = null;
             if (is_string($since) && $since !== '') {
                 try {
-                    $sinceCarbon = \Carbon\Carbon::parse($since);
+                    $sinceCarbon = Carbon::parse($since);
                 } catch (\Throwable) {
                     $sinceCarbon = null;
                 }
@@ -433,16 +434,17 @@ class AmendmentController extends Controller
 
         return response()->json([
             'amendment_id' => $amendment->id,
-            'now'          => now()->toIso8601String(),
-            'messages'     => $messages->map(function (ContractAmendmentMessage $m) use ($user) {
-                $author = trim(($m->user?->first_name ?? '') . ' ' . ($m->user?->last_name ?? '')) ?: ($m->user?->email ?? '—');
+            'now' => now()->toIso8601String(),
+            'messages' => $messages->map(function (ContractAmendmentMessage $m) use ($user) {
+                $author = trim(($m->user?->first_name ?? '').' '.($m->user?->last_name ?? '')) ?: ($m->user?->email ?? '—');
+
                 return [
-                    'id'         => $m->id,
-                    'body'       => $m->body,
-                    'author'     => $author,
+                    'id' => $m->id,
+                    'body' => $m->body,
+                    'author' => $author,
                     'created_at' => $m->created_at?->toIso8601String(),
-                    'when'       => $m->created_at?->diffForHumans() ?? '—',
-                    'is_mine'    => $user && (int) $m->company_id === (int) $user->company_id,
+                    'when' => $m->created_at?->diffForHumans() ?? '—',
+                    'is_mine' => $user && (int) $m->company_id === (int) $user->company_id,
                 ];
             })->all(),
         ]);
@@ -455,7 +457,7 @@ class AmendmentController extends Controller
     public function versionsDiff(string $id, Request $request): View
     {
         $contract = $this->findContractOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
@@ -466,20 +468,20 @@ class AmendmentController extends Controller
 
         if ($versions->count() < 2) {
             return view('dashboard.contracts.versions-diff', [
-                'contract'  => $contract,
-                'versions'  => $versions,
-                'fromVer'   => null,
-                'toVer'     => null,
+                'contract' => $contract,
+                'versions' => $versions,
+                'fromVer' => null,
+                'toVer' => null,
                 'sectionsA' => [],
                 'sectionsB' => [],
-                'has_diff'  => false,
+                'has_diff' => false,
             ]);
         }
 
-        $maxVersion  = (int) $versions->max('version');
+        $maxVersion = (int) $versions->max('version');
         $defaultFrom = max(1, $maxVersion - 1);
-        $fromVer     = (int) $request->query('from', $defaultFrom);
-        $toVer       = (int) $request->query('to',   $maxVersion);
+        $fromVer = (int) $request->query('from', $defaultFrom);
+        $toVer = (int) $request->query('to', $maxVersion);
 
         $a = $versions->firstWhere('version', $fromVer);
         $b = $versions->firstWhere('version', $toVer);
@@ -489,6 +491,7 @@ class AmendmentController extends Controller
             if (is_string($terms)) {
                 $terms = json_decode($terms, true);
             }
+
             return $this->parseTermsSections($terms ?? []);
         };
 
@@ -496,13 +499,13 @@ class AmendmentController extends Controller
         $sectionsB = $b ? $extractSections($b->snapshot) : [];
 
         return view('dashboard.contracts.versions-diff', [
-            'contract'  => $contract,
-            'versions'  => $versions,
-            'fromVer'   => $fromVer,
-            'toVer'     => $toVer,
+            'contract' => $contract,
+            'versions' => $versions,
+            'fromVer' => $fromVer,
+            'toVer' => $toVer,
             'sectionsA' => $sectionsA,
             'sectionsB' => $sectionsB,
-            'has_diff'  => true,
+            'has_diff' => true,
         ]);
     }
 }

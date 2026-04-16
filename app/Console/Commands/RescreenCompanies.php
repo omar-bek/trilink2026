@@ -38,11 +38,11 @@ class RescreenCompanies extends Command
     public function handle(): int
     {
         $cutoff = now()->subDays(7);
-        $limit  = $this->option('limit') ? (int) $this->option('limit') : null;
+        $limit = $this->option('limit') ? (int) $this->option('limit') : null;
 
         $query = Company::query()
             ->where('status', 'active')
-            ->when(!$this->option('all'), function ($q) use ($cutoff) {
+            ->when(! $this->option('all'), function ($q) use ($cutoff) {
                 $q->where(function ($qq) use ($cutoff) {
                     $qq->whereNull('sanctions_screened_at')
                         ->orWhere('sanctions_screened_at', '<', $cutoff)

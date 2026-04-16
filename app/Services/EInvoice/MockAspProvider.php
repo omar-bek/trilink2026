@@ -41,26 +41,26 @@ class MockAspProvider implements AspProviderInterface
     {
         $now = CarbonImmutable::now();
 
-        $submissionId = 'MOCK-' . substr(hash('sha256', (string) $submission->id . $now->toIso8601String()), 0, 16);
-        $clearanceId  = 'FTA-MOCK-' . substr((string) $submission->payload_sha256, 0, 24);
+        $submissionId = 'MOCK-'.substr(hash('sha256', (string) $submission->id.$now->toIso8601String()), 0, 16);
+        $clearanceId = 'FTA-MOCK-'.substr((string) $submission->payload_sha256, 0, 24);
 
         $submission->update([
-            'status'                => EInvoiceSubmission::STATUS_ACCEPTED,
-            'asp_submission_id'     => $submissionId,
+            'status' => EInvoiceSubmission::STATUS_ACCEPTED,
+            'asp_submission_id' => $submissionId,
             'asp_acknowledgment_id' => $submissionId,
-            'fta_clearance_id'      => $clearanceId,
-            'submitted_at'          => $now,
-            'acknowledged_at'       => $now,
-            'asp_response_raw'      => [
-                'provider'      => 'mock',
+            'fta_clearance_id' => $clearanceId,
+            'submitted_at' => $now,
+            'acknowledged_at' => $now,
+            'asp_response_raw' => [
+                'provider' => 'mock',
                 'submission_id' => $submissionId,
-                'clearance_id'  => $clearanceId,
-                'received_at'   => $now->toIso8601String(),
-                'environment'   => $submission->asp_environment,
-                'note'          => 'Local mock provider — no external transmission. Replace with a real ASP before FTA Phase 1 go-live.',
+                'clearance_id' => $clearanceId,
+                'received_at' => $now->toIso8601String(),
+                'environment' => $submission->asp_environment,
+                'note' => 'Local mock provider — no external transmission. Replace with a real ASP before FTA Phase 1 go-live.',
             ],
-            'next_retry_at'         => null,
-            'error_message'         => null,
+            'next_retry_at' => null,
+            'error_message' => null,
         ]);
 
         return $submission->fresh();

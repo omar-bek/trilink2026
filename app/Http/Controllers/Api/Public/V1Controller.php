@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api\Public;
 
+use App\Enums\RfqStatus;
+use App\Enums\RfqType;
 use App\Http\Controllers\Controller;
 use App\Models\Bid;
 use App\Models\Contract;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Rfq;
+use App\Services\BidService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -34,13 +37,13 @@ class V1Controller extends Controller
 
         return response()->json([
             'data' => [
-                'id'         => $user->id,
-                'name'       => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')),
-                'email'      => $user->email,
-                'role'       => $user->role?->value,
-                'company'    => $user->company ? [
-                    'id'                 => $user->company->id,
-                    'name'               => $user->company->name,
+                'id' => $user->id,
+                'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')),
+                'email' => $user->email,
+                'role' => $user->role?->value,
+                'company' => $user->company ? [
+                    'id' => $user->company->id,
+                    'name' => $user->company->name,
                     'verification_level' => $user->company->verification_level?->value,
                 ] : null,
             ],
@@ -60,10 +63,10 @@ class V1Controller extends Controller
         return response()->json([
             'data' => $rfqs->items(),
             'meta' => [
-                'total'        => $rfqs->total(),
-                'per_page'     => $rfqs->perPage(),
+                'total' => $rfqs->total(),
+                'per_page' => $rfqs->perPage(),
                 'current_page' => $rfqs->currentPage(),
-                'last_page'    => $rfqs->lastPage(),
+                'last_page' => $rfqs->lastPage(),
             ],
         ]);
     }
@@ -89,7 +92,7 @@ class V1Controller extends Controller
         $bids = Bid::query()
             ->where(function ($q) use ($companyId) {
                 $q->where('company_id', $companyId)
-                  ->orWhereHas('rfq', fn ($r) => $r->where('company_id', $companyId));
+                    ->orWhereHas('rfq', fn ($r) => $r->where('company_id', $companyId));
             })
             ->latest()
             ->paginate(min((int) $request->query('per_page', 25), 100));
@@ -97,10 +100,10 @@ class V1Controller extends Controller
         return response()->json([
             'data' => $bids->items(),
             'meta' => [
-                'total'        => $bids->total(),
-                'per_page'     => $bids->perPage(),
+                'total' => $bids->total(),
+                'per_page' => $bids->perPage(),
                 'current_page' => $bids->currentPage(),
-                'last_page'    => $bids->lastPage(),
+                'last_page' => $bids->lastPage(),
             ],
         ]);
     }
@@ -113,7 +116,7 @@ class V1Controller extends Controller
         $contracts = Contract::query()
             ->where(function ($q) use ($companyId) {
                 $q->where('buyer_company_id', $companyId)
-                  ->orWhereJsonContains('parties', ['company_id' => $companyId]);
+                    ->orWhereJsonContains('parties', ['company_id' => $companyId]);
             })
             ->latest()
             ->paginate(min((int) $request->query('per_page', 25), 100));
@@ -121,10 +124,10 @@ class V1Controller extends Controller
         return response()->json([
             'data' => $contracts->items(),
             'meta' => [
-                'total'        => $contracts->total(),
-                'per_page'     => $contracts->perPage(),
+                'total' => $contracts->total(),
+                'per_page' => $contracts->perPage(),
                 'current_page' => $contracts->currentPage(),
-                'last_page'    => $contracts->lastPage(),
+                'last_page' => $contracts->lastPage(),
             ],
         ]);
     }
@@ -137,7 +140,7 @@ class V1Controller extends Controller
         $contract = Contract::query()
             ->where(function ($q) use ($companyId) {
                 $q->where('buyer_company_id', $companyId)
-                  ->orWhereJsonContains('parties', ['company_id' => $companyId]);
+                    ->orWhereJsonContains('parties', ['company_id' => $companyId]);
             })
             ->with(['payments', 'shipments'])
             ->findOrFail($id);
@@ -153,7 +156,7 @@ class V1Controller extends Controller
         $payments = Payment::query()
             ->where(function ($q) use ($companyId) {
                 $q->where('company_id', $companyId)
-                  ->orWhere('recipient_company_id', $companyId);
+                    ->orWhere('recipient_company_id', $companyId);
             })
             ->latest()
             ->paginate(min((int) $request->query('per_page', 25), 100));
@@ -161,10 +164,10 @@ class V1Controller extends Controller
         return response()->json([
             'data' => $payments->items(),
             'meta' => [
-                'total'        => $payments->total(),
-                'per_page'     => $payments->perPage(),
+                'total' => $payments->total(),
+                'per_page' => $payments->perPage(),
                 'current_page' => $payments->currentPage(),
-                'last_page'    => $payments->lastPage(),
+                'last_page' => $payments->lastPage(),
             ],
         ]);
     }
@@ -183,10 +186,10 @@ class V1Controller extends Controller
         return response()->json([
             'data' => $products->items(),
             'meta' => [
-                'total'        => $products->total(),
-                'per_page'     => $products->perPage(),
+                'total' => $products->total(),
+                'per_page' => $products->perPage(),
                 'current_page' => $products->currentPage(),
-                'last_page'    => $products->lastPage(),
+                'last_page' => $products->lastPage(),
             ],
         ]);
     }
@@ -208,27 +211,27 @@ class V1Controller extends Controller
         $user->company_id || abort(422, 'User has no company');
 
         $data = $request->validate([
-            'title'             => ['required', 'string', 'max:191'],
-            'description'       => ['nullable', 'string', 'max:2000'],
-            'type'              => ['nullable', 'string', 'max:32'],
-            'category_id'       => ['nullable', 'exists:categories,id'],
-            'budget'            => ['nullable', 'numeric', 'min:0'],
-            'currency'          => ['nullable', 'string', 'size:3'],
-            'deadline'          => ['nullable', 'date', 'after:now'],
-            'items'             => ['required', 'array', 'min:1'],
-            'items.*.name'      => ['required', 'string'],
-            'items.*.quantity'  => ['nullable', 'numeric', 'min:0'],
-            'items.*.unit'      => ['nullable', 'string'],
+            'title' => ['required', 'string', 'max:191'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'type' => ['nullable', 'string', 'max:32'],
+            'category_id' => ['nullable', 'exists:categories,id'],
+            'budget' => ['nullable', 'numeric', 'min:0'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'deadline' => ['nullable', 'date', 'after:now'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.name' => ['required', 'string'],
+            'items.*.quantity' => ['nullable', 'numeric', 'min:0'],
+            'items.*.unit' => ['nullable', 'string'],
             'delivery_location' => ['nullable', 'string', 'max:500'],
-            'is_anonymous'      => ['nullable', 'boolean'],
+            'is_anonymous' => ['nullable', 'boolean'],
         ]);
 
-        $rfq = \App\Models\Rfq::create(array_merge($data, [
+        $rfq = Rfq::create(array_merge($data, [
             'company_id' => $user->company_id,
-            'branch_id'  => $user->branch_id,
-            'status'     => \App\Enums\RfqStatus::OPEN->value,
-            'type'       => $data['type'] ?? \App\Enums\RfqType::SUPPLIER->value,
-            'currency'   => $data['currency'] ?? 'AED',
+            'branch_id' => $user->branch_id,
+            'status' => RfqStatus::OPEN->value,
+            'type' => $data['type'] ?? RfqType::SUPPLIER->value,
+            'currency' => $data['currency'] ?? 'AED',
         ]));
 
         return response()->json(['data' => $rfq], 201);
@@ -251,20 +254,20 @@ class V1Controller extends Controller
         $user->can('submitBid', $rfq) || abort(403, 'Not allowed to submit a bid on this RFQ');
 
         $data = $request->validate([
-            'price'              => ['required', 'numeric', 'min:0.01'],
-            'currency'           => ['nullable', 'string', 'size:3'],
+            'price' => ['required', 'numeric', 'min:0.01'],
+            'currency' => ['nullable', 'string', 'size:3'],
             'delivery_time_days' => ['nullable', 'integer', 'min:1'],
-            'payment_terms'      => ['nullable', 'string', 'max:500'],
-            'notes'              => ['nullable', 'string', 'max:2000'],
+            'payment_terms' => ['nullable', 'string', 'max:500'],
+            'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $service = app(\App\Services\BidService::class);
-        $result  = $service->create(array_merge($data, [
-            'rfq_id'      => $rfq->id,
-            'company_id'  => $user->company_id,
+        $service = app(BidService::class);
+        $result = $service->create(array_merge($data, [
+            'rfq_id' => $rfq->id,
+            'company_id' => $user->company_id,
             'provider_id' => $user->id,
-            'currency'    => $data['currency'] ?? $rfq->currency ?? 'AED',
-            'items'       => [],
+            'currency' => $data['currency'] ?? $rfq->currency ?? 'AED',
+            'items' => [],
         ]));
 
         if (is_string($result)) {
@@ -286,24 +289,24 @@ class V1Controller extends Controller
         $user->company_id || abort(422, 'User has no company');
 
         $data = $request->validate([
-            'name'           => ['required', 'string', 'max:191'],
-            'name_ar'        => ['nullable', 'string', 'max:191'],
-            'sku'            => ['nullable', 'string', 'max:64'],
-            'hs_code'        => ['nullable', 'string', 'max:16'],
-            'category_id'    => ['nullable', 'exists:categories,id'],
-            'description'    => ['nullable', 'string', 'max:2000'],
-            'base_price'     => ['required', 'numeric', 'min:0'],
-            'currency'       => ['required', 'string', 'size:3'],
-            'unit'           => ['required', 'string', 'max:32'],
-            'min_order_qty'  => ['required', 'integer', 'min:1'],
-            'stock_qty'      => ['nullable', 'integer', 'min:0'],
+            'name' => ['required', 'string', 'max:191'],
+            'name_ar' => ['nullable', 'string', 'max:191'],
+            'sku' => ['nullable', 'string', 'max:64'],
+            'hs_code' => ['nullable', 'string', 'max:16'],
+            'category_id' => ['nullable', 'exists:categories,id'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'base_price' => ['required', 'numeric', 'min:0'],
+            'currency' => ['required', 'string', 'size:3'],
+            'unit' => ['required', 'string', 'max:32'],
+            'min_order_qty' => ['required', 'integer', 'min:1'],
+            'stock_qty' => ['nullable', 'integer', 'min:0'],
             'lead_time_days' => ['required', 'integer', 'min:0', 'max:365'],
-            'is_active'      => ['nullable', 'boolean'],
+            'is_active' => ['nullable', 'boolean'],
         ]);
 
         $product = Product::create(array_merge($data, [
             'company_id' => $user->company_id,
-            'branch_id'  => $user->branch_id,
+            'branch_id' => $user->branch_id,
         ]));
 
         return response()->json(['data' => $product], 201);

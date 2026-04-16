@@ -16,11 +16,11 @@ class StoreDisputeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'contract_id'        => ['required', 'integer', 'exists:contracts,id'],
+            'contract_id' => ['required', 'integer', 'exists:contracts,id'],
             'against_company_id' => ['required', 'integer', 'exists:companies,id'],
-            'type'               => ['required', new Enum(DisputeType::class)],
-            'title'              => ['required', 'string', 'max:255'],
-            'description'        => ['required', 'string', 'max:5000'],
+            'type' => ['required', new Enum(DisputeType::class)],
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['required', 'string', 'max:5000'],
         ];
     }
 }

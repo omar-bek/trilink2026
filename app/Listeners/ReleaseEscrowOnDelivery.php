@@ -22,16 +22,14 @@ class ReleaseEscrowOnDelivery implements ShouldQueue
 {
     public string $queue = 'escrow';
 
-    public function __construct(private readonly EscrowService $escrowService)
-    {
-    }
+    public function __construct(private readonly EscrowService $escrowService) {}
 
     public function handle(ShipmentDelivered $event): void
     {
         $shipment = $event->shipment->fresh(['contract.escrowAccount', 'contract.payments']);
         $contract = $shipment?->contract;
 
-        if (!$contract || !$contract->escrowAccount || !$contract->escrowAccount->isActive()) {
+        if (! $contract || ! $contract->escrowAccount || ! $contract->escrowAccount->isActive()) {
             return;
         }
 
@@ -51,8 +49,8 @@ class ReleaseEscrowOnDelivery implements ShouldQueue
                 // releases on its next 10-minute tick.
                 Log::warning('Auto-release on delivery failed', [
                     'contract_id' => $contract->id,
-                    'payment_id'  => $payment->id,
-                    'error'       => $e->getMessage(),
+                    'payment_id' => $payment->id,
+                    'error' => $e->getMessage(),
                 ]);
             }
         }

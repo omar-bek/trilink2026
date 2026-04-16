@@ -36,7 +36,6 @@ interface SanctionsProviderInterface
      * @param  string  $name  Company legal name as registered on TriLink.
      * @param  string|null  $country  ISO-2 country code (helps disambiguate
      *                                common names like "Global Trading").
-     *
      * @return array{
      *     result: 'clean'|'hit'|'review'|'error',
      *     match_count: int,

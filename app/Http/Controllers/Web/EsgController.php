@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\CarbonFootprint;
 use App\Models\ConflictMineralsDeclaration;
-use App\Models\EsgQuestionnaire;
 use App\Models\ModernSlaveryStatement;
 use App\Services\Esg\EsgScoringService;
 use Illuminate\Http\RedirectResponse;
@@ -27,9 +26,7 @@ use Illuminate\View\View;
  */
 class EsgController extends Controller
 {
-    public function __construct(private readonly EsgScoringService $scoringService)
-    {
-    }
+    public function __construct(private readonly EsgScoringService $scoringService) {}
 
     public function index(): View
     {
@@ -43,7 +40,7 @@ class EsgController extends Controller
         $company = $user->company;
         $questionnaire = $company?->esgQuestionnaire;
         $modernSlavery = $company?->modernSlaveryStatements()->first();
-        $conflict      = $company?->conflictMineralsDeclarations()->first();
+        $conflict = $company?->conflictMineralsDeclarations()->first();
 
         // Roll up the company's last 12 months of carbon footprint via
         // the polymorphic relationship. Sum is computed in SQL to keep
@@ -54,11 +51,11 @@ class EsgController extends Controller
             : 0);
 
         return view('dashboard.esg.index', [
-            'questionnaire'  => $questionnaire,
+            'questionnaire' => $questionnaire,
             'modern_slavery' => $modernSlavery,
-            'conflict'       => $conflict,
-            'questions'      => EsgScoringService::questions(),
-            'total_co2'      => $totalCo2,
+            'conflict' => $conflict,
+            'questions' => EsgScoringService::questions(),
+            'total_co2' => $totalCo2,
         ]);
     }
 
@@ -77,8 +74,8 @@ class EsgController extends Controller
 
         // Strip empty/unknown answers so we don't poison the score with
         // submission noise. The questionnaire definition is authoritative.
-        $known    = array_keys(EsgScoringService::questions());
-        $answers  = collect($request->input('answers'))
+        $known = array_keys(EsgScoringService::questions());
+        $answers = collect($request->input('answers'))
             ->only($known)
             ->filter(fn ($v) => $v !== null && $v !== '')
             ->all();
@@ -98,25 +95,25 @@ class EsgController extends Controller
         abort_unless($user?->hasPermission('esg.manage'), 403);
 
         $data = $request->validate([
-            'reporting_year'   => ['required', 'integer', 'min:2020', 'max:2099'],
-            'statement'        => ['required', 'string', 'max:5000'],
-            'controls'         => ['nullable', 'array'],
-            'board_approved'   => ['nullable', 'boolean'],
-            'signed_by_name'   => ['nullable', 'string', 'max:191'],
-            'signed_by_title'  => ['nullable', 'string', 'max:191'],
+            'reporting_year' => ['required', 'integer', 'min:2020', 'max:2099'],
+            'statement' => ['required', 'string', 'max:5000'],
+            'controls' => ['nullable', 'array'],
+            'board_approved' => ['nullable', 'boolean'],
+            'signed_by_name' => ['nullable', 'string', 'max:191'],
+            'signed_by_title' => ['nullable', 'string', 'max:191'],
         ]);
 
         ModernSlaveryStatement::updateOrCreate(
             [
-                'company_id'     => $user->company_id,
+                'company_id' => $user->company_id,
                 'reporting_year' => $data['reporting_year'],
             ],
             [
-                'statement'       => $data['statement'],
-                'controls'        => $data['controls'] ?? [],
-                'board_approved'  => (bool) ($data['board_approved'] ?? false),
-                'approved_at'     => !empty($data['board_approved']) ? now()->toDateString() : null,
-                'signed_by_name'  => $data['signed_by_name'] ?? null,
+                'statement' => $data['statement'],
+                'controls' => $data['controls'] ?? [],
+                'board_approved' => (bool) ($data['board_approved'] ?? false),
+                'approved_at' => ! empty($data['board_approved']) ? now()->toDateString() : null,
+                'signed_by_name' => $data['signed_by_name'] ?? null,
                 'signed_by_title' => $data['signed_by_title'] ?? null,
             ],
         );
@@ -133,27 +130,27 @@ class EsgController extends Controller
         abort_unless($user?->hasPermission('esg.manage'), 403);
 
         $data = $request->validate([
-            'reporting_year'  => ['required', 'integer', 'min:2020', 'max:2099'],
-            'tin_status'      => ['required', 'string', 'in:conflict_free,in_progress,unknown'],
+            'reporting_year' => ['required', 'integer', 'min:2020', 'max:2099'],
+            'tin_status' => ['required', 'string', 'in:conflict_free,in_progress,unknown'],
             'tungsten_status' => ['required', 'string', 'in:conflict_free,in_progress,unknown'],
             'tantalum_status' => ['required', 'string', 'in:conflict_free,in_progress,unknown'],
-            'gold_status'     => ['required', 'string', 'in:conflict_free,in_progress,unknown'],
-            'smelters'        => ['nullable', 'array'],
-            'policy_url'      => ['nullable', 'url', 'max:500'],
+            'gold_status' => ['required', 'string', 'in:conflict_free,in_progress,unknown'],
+            'smelters' => ['nullable', 'array'],
+            'policy_url' => ['nullable', 'url', 'max:500'],
         ]);
 
         ConflictMineralsDeclaration::updateOrCreate(
             [
-                'company_id'     => $user->company_id,
+                'company_id' => $user->company_id,
                 'reporting_year' => $data['reporting_year'],
             ],
             [
-                'tin_status'      => $data['tin_status'],
+                'tin_status' => $data['tin_status'],
                 'tungsten_status' => $data['tungsten_status'],
                 'tantalum_status' => $data['tantalum_status'],
-                'gold_status'     => $data['gold_status'],
-                'smelters'        => $data['smelters'] ?? [],
-                'policy_url'      => $data['policy_url'] ?? null,
+                'gold_status' => $data['gold_status'],
+                'smelters' => $data['smelters'] ?? [],
+                'policy_url' => $data['policy_url'] ?? null,
             ],
         );
 
@@ -171,22 +168,22 @@ class EsgController extends Controller
         abort_unless($user?->hasPermission('esg.manage'), 403);
 
         $data = $request->validate([
-            'scope'        => ['required', 'integer', 'in:1,2,3'],
-            'co2e_kg'      => ['required', 'numeric', 'min:0'],
+            'scope' => ['required', 'integer', 'in:1,2,3'],
+            'co2e_kg' => ['required', 'numeric', 'min:0'],
             'period_start' => ['required', 'date'],
-            'period_end'   => ['required', 'date', 'after_or_equal:period_start'],
-            'notes'        => ['nullable', 'string', 'max:500'],
+            'period_end' => ['required', 'date', 'after_or_equal:period_start'],
+            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         CarbonFootprint::create([
-            'entity_type'  => CarbonFootprint::ENTITY_COMPANY,
-            'entity_id'    => $user->company_id,
-            'scope'        => (int) $data['scope'],
-            'co2e_kg'      => (float) $data['co2e_kg'],
+            'entity_type' => CarbonFootprint::ENTITY_COMPANY,
+            'entity_id' => $user->company_id,
+            'scope' => (int) $data['scope'],
+            'co2e_kg' => (float) $data['co2e_kg'],
             'period_start' => $data['period_start'],
-            'period_end'   => $data['period_end'],
-            'source'       => 'manual_entry',
-            'metadata'     => ['notes' => $data['notes'] ?? null, 'logged_by' => $user->id],
+            'period_end' => $data['period_end'],
+            'source' => 'manual_entry',
+            'metadata' => ['notes' => $data['notes'] ?? null, 'logged_by' => $user->id],
         ]);
 
         return back()->with('status', __('esg.carbon_entry_saved'));

@@ -2,15 +2,18 @@
 
 namespace App\Notifications;
 
+use App\Console\Commands\SendContractRenewalAlertsCommand;
 use App\Models\Contract;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
- * Fired by the daily {@see \App\Console\Commands\SendContractRenewalAlertsCommand}
+ * Fired by the daily {@see SendContractRenewalAlertsCommand}
  * when an active contract is approaching its end date. Lets the
  * procurement team plan a renewal (or wind-down) before the contract
  * silently expires.
@@ -22,8 +25,8 @@ use Illuminate\Notifications\Notification;
  */
 class ContractRenewalAlertNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Contract $contract,
@@ -34,8 +37,8 @@ class ContractRenewalAlertNotification extends Notification implements ShouldQue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'contract_milestones',
             ['database', 'mail']
         );
@@ -46,12 +49,12 @@ class ContractRenewalAlertNotification extends Notification implements ShouldQue
         $number = $this->contract->contract_number;
 
         return $this->baseMail($notifiable, 'notifications.contract.renewal_alert.subject', [
-                'number' => $number,
-                'days'   => $this->daysOut,
-            ])
+            'number' => $number,
+            'days' => $this->daysOut,
+        ])
             ->line($this->t($notifiable, 'notifications.contract.renewal_alert.line1', [
                 'number' => $number,
-                'days'   => $this->daysOut,
+                'days' => $this->daysOut,
             ]))
             ->action(
                 $this->t($notifiable, 'notifications.common.action_view_contract'),
@@ -62,14 +65,14 @@ class ContractRenewalAlertNotification extends Notification implements ShouldQue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'warning',
-            'title'       => $this->t($notifiable, 'notifications.contract.renewal_alert.title'),
-            'message'     => $this->t($notifiable, 'notifications.contract.renewal_alert.message', [
+            'type' => 'warning',
+            'title' => $this->t($notifiable, 'notifications.contract.renewal_alert.title'),
+            'message' => $this->t($notifiable, 'notifications.contract.renewal_alert.message', [
                 'number' => $this->contract->contract_number,
-                'days'   => $this->daysOut,
+                'days' => $this->daysOut,
             ]),
             'entity_type' => 'contract',
-            'entity_id'   => $this->contract->id,
+            'entity_id' => $this->contract->id,
         ];
     }
 }

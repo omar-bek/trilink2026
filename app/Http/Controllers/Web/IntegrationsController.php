@@ -59,18 +59,18 @@ class IntegrationsController extends Controller
         abort_unless($user?->hasPermission('integrations.manage'), 403);
 
         $data = $request->validate([
-            'label'  => ['required', 'string', 'max:100'],
-            'url'    => ['required', 'url', 'starts_with:https://', 'max:500'],
+            'label' => ['required', 'string', 'max:100'],
+            'url' => ['required', 'url', 'starts_with:https://', 'max:500'],
             'events' => ['nullable', 'string', 'max:500'],
         ]);
 
         $endpoint = WebhookEndpoint::create([
             'company_id' => $user->company_id,
-            'label'      => $data['label'],
-            'url'        => $data['url'],
-            'events'     => $data['events'] ?? '',
-            'secret'     => 'whsec_' . Str::random(48),
-            'is_active'  => true,
+            'label' => $data['label'],
+            'url' => $data['url'],
+            'events' => $data['events'] ?? '',
+            'secret' => 'whsec_'.Str::random(48),
+            'is_active' => true,
         ]);
 
         // Show the secret once on the next page so the manager can copy
@@ -88,6 +88,7 @@ class IntegrationsController extends Controller
         abort_unless($user?->hasPermission('integrations.manage'), 403);
 
         WebhookEndpoint::where('company_id', $user->company_id)->findOrFail($id)->delete();
+
         return back()->with('status', __('integrations.webhook_deleted'));
     }
 
@@ -103,7 +104,7 @@ class IntegrationsController extends Controller
 
         $endpoint = WebhookEndpoint::where('company_id', $user->company_id)->findOrFail($id);
         $delivery = $this->dispatcher->deliver($endpoint, 'webhook.test', [
-            'message'   => 'TriLink test event',
+            'message' => 'TriLink test event',
             'timestamp' => now()->toIso8601String(),
         ]);
 
@@ -120,18 +121,18 @@ class IntegrationsController extends Controller
         abort_unless($user?->hasPermission('integrations.manage'), 403);
 
         $data = $request->validate([
-            'type'        => ['required', 'string', 'in:odoo,netsuite,sap,quickbooks,custom'],
-            'label'       => ['required', 'string', 'max:100'],
-            'base_url'    => ['required', 'url', 'max:500'],
+            'type' => ['required', 'string', 'in:odoo,netsuite,sap,quickbooks,custom'],
+            'label' => ['required', 'string', 'max:100'],
+            'base_url' => ['required', 'url', 'max:500'],
             'credentials' => ['nullable', 'array'],
         ]);
 
         $connector = new ErpConnector([
             'company_id' => $user->company_id,
-            'type'       => $data['type'],
-            'label'      => $data['label'],
-            'base_url'   => $data['base_url'],
-            'is_active'  => true,
+            'type' => $data['type'],
+            'label' => $data['label'],
+            'base_url' => $data['base_url'],
+            'is_active' => true,
         ]);
         $connector->setCredentials($data['credentials'] ?? []);
         $connector->save();
@@ -147,6 +148,7 @@ class IntegrationsController extends Controller
         abort_unless($user?->hasPermission('integrations.manage'), 403);
 
         ErpConnector::where('company_id', $user->company_id)->findOrFail($id)->delete();
+
         return back()->with('status', __('integrations.connector_deleted'));
     }
 
@@ -164,16 +166,16 @@ class IntegrationsController extends Controller
         $request->validate(['contract_id' => ['required', 'integer', 'exists:contracts,id']]);
 
         $connector = ErpConnector::where('company_id', $user->company_id)->findOrFail($connectorId);
-        $contract  = Contract::where('buyer_company_id', $user->company_id)->findOrFail($request->input('contract_id'));
+        $contract = Contract::where('buyer_company_id', $user->company_id)->findOrFail($request->input('contract_id'));
 
         $adapter = $this->erpFactory->for($connector);
-        $result  = $adapter->pushContract($connector, $contract);
+        $result = $adapter->pushContract($connector, $contract);
 
         $connector->update(['last_sync_at' => now()]);
 
         return back()->with('status', __('integrations.contract_pushed', [
             'mode' => $result['mode'] ?? 'unknown',
-            'id'   => $result['external_id'] ?? '—',
+            'id' => $result['external_id'] ?? '—',
         ]));
     }
 }

@@ -29,8 +29,7 @@ class TaxInvoiceController extends Controller
 
     public function __construct(
         private readonly TaxInvoiceService $service,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): View
     {
@@ -43,10 +42,10 @@ class TaxInvoiceController extends Controller
         if ($q = $request->query('q')) {
             $query->where(function ($w) use ($q) {
                 $w->where('invoice_number', 'like', "%{$q}%")
-                  ->orWhere('supplier_name', 'like', "%{$q}%")
-                  ->orWhere('buyer_name', 'like', "%{$q}%")
-                  ->orWhere('supplier_trn', 'like', "%{$q}%")
-                  ->orWhere('buyer_trn', 'like', "%{$q}%");
+                    ->orWhere('supplier_name', 'like', "%{$q}%")
+                    ->orWhere('buyer_name', 'like', "%{$q}%")
+                    ->orWhere('supplier_trn', 'like', "%{$q}%")
+                    ->orWhere('buyer_trn', 'like', "%{$q}%");
             });
         }
 
@@ -65,7 +64,7 @@ class TaxInvoiceController extends Controller
         $stats = [
             'total_issued' => TaxInvoice::where('status', TaxInvoice::STATUS_ISSUED)->count(),
             'total_voided' => TaxInvoice::where('status', TaxInvoice::STATUS_VOIDED)->count(),
-            'this_month'   => TaxInvoice::whereMonth('issue_date', now()->month)
+            'this_month' => TaxInvoice::whereMonth('issue_date', now()->month)
                 ->whereYear('issue_date', now()->year)
                 ->count(),
             'vat_this_month' => $this->money(
@@ -79,11 +78,11 @@ class TaxInvoiceController extends Controller
 
         return view('dashboard.admin.tax-invoices.index', [
             'invoices' => $invoices,
-            'stats'    => $stats,
-            'filters'  => [
-                'q'      => $request->query('q'),
+            'stats' => $stats,
+            'filters' => [
+                'q' => $request->query('q'),
                 'status' => $request->query('status'),
-                'year'   => $request->query('year'),
+                'year' => $request->query('year'),
             ],
         ]);
     }
@@ -113,13 +112,13 @@ class TaxInvoiceController extends Controller
 
         $invoice = TaxInvoice::findOrFail($id);
 
-        if (!$invoice->pdf_path) {
+        if (! $invoice->pdf_path) {
             // PDF was never rendered (job failed, or invoice issued before
             // the renderer existed). Render it now and store it.
             $invoice = $this->service->renderAndStorePdf($invoice);
         }
 
-        if (!Storage::disk('local')->exists($invoice->pdf_path)) {
+        if (! Storage::disk('local')->exists($invoice->pdf_path)) {
             return back()->withErrors([
                 'pdf' => __('tax_invoices.pdf_missing'),
             ]);
@@ -127,7 +126,7 @@ class TaxInvoiceController extends Controller
 
         return Storage::disk('local')->download(
             $invoice->pdf_path,
-            $invoice->invoice_number . '.pdf',
+            $invoice->invoice_number.'.pdf',
             ['Content-Type' => 'application/pdf']
         );
     }

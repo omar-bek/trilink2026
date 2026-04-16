@@ -19,10 +19,13 @@ class CompanyDocument extends Model
 {
     use HasFactory, SoftDeletes;
 
-    public const STATUS_PENDING  = 'pending';
+    public const STATUS_PENDING = 'pending';
+
     public const STATUS_VERIFIED = 'verified';
+
     public const STATUS_REJECTED = 'rejected';
-    public const STATUS_EXPIRED  = 'expired';
+
+    public const STATUS_EXPIRED = 'expired';
 
     protected $fillable = [
         'company_id',
@@ -44,11 +47,11 @@ class CompanyDocument extends Model
     protected function casts(): array
     {
         return [
-            'type'        => DocumentType::class,
-            'issued_at'   => 'date',
-            'expires_at'  => 'date',
+            'type' => DocumentType::class,
+            'issued_at' => 'date',
+            'expires_at' => 'date',
             'verified_at' => 'datetime',
-            'file_size'   => 'integer',
+            'file_size' => 'integer',
         ];
     }
 

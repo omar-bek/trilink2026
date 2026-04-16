@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\Schema;
  * verification. The Phase 3 KYB upgrade adds Refinitiv-backed PEP
  * screening per row using `last_screened_at`.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('beneficial_owners', function (Blueprint $table) {

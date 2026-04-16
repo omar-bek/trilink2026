@@ -45,7 +45,7 @@ class DubaiTradeAdapter
     {
         $payload = $this->buildPayload($shipment);
 
-        if (!$this->isLive()) {
+        if (! $this->isLive()) {
             return $this->stubResponse();
         }
 
@@ -53,26 +53,29 @@ class DubaiTradeAdapter
             $response = Http::withToken($this->apiKey)
                 ->acceptJson()
                 ->timeout($this->timeout)
-                ->post($this->baseUrl . '/declarations', $payload);
+                ->post($this->baseUrl.'/declarations', $payload);
 
             if ($response->failed()) {
                 Log::warning('Dubai Trade declaration failed', [
                     'status' => $response->status(),
-                    'body'   => substr((string) $response->body(), 0, 500),
+                    'body' => substr((string) $response->body(), 0, 500),
                 ]);
-                return ['success' => false, 'error' => 'HTTP ' . $response->status()];
+
+                return ['success' => false, 'error' => 'HTTP '.$response->status()];
             }
 
             $body = $response->json();
+
             return [
-                'success'    => true,
-                'reference'  => (string) ($body['declaration_id'] ?? ''),
-                'status'     => (string) ($body['status'] ?? 'submitted'),
+                'success' => true,
+                'reference' => (string) ($body['declaration_id'] ?? ''),
+                'status' => (string) ($body['status'] ?? 'submitted'),
                 'submitted_at' => now()->toIso8601String(),
-                'mode'       => 'live',
+                'mode' => 'live',
             ];
         } catch (\Throwable $e) {
             Log::warning('Dubai Trade exception', ['error' => $e->getMessage()]);
+
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
@@ -86,17 +89,17 @@ class DubaiTradeAdapter
     private function buildPayload(Shipment $shipment): array
     {
         $contract = $shipment->contract;
-        $amounts  = is_array($contract?->amounts) ? $contract->amounts : [];
+        $amounts = is_array($contract?->amounts) ? $contract->amounts : [];
 
         return [
-            'tracking_number'  => $shipment->tracking_number,
-            'origin'           => $shipment->origin,
-            'destination'      => $shipment->destination,
-            'declared_value'   => (float) ($contract?->total_amount ?? 0),
-            'currency'         => $contract?->currency ?? 'AED',
+            'tracking_number' => $shipment->tracking_number,
+            'origin' => $shipment->origin,
+            'destination' => $shipment->destination,
+            'declared_value' => (float) ($contract?->total_amount ?? 0),
+            'currency' => $contract?->currency ?? 'AED',
             'consignee_tax_id' => $contract?->buyerCompany?->tax_number,
-            'shipper_tax_id'   => $shipment->company?->tax_number,
-            'lines'            => $amounts['lines'] ?? [],
+            'shipper_tax_id' => $shipment->company?->tax_number,
+            'lines' => $amounts['lines'] ?? [],
             'estimated_arrival' => $shipment->estimated_delivery?->toDateString(),
         ];
     }
@@ -104,11 +107,11 @@ class DubaiTradeAdapter
     private function stubResponse(): array
     {
         return [
-            'success'      => true,
-            'reference'    => 'DT-STUB-' . strtoupper(Str::random(10)),
-            'status'       => 'submitted',
+            'success' => true,
+            'reference' => 'DT-STUB-'.strtoupper(Str::random(10)),
+            'status' => 'submitted',
             'submitted_at' => now()->toIso8601String(),
-            'mode'         => 'stub',
+            'mode' => 'stub',
         ];
     }
 }

@@ -30,10 +30,10 @@ class ProductVariant extends Model
     protected function casts(): array
     {
         return [
-            'attributes'     => 'array',
+            'attributes' => 'array',
             'price_modifier' => 'decimal:2',
-            'stock_qty'      => 'integer',
-            'is_active'      => 'boolean',
+            'stock_qty' => 'integer',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -49,17 +49,19 @@ class ProductVariant extends Model
     public function effectivePrice(): float
     {
         $base = (float) ($this->product?->base_price ?? 0);
+
         return max(0.0, round($base + (float) $this->price_modifier, 2));
     }
 
     public function isPurchasable(): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
         if ($this->stock_qty !== null && $this->stock_qty <= 0) {
             return false;
         }
+
         return true;
     }
 }

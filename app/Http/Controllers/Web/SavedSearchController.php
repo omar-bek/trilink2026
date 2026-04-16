@@ -26,17 +26,17 @@ class SavedSearchController extends Controller
         abort_unless($user, 401);
 
         $data = $request->validate([
-            'label'         => ['required', 'string', 'max:200'],
+            'label' => ['required', 'string', 'max:200'],
             'resource_type' => ['required', 'string', 'in:rfqs,suppliers,products'],
-            'filters'       => ['nullable', 'array'],
+            'filters' => ['nullable', 'array'],
         ]);
 
         SavedSearch::create([
-            'user_id'       => $user->id,
-            'label'         => $data['label'],
+            'user_id' => $user->id,
+            'label' => $data['label'],
             'resource_type' => $data['resource_type'],
-            'filters'       => $data['filters'] ?? [],
-            'is_active'     => true,
+            'filters' => $data['filters'] ?? [],
+            'is_active' => true,
         ]);
 
         return back()->with('status', __('saved_searches.saved'));
@@ -48,7 +48,7 @@ class SavedSearchController extends Controller
      */
     public function toggle(int $id): RedirectResponse
     {
-        $user   = auth()->user();
+        $user = auth()->user();
         $search = SavedSearch::where('user_id', $user->id)->findOrFail($id);
 
         $search->update(['is_active' => ! $search->is_active]);

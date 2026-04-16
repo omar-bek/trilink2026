@@ -47,11 +47,12 @@ class ArchiveAuditLogsCommand extends Command
             'Retention policy: %d days (config/audit.php)',
             $retentionDays
         ));
-        $this->line('Cutoff date: ' . $cutoff->toDateString());
-        $this->line('Eligible rows for archive: ' . number_format($count));
+        $this->line('Cutoff date: '.$cutoff->toDateString());
+        $this->line('Eligible rows for archive: '.number_format($count));
 
         if ($count === 0) {
             $this->info('Nothing to archive.');
+
             return self::SUCCESS;
         }
 
@@ -63,6 +64,7 @@ class ArchiveAuditLogsCommand extends Command
             $this->line('To enable archival to S3 Object Lock + OpenTimestamps,');
             $this->line('see Phase 8 of docs/UAE_COMPLIANCE_ROADMAP.md.');
             $this->line('Set AUDIT_ARCHIVE_BACKEND in .env when ready.');
+
             return self::SUCCESS;
         }
 

@@ -81,6 +81,7 @@ class VerifyAuditChainCommand extends Command
                     $legacy++;
                     $previousHash = $log->hash;
                     $previousId = $log->id;
+
                     continue;
                 }
 
@@ -126,8 +127,9 @@ class VerifyAuditChainCommand extends Command
                 $checked, $legacy, count($errors)
             ));
             foreach ($errors as $err) {
-                $this->line('  ✗ ' . $err);
+                $this->line('  ✗ '.$err);
             }
+
             return self::FAILURE;
         }
 
@@ -137,7 +139,7 @@ class VerifyAuditChainCommand extends Command
                 $checked, $legacy
             ));
             if ($previousId !== null) {
-                $this->line('  Chain head: row #' . $previousId . ' → ' . $this->fmt($previousHash));
+                $this->line('  Chain head: row #'.$previousId.' → '.$this->fmt($previousHash));
             }
         }
 
@@ -162,6 +164,7 @@ class VerifyAuditChainCommand extends Command
             AuditLog::canonicalize($log->getAttributes()),
             null
         );
+
         // If the new recipe matches, it's a genuine genesis row (the very
         // first post-Phase-0 row), not legacy.
         return ! hash_equals($newRecipe, (string) $log->hash);
@@ -169,6 +172,6 @@ class VerifyAuditChainCommand extends Command
 
     protected function fmt(?string $hash): string
     {
-        return $hash === null ? '<null>' : substr($hash, 0, 12) . '…';
+        return $hash === null ? '<null>' : substr($hash, 0, 12).'…';
     }
 }

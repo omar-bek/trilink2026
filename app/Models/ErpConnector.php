@@ -20,11 +20,15 @@ class ErpConnector extends Model
 {
     use HasFactory;
 
-    public const TYPE_ODOO       = 'odoo';
-    public const TYPE_NETSUITE   = 'netsuite';
-    public const TYPE_SAP        = 'sap';
+    public const TYPE_ODOO = 'odoo';
+
+    public const TYPE_NETSUITE = 'netsuite';
+
+    public const TYPE_SAP = 'sap';
+
     public const TYPE_QUICKBOOKS = 'quickbooks';
-    public const TYPE_CUSTOM     = 'custom';
+
+    public const TYPE_CUSTOM = 'custom';
 
     protected $fillable = [
         'company_id',
@@ -40,9 +44,9 @@ class ErpConnector extends Model
     protected function casts(): array
     {
         return [
-            'is_active'    => 'boolean',
+            'is_active' => 'boolean',
             'last_sync_at' => 'datetime',
-            'metadata'     => 'array',
+            'metadata' => 'array',
         ];
     }
 
@@ -58,11 +62,12 @@ class ErpConnector extends Model
      */
     public function credentials(): array
     {
-        if (!$this->credentials_encrypted) {
+        if (! $this->credentials_encrypted) {
             return [];
         }
         $json = Crypt::decryptString($this->credentials_encrypted);
         $decoded = json_decode($json, true);
+
         return is_array($decoded) ? $decoded : [];
     }
 

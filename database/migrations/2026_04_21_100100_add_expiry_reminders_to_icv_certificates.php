@@ -20,7 +20,8 @@ use Illuminate\Support\Facades\Schema;
  * thresholds, sends the next-due notification, and bumps the column.
  * Setting it to 0 (or null) means "never notified yet".
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('icv_certificates', function (Blueprint $table) {

@@ -86,6 +86,7 @@ class SignatureGradeResolver
                 (float) config('signing.advanced_threshold_aed', self::DEFAULT_ADVANCED_THRESHOLD_AED),
                 0
             );
+
             return "High-value contract (above AED {$threshold}) — Federal Decree-Law 46/2021 Article 18 requires an Advanced Electronic Signature.";
         }
 
@@ -122,6 +123,7 @@ class SignatureGradeResolver
             'signing.advanced_threshold_aed',
             self::DEFAULT_ADVANCED_THRESHOLD_AED
         );
+
         return (float) ($contract->total_amount ?? 0) > $threshold;
     }
 
@@ -147,6 +149,7 @@ class SignatureGradeResolver
                 return true;
             }
         }
+
         return false;
     }
 }

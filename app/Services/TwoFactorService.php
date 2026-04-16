@@ -22,7 +22,9 @@ use Illuminate\Support\Str;
 class TwoFactorService
 {
     private const DIGITS = 6;
+
     private const PERIOD = 30;
+
     private const ALGORITHM = 'sha1';
 
     /**
@@ -44,7 +46,7 @@ class TwoFactorService
         $counter = intdiv($timestamp, self::PERIOD);
 
         $binary = $this->base32Decode($secret);
-        $counterBytes = pack('N*', 0) . pack('N*', $counter);
+        $counterBytes = pack('N*', 0).pack('N*', $counter);
 
         $hash = hash_hmac(self::ALGORITHM, $counterBytes, $binary, true);
         $offset = ord($hash[strlen($hash) - 1]) & 0x0F;
@@ -54,14 +56,15 @@ class TwoFactorService
             | (ord($hash[$offset + 3]) & 0xFF);
 
         $code = $truncated % (10 ** self::DIGITS);
+
         return str_pad((string) $code, self::DIGITS, '0', STR_PAD_LEFT);
     }
 
     /**
      * Verify a user-supplied 6-digit code against the secret.
      *
-     * @param int $window how many 30s steps before/after "now" to accept,
-     *                    to tolerate clock drift between phone and server
+     * @param  int  $window  how many 30s steps before/after "now" to accept,
+     *                       to tolerate clock drift between phone and server
      */
     public function verify(string $secret, string $code, int $window = 1): bool
     {
@@ -76,6 +79,7 @@ class TwoFactorService
                 return true;
             }
         }
+
         return false;
     }
 
@@ -86,14 +90,15 @@ class TwoFactorService
      */
     public function provisioningUri(string $secret, string $accountName, string $issuer): string
     {
-        $label = rawurlencode($issuer . ':' . $accountName);
+        $label = rawurlencode($issuer.':'.$accountName);
         $params = http_build_query([
-            'secret'    => $secret,
-            'issuer'    => $issuer,
+            'secret' => $secret,
+            'issuer' => $issuer,
             'algorithm' => strtoupper(self::ALGORITHM),
-            'digits'    => self::DIGITS,
-            'period'    => self::PERIOD,
+            'digits' => self::DIGITS,
+            'period' => self::PERIOD,
         ]);
+
         return "otpauth://totp/{$label}?{$params}";
     }
 
@@ -107,7 +112,7 @@ class TwoFactorService
     public function generateRecoveryCodes(int $count = 8): array
     {
         return collect(range(1, $count))
-            ->map(fn () => Str::lower(Str::random(5)) . '-' . Str::lower(Str::random(5)))
+            ->map(fn () => Str::lower(Str::random(5)).'-'.Str::lower(Str::random(5)))
             ->all();
     }
 
@@ -135,6 +140,7 @@ class TwoFactorService
         if ($bitsLeft > 0) {
             $output .= $alphabet[($buffer << (5 - $bitsLeft)) & 0x1F];
         }
+
         return $output;
     }
 
@@ -158,6 +164,7 @@ class TwoFactorService
                 $output .= chr(($buffer >> $bitsLeft) & 0xFF);
             }
         }
+
         return $output;
     }
 }

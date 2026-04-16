@@ -21,7 +21,8 @@ use Illuminate\Support\Facades\Schema;
  * command treats NULL as "genesis or pre-chain" and continues from there
  * without flagging the legacy gap as tampering.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('audit_logs', function (Blueprint $table) {

@@ -95,13 +95,13 @@ class UnspscSegmentsSeeder extends Seeder
             Category::firstOrCreate(
                 ['unspsc_code' => $unspsc8],
                 [
-                    'name'           => $row['en'],
-                    'name_ar'        => $row['ar'],
-                    'parent_id'      => null,
-                    'is_active'      => true,
+                    'name' => $row['en'],
+                    'name_ar' => $row['ar'],
+                    'parent_id' => null,
+                    'is_active' => true,
                     'unspsc_segment' => $code,
-                    'unspsc_family'  => null,
-                    'unspsc_class'   => null,
+                    'unspsc_family' => null,
+                    'unspsc_class' => null,
                     'unspsc_commodity' => null,
                 ]
             );

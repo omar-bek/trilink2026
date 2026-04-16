@@ -57,13 +57,15 @@ class ReportDataBreachCommand extends Command
             DataBreachNotification::SEVERITY_CRITICAL,
         ];
 
-        if (!in_array($severity, $allowedSeverities, true)) {
-            $this->error('Severity must be one of: ' . implode(', ', $allowedSeverities));
+        if (! in_array($severity, $allowedSeverities, true)) {
+            $this->error('Severity must be one of: '.implode(', ', $allowedSeverities));
+
             return self::FAILURE;
         }
 
         if ($description === '') {
             $this->error('A description is required so the responders know what to investigate.');
+
             return self::FAILURE;
         }
 

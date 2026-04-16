@@ -37,34 +37,34 @@ class ContractPartiesJunctionTest extends TestCase
     private function makeCompany(string $name, CompanyType $type): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => uniqid() . '@j.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => $name,
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => uniqid().'@j.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
     }
 
     public function test_creating_a_contract_populates_the_junction_for_buyer_and_every_party(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $logistics = $this->makeCompany('Logi Co', CompanyType::LOGISTICS);
 
         $contract = Contract::create([
-            'title'            => 'Multi-party',
+            'title' => 'Multi-party',
             'buyer_company_id' => $buyer->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [
                 ['company_id' => $supplier->id,  'role' => 'supplier'],
                 ['company_id' => $logistics->id, 'role' => 'logistics'],
             ],
-            'total_amount'     => 1000,
-            'currency'         => 'AED',
-            'start_date'       => now(),
-            'end_date'         => now()->addMonth(),
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonth(),
         ]);
 
         $rows = ContractParty::where('contract_id', $contract->id)->get();
@@ -84,19 +84,19 @@ class ContractPartiesJunctionTest extends TestCase
 
     public function test_updating_parties_json_re_syncs_the_junction(): void
     {
-        $buyer       = $this->makeCompany('Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer', CompanyType::BUYER);
         $supplierOld = $this->makeCompany('Old Supplier', CompanyType::SUPPLIER);
         $supplierNew = $this->makeCompany('New Supplier', CompanyType::SUPPLIER);
 
         $contract = Contract::create([
-            'title'            => 'Reshuffle',
+            'title' => 'Reshuffle',
             'buyer_company_id' => $buyer->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [['company_id' => $supplierOld->id, 'role' => 'supplier']],
-            'total_amount'     => 1000,
-            'currency'         => 'AED',
-            'start_date'       => now(),
-            'end_date'         => now()->addMonth(),
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [['company_id' => $supplierOld->id, 'role' => 'supplier']],
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonth(),
         ]);
 
         // Sanity: junction has buyer + old supplier.
@@ -126,36 +126,36 @@ class ContractPartiesJunctionTest extends TestCase
 
     public function test_for_company_scope_returns_every_contract_a_company_is_party_of(): void
     {
-        $buyer    = $this->makeCompany('Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier', CompanyType::SUPPLIER);
-        $other    = $this->makeCompany('Other', CompanyType::SUPPLIER);
+        $other = $this->makeCompany('Other', CompanyType::SUPPLIER);
 
         // 2 contracts where supplier is a party.
         Contract::create([
-            'title'            => 'A',
+            'title' => 'A',
             'buyer_company_id' => $buyer->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [['company_id' => $supplier->id, 'role' => 'supplier']],
-            'total_amount'     => 1, 'currency' => 'AED',
-            'start_date'       => now(), 'end_date' => now()->addMonth(),
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'total_amount' => 1, 'currency' => 'AED',
+            'start_date' => now(), 'end_date' => now()->addMonth(),
         ]);
         Contract::create([
-            'title'            => 'B',
+            'title' => 'B',
             'buyer_company_id' => $buyer->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [['company_id' => $supplier->id, 'role' => 'supplier']],
-            'total_amount'     => 2, 'currency' => 'AED',
-            'start_date'       => now(), 'end_date' => now()->addMonth(),
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'total_amount' => 2, 'currency' => 'AED',
+            'start_date' => now(), 'end_date' => now()->addMonth(),
         ]);
         // 1 contract where supplier is NOT a party — it's the
         // unrelated $other supplier instead.
         Contract::create([
-            'title'            => 'C',
+            'title' => 'C',
             'buyer_company_id' => $buyer->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [['company_id' => $other->id, 'role' => 'supplier']],
-            'total_amount'     => 3, 'currency' => 'AED',
-            'start_date'       => now(), 'end_date' => now()->addMonth(),
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [['company_id' => $other->id, 'role' => 'supplier']],
+            'total_amount' => 3, 'currency' => 'AED',
+            'start_date' => now(), 'end_date' => now()->addMonth(),
         ]);
 
         $supplierContracts = Contract::query()->forCompany($supplier->id)->get();
@@ -170,16 +170,16 @@ class ContractPartiesJunctionTest extends TestCase
 
     public function test_deleting_a_contract_cascades_to_the_junction(): void
     {
-        $buyer    = $this->makeCompany('Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier', CompanyType::SUPPLIER);
 
         $contract = Contract::create([
-            'title'            => 'Doomed',
+            'title' => 'Doomed',
             'buyer_company_id' => $buyer->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [['company_id' => $supplier->id, 'role' => 'supplier']],
-            'total_amount'     => 1, 'currency' => 'AED',
-            'start_date'       => now(), 'end_date' => now()->addMonth(),
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'total_amount' => 1, 'currency' => 'AED',
+            'start_date' => now(), 'end_date' => now()->addMonth(),
         ]);
 
         $this->assertSame(2, ContractParty::where('contract_id', $contract->id)->count());

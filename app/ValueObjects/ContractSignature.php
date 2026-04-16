@@ -2,8 +2,8 @@
 
 namespace App\ValueObjects;
 
-use Carbon\CarbonInterface;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 
 /**
  * Read-only view of one entry inside Contract.signatures JSON.
@@ -42,9 +42,10 @@ final class ContractSignature
     /** @return list<self> */
     public static function collection(?array $rows): array
     {
-        if (!$rows) {
+        if (! $rows) {
             return [];
         }
+
         return array_values(array_map(self::fromArray(...), $rows));
     }
 
@@ -63,13 +64,13 @@ final class ContractSignature
     public function toArray(): array
     {
         return array_filter([
-            'company_id'    => $this->companyId,
-            'signed_by'     => $this->signedBy,
-            'signed_at'     => $this->signedAt?->toIso8601String(),
-            'ip_address'    => $this->ipAddress,
-            'user_agent'    => $this->userAgent,
+            'company_id' => $this->companyId,
+            'signed_by' => $this->signedBy,
+            'signed_at' => $this->signedAt?->toIso8601String(),
+            'ip_address' => $this->ipAddress,
+            'user_agent' => $this->userAgent,
             'contract_hash' => $this->contractHash,
-            'consent_at'    => $this->consentAt?->toIso8601String(),
+            'consent_at' => $this->consentAt?->toIso8601String(),
         ], fn ($v) => $v !== null);
     }
 }

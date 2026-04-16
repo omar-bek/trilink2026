@@ -24,7 +24,8 @@ use Illuminate\Support\Facades\Schema;
  * scoring — exactly the behaviour the platform had before this
  * migration. No existing RFQ is changed.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('rfqs', function (Blueprint $table) {

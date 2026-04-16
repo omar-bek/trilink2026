@@ -9,8 +9,6 @@ use App\Models\Contract;
 use App\Models\Dispute;
 use App\Models\Payment;
 use App\Models\Rfq;
-use App\Models\Shipment;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
@@ -89,14 +87,14 @@ class ReportsController extends Controller
 
         // Platform summary stats
         $stats = [
-            'total_gmv'         => (float) Contract::where('status', 'active')->sum('total_amount'),
-            'total_payments'    => (float) Payment::where('status', 'completed')->sum('amount'),
-            'total_vat'         => (float) Payment::where('status', 'completed')->sum('vat_amount'),
-            'active_companies'  => Company::where('status', 'active')->count(),
-            'open_rfqs'         => Rfq::where('status', 'open')->count(),
-            'active_contracts'  => Contract::where('status', 'active')->count(),
-            'open_disputes'     => Dispute::whereNotIn('status', ['resolved'])->count(),
-            'avg_cycle_days'    => round((float) ($cycleTime ?? 0), 1),
+            'total_gmv' => (float) Contract::where('status', 'active')->sum('total_amount'),
+            'total_payments' => (float) Payment::where('status', 'completed')->sum('amount'),
+            'total_vat' => (float) Payment::where('status', 'completed')->sum('vat_amount'),
+            'active_companies' => Company::where('status', 'active')->count(),
+            'open_rfqs' => Rfq::where('status', 'open')->count(),
+            'active_contracts' => Contract::where('status', 'active')->count(),
+            'open_disputes' => Dispute::whereNotIn('status', ['resolved'])->count(),
+            'avg_cycle_days' => round((float) ($cycleTime ?? 0), 1),
         ];
 
         return view('dashboard.admin.reports.index', compact(
@@ -141,7 +139,7 @@ class ReportsController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="suppliers_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="suppliers_'.date('Y-m-d').'.csv"',
         ]);
     }
 
@@ -160,7 +158,7 @@ class ReportsController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="contracts_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="contracts_'.date('Y-m-d').'.csv"',
         ]);
     }
 
@@ -179,7 +177,7 @@ class ReportsController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="payments_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="payments_'.date('Y-m-d').'.csv"',
         ]);
     }
 }

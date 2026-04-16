@@ -34,7 +34,7 @@ class ScimController extends Controller
     public function index(Request $request): JsonResponse
     {
         $companyId = $request->user()->company_id;
-        $filter    = (string) $request->query('filter', '');
+        $filter = (string) $request->query('filter', '');
 
         $query = User::query()->where('company_id', $companyId);
 
@@ -48,20 +48,21 @@ class ScimController extends Controller
         $users = $query->orderBy('id')->limit(100)->get();
 
         return response()->json([
-            'schemas'      => ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
             'totalResults' => $users->count(),
-            'startIndex'   => 1,
+            'startIndex' => 1,
             'itemsPerPage' => $users->count(),
-            'Resources'    => $users->map(fn ($u) => $this->resource($u))->all(),
+            'Resources' => $users->map(fn ($u) => $this->resource($u))->all(),
         ]);
     }
 
     public function show(Request $request, string $externalId): JsonResponse
     {
         $user = $this->findByExternalId($request->user()->company_id, $externalId);
-        if (!$user) {
+        if (! $user) {
             return $this->scimError(404, 'User not found');
         }
+
         return response()->json($this->resource($user));
     }
 
@@ -69,12 +70,12 @@ class ScimController extends Controller
     {
         $payload = $request->json()->all();
 
-        $email   = $payload['userName'] ?? ($payload['emails'][0]['value'] ?? null);
-        $given   = $payload['name']['givenName']  ?? '';
-        $family  = $payload['name']['familyName'] ?? '';
-        $active  = (bool) ($payload['active'] ?? true);
+        $email = $payload['userName'] ?? ($payload['emails'][0]['value'] ?? null);
+        $given = $payload['name']['givenName'] ?? '';
+        $family = $payload['name']['familyName'] ?? '';
+        $active = (bool) ($payload['active'] ?? true);
 
-        if (!$email) {
+        if (! $email) {
             return $this->scimError(400, 'userName is required');
         }
 
@@ -90,10 +91,10 @@ class ScimController extends Controller
                 ['email' => $email, 'company_id' => $companyId],
                 [
                     'first_name' => $given,
-                    'last_name'  => $family,
-                    'password'   => Hash::make(Str::random(40)),
-                    'status'     => $active ? UserStatus::ACTIVE->value : UserStatus::INACTIVE->value,
-                    'role'       => 'buyer',
+                    'last_name' => $family,
+                    'password' => Hash::make(Str::random(40)),
+                    'status' => $active ? UserStatus::ACTIVE->value : UserStatus::INACTIVE->value,
+                    'role' => 'buyer',
                 ],
             );
 
@@ -105,8 +106,8 @@ class ScimController extends Controller
             ScimUser::updateOrCreate(
                 ['external_id' => $externalId],
                 [
-                    'user_id'      => $user->id,
-                    'is_active'    => $active,
+                    'user_id' => $user->id,
+                    'is_active' => $active,
                     'scim_payload' => $payload,
                 ],
             );
@@ -118,7 +119,7 @@ class ScimController extends Controller
     public function update(Request $request, string $externalId): JsonResponse
     {
         $user = $this->findByExternalId($request->user()->company_id, $externalId);
-        if (!$user) {
+        if (! $user) {
             return $this->scimError(404, 'User not found');
         }
 
@@ -131,14 +132,14 @@ class ScimController extends Controller
                 if (($op['op'] ?? '') !== 'replace') {
                     continue;
                 }
-                $path  = $op['path']  ?? '';
+                $path = $op['path'] ?? '';
                 $value = $op['value'] ?? null;
 
                 match ($path) {
-                    'active'        => $user->update(['status' => ((bool) $value) ? UserStatus::ACTIVE->value : UserStatus::INACTIVE->value]),
-                    'name.givenName'=> $user->update(['first_name' => $value]),
-                    'name.familyName'=> $user->update(['last_name' => $value]),
-                    default         => null,
+                    'active' => $user->update(['status' => ((bool) $value) ? UserStatus::ACTIVE->value : UserStatus::INACTIVE->value]),
+                    'name.givenName' => $user->update(['first_name' => $value]),
+                    'name.familyName' => $user->update(['last_name' => $value]),
+                    default => null,
                 };
             }
         } else {
@@ -146,9 +147,9 @@ class ScimController extends Controller
             $currentlyActive = ($user->status instanceof \BackedEnum ? $user->status->value : (string) $user->status) === UserStatus::ACTIVE->value;
             $newActive = (bool) ($payload['active'] ?? $currentlyActive);
             $user->update([
-                'first_name' => $payload['name']['givenName']  ?? $user->first_name,
-                'last_name'  => $payload['name']['familyName'] ?? $user->last_name,
-                'status'     => $newActive ? UserStatus::ACTIVE->value : UserStatus::INACTIVE->value,
+                'first_name' => $payload['name']['givenName'] ?? $user->first_name,
+                'last_name' => $payload['name']['familyName'] ?? $user->last_name,
+                'status' => $newActive ? UserStatus::ACTIVE->value : UserStatus::INACTIVE->value,
             ]);
         }
 
@@ -158,7 +159,7 @@ class ScimController extends Controller
     public function destroy(Request $request, string $externalId): JsonResponse
     {
         $user = $this->findByExternalId($request->user()->company_id, $externalId);
-        if (!$user) {
+        if (! $user) {
             return $this->scimError(404, 'User not found');
         }
 
@@ -173,9 +174,10 @@ class ScimController extends Controller
     private function findByExternalId(int $companyId, string $externalId): ?User
     {
         $shadow = ScimUser::where('external_id', $externalId)->first();
-        if (!$shadow) {
+        if (! $shadow) {
             return null;
         }
+
         return User::where('id', $shadow->user_id)->where('company_id', $companyId)->first();
     }
 
@@ -189,21 +191,21 @@ class ScimController extends Controller
         $statusValue = $user->status instanceof \BackedEnum ? $user->status->value : (string) $user->status;
 
         return [
-            'schemas'  => ['urn:ietf:params:scim:schemas:core:2.0:User'],
-            'id'       => $externalId ?: (string) $user->id,
+            'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:User'],
+            'id' => $externalId ?: (string) $user->id,
             'externalId' => $externalId,
             'userName' => $user->email,
-            'name'     => [
-                'givenName'  => $user->first_name,
+            'name' => [
+                'givenName' => $user->first_name,
                 'familyName' => $user->last_name,
             ],
-            'emails'   => [
+            'emails' => [
                 ['value' => $user->email, 'type' => 'work', 'primary' => true],
             ],
-            'active'   => $statusValue === UserStatus::ACTIVE->value,
-            'meta'     => [
+            'active' => $statusValue === UserStatus::ACTIVE->value,
+            'meta' => [
                 'resourceType' => 'User',
-                'created'      => $user->created_at?->toIso8601String(),
+                'created' => $user->created_at?->toIso8601String(),
                 'lastModified' => $user->updated_at?->toIso8601String(),
             ],
         ];
@@ -213,8 +215,8 @@ class ScimController extends Controller
     {
         return response()->json([
             'schemas' => ['urn:ietf:params:scim:api:messages:2.0:Error'],
-            'status'  => (string) $status,
-            'detail'  => $detail,
+            'status' => (string) $status,
+            'detail' => $detail,
         ], $status);
     }
 }

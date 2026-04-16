@@ -22,7 +22,7 @@ class CheckOwnership
 
         if ($resourceId) {
             $resource = $modelClass::find($resourceId);
-            if (!$resource) {
+            if (! $resource) {
                 return response()->json(['message' => 'Resource not found'], 404);
             }
 

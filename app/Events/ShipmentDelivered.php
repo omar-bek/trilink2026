@@ -20,7 +20,5 @@ class ShipmentDelivered
 {
     use Dispatchable, SerializesModels;
 
-    public function __construct(public readonly Shipment $shipment)
-    {
-    }
+    public function __construct(public readonly Shipment $shipment) {}
 }

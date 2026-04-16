@@ -31,11 +31,12 @@ use Throwable;
  * Triggered by TaxInvoiceService::issueCreditNote() the moment a
  * credit note is minted, gated by config('einvoice.enabled').
  */
-class SubmitEInvoiceCreditNoteJob implements ShouldQueue, ShouldBeUnique
+class SubmitEInvoiceCreditNoteJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $backoff = 60;
 
     public function __construct(
@@ -46,17 +47,17 @@ class SubmitEInvoiceCreditNoteJob implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        return 'einvoice-cn:' . $this->taxCreditNoteId;
+        return 'einvoice-cn:'.$this->taxCreditNoteId;
     }
 
     public function handle(EInvoiceDispatcher $dispatcher): void
     {
-        if (!$dispatcher->isEnabled()) {
+        if (! $dispatcher->isEnabled()) {
             return;
         }
 
         $creditNote = TaxCreditNote::find($this->taxCreditNoteId);
-        if (!$creditNote) {
+        if (! $creditNote) {
             // Loud failure: a credit note that was enqueued but is now
             // missing means either (a) it was deleted between enqueue
             // and execution, or (b) the enqueue site passed an invalid
@@ -71,10 +72,10 @@ class SubmitEInvoiceCreditNoteJob implements ShouldQueue, ShouldBeUnique
             try {
                 EInvoiceSubmission::create([
                     'tax_credit_note_id' => $this->taxCreditNoteId,
-                    'document_type'      => 'credit_note',
-                    'status'             => 'failed',
-                    'error_message'      => 'TaxCreditNote row not found at job execution time. The credit note was either deleted or never persisted.',
-                    'attempted_at'       => now(),
+                    'document_type' => 'credit_note',
+                    'status' => 'failed',
+                    'error_message' => 'TaxCreditNote row not found at job execution time. The credit note was either deleted or never persisted.',
+                    'attempted_at' => now(),
                 ]);
             } catch (Throwable $e) {
                 // The model schema may not yet have all those columns —
@@ -82,7 +83,7 @@ class SubmitEInvoiceCreditNoteJob implements ShouldQueue, ShouldBeUnique
                 // is the floor of the audit trail.
                 Log::warning('SubmitEInvoiceCreditNoteJob: failed to persist failed_submission row', [
                     'tax_credit_note_id' => $this->taxCreditNoteId,
-                    'error'              => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
 

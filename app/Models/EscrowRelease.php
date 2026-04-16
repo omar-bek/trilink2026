@@ -22,15 +22,22 @@ class EscrowRelease extends Model
     use HasFactory;
 
     public const TYPE_DEPOSIT = 'deposit';
-    public const TYPE_RELEASE = 'release';
-    public const TYPE_REFUND  = 'refund';
 
-    public const TRIGGER_MANUAL          = 'manual';
-    public const TRIGGER_AUTO_SIGNATURE  = 'auto_signature';
-    public const TRIGGER_AUTO_DELIVERY   = 'auto_delivery';
+    public const TYPE_RELEASE = 'release';
+
+    public const TYPE_REFUND = 'refund';
+
+    public const TRIGGER_MANUAL = 'manual';
+
+    public const TRIGGER_AUTO_SIGNATURE = 'auto_signature';
+
+    public const TRIGGER_AUTO_DELIVERY = 'auto_delivery';
+
     public const TRIGGER_AUTO_INSPECTION = 'auto_inspection';
-    public const TRIGGER_WEBHOOK         = 'webhook';
-    public const TRIGGER_CRON            = 'cron';
+
+    public const TRIGGER_WEBHOOK = 'webhook';
+
+    public const TRIGGER_CRON = 'cron';
 
     protected $fillable = [
         'escrow_account_id',
@@ -54,8 +61,8 @@ class EscrowRelease extends Model
     protected function casts(): array
     {
         return [
-            'amount'       => 'decimal:2',
-            'recorded_at'  => 'datetime',
+            'amount' => 'decimal:2',
+            'recorded_at' => 'datetime',
             'confirmed_at' => 'datetime',
         ];
     }

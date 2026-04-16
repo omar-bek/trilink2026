@@ -27,8 +27,8 @@ use Illuminate\Notifications\Notification;
  */
 class SanctionsHitDetectedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Company $company,
@@ -67,14 +67,14 @@ class SanctionsHitDetectedNotification extends Notification implements ShouldQue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'         => 'sanctions_hit',
-            'title'        => $this->t($notifiable, 'notifications.sanctions.hit.title'),
-            'message'      => $this->t($notifiable, 'notifications.sanctions.hit.message', ['name' => $this->company->name]),
-            'entity_type'  => 'company',
-            'entity_id'    => $this->company->id,
+            'type' => 'sanctions_hit',
+            'title' => $this->t($notifiable, 'notifications.sanctions.hit.title'),
+            'message' => $this->t($notifiable, 'notifications.sanctions.hit.message', ['name' => $this->company->name]),
+            'entity_type' => 'company',
+            'entity_id' => $this->company->id,
             'screening_id' => $this->screening->id,
-            'result'       => $this->screening->result,
-            'match_count'  => $this->screening->match_count,
+            'result' => $this->screening->result,
+            'match_count' => $this->screening->match_count,
         ];
     }
 }

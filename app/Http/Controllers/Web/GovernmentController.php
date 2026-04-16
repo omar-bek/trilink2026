@@ -34,6 +34,7 @@ class GovernmentController extends Controller
     private function monthExpr(string $column = 'created_at'): string
     {
         $driver = DB::connection()->getDriverName();
+
         return $driver === 'sqlite'
             ? "strftime('%Y-%m', {$column})"
             : "DATE_FORMAT({$column}, '%Y-%m')";
@@ -42,11 +43,11 @@ class GovernmentController extends Controller
     public function index(): View
     {
         $stats = [
-            'escalated'     => Dispute::where('escalated_to_government', true)->whereNotIn('status', ['resolved'])->count(),
-            'resolved'      => Dispute::where('status', 'resolved')->count(),
-            'companies'     => Company::count(),
-            'gmv'           => (float) Contract::where('status', 'active')->sum('total_amount'),
-            'vat_collected'  => (float) Payment::where('status', 'completed')->sum('vat_amount'),
+            'escalated' => Dispute::where('escalated_to_government', true)->whereNotIn('status', ['resolved'])->count(),
+            'resolved' => Dispute::where('status', 'resolved')->count(),
+            'companies' => Company::count(),
+            'gmv' => (float) Contract::where('status', 'active')->sum('total_amount'),
+            'vat_collected' => (float) Payment::where('status', 'completed')->sum('vat_amount'),
         ];
 
         $escalated = Dispute::with(['contract', 'company', 'againstCompany', 'raisedByUser'])
@@ -57,7 +58,7 @@ class GovernmentController extends Controller
 
         // Monthly GMV trend (12 months)
         $gmvTrend = DB::table('contracts')
-            ->select(DB::raw($this->monthExpr() . ' as month'), DB::raw('SUM(total_amount) as value'), DB::raw('COUNT(*) as count'))
+            ->select(DB::raw($this->monthExpr().' as month'), DB::raw('SUM(total_amount) as value'), DB::raw('COUNT(*) as count'))
             ->where('created_at', '>=', now()->subMonths(12))
             ->groupBy('month')
             ->orderBy('month')
@@ -95,10 +96,10 @@ class GovernmentController extends Controller
         $contracts = $query->paginate(20)->withQueryString();
 
         $stats = [
-            'total'    => Contract::count(),
-            'active'   => Contract::where('status', 'active')->count(),
-            'value'    => (float) Contract::where('status', 'active')->sum('total_amount'),
-            'signed'   => Contract::where('status', 'signed')->count(),
+            'total' => Contract::count(),
+            'active' => Contract::where('status', 'active')->count(),
+            'value' => (float) Contract::where('status', 'active')->sum('total_amount'),
+            'signed' => Contract::where('status', 'signed')->count(),
         ];
 
         return view('dashboard.gov.contracts', compact('contracts', 'stats'));
@@ -118,15 +119,15 @@ class GovernmentController extends Controller
 
         $stats = [
             'total_payments' => Payment::count(),
-            'completed'      => Payment::where('status', 'completed')->count(),
-            'total_amount'   => (float) Payment::where('status', 'completed')->sum('amount'),
-            'total_vat'      => (float) Payment::where('status', 'completed')->sum('vat_amount'),
+            'completed' => Payment::where('status', 'completed')->count(),
+            'total_amount' => (float) Payment::where('status', 'completed')->sum('amount'),
+            'total_vat' => (float) Payment::where('status', 'completed')->sum('vat_amount'),
         ];
 
         // Monthly payment trend
         $paymentTrend = DB::table('payments')
             ->where('status', 'completed')
-            ->select(DB::raw($this->monthExpr() . ' as month'), DB::raw('SUM(amount) as amount'), DB::raw('SUM(vat_amount) as vat'))
+            ->select(DB::raw($this->monthExpr().' as month'), DB::raw('SUM(amount) as amount'), DB::raw('SUM(vat_amount) as vat'))
             ->where('created_at', '>=', now()->subMonths(12))
             ->groupBy('month')
             ->orderBy('month')
@@ -139,9 +140,9 @@ class GovernmentController extends Controller
     public function icvReport(): View
     {
         $stats = [
-            'total_certs'   => IcvCertificate::count(),
-            'verified'      => IcvCertificate::where('status', 'verified')->count(),
-            'avg_score'     => round((float) IcvCertificate::where('status', 'verified')->avg('score'), 1),
+            'total_certs' => IcvCertificate::count(),
+            'verified' => IcvCertificate::where('status', 'verified')->count(),
+            'avg_score' => round((float) IcvCertificate::where('status', 'verified')->avg('score'), 1),
             'expiring_soon' => IcvCertificate::where('status', 'verified')
                 ->where('expires_date', '<=', now()->addDays(60))
                 ->where('expires_date', '>', now())
@@ -240,9 +241,9 @@ class GovernmentController extends Controller
     public function collusionReport(): View
     {
         $stats = [
-            'total_alerts'  => (int) DB::table('collusion_alerts')->count(),
-            'open'          => (int) DB::table('collusion_alerts')->where('status', 'open')->count(),
-            'confirmed'     => (int) DB::table('collusion_alerts')->where('status', 'confirmed')->count(),
+            'total_alerts' => (int) DB::table('collusion_alerts')->count(),
+            'open' => (int) DB::table('collusion_alerts')->where('status', 'open')->count(),
+            'confirmed' => (int) DB::table('collusion_alerts')->where('status', 'confirmed')->count(),
             'investigating' => (int) DB::table('collusion_alerts')->where('status', 'investigating')->count(),
         ];
 
@@ -266,6 +267,7 @@ class GovernmentController extends Controller
             ->get()
             ->map(function ($row) {
                 $row->evidence = json_decode($row->evidence, true) ?? [];
+
                 return $row;
             });
 
@@ -277,30 +279,30 @@ class GovernmentController extends Controller
     {
         $esgStats = [
             'companies_with_esg' => DB::table('esg_questionnaires')->distinct('company_id')->count('company_id'),
-            'avg_environmental'  => round((float) DB::table('esg_questionnaires')->avg('environmental_score'), 1),
-            'avg_social'         => round((float) DB::table('esg_questionnaires')->avg('social_score'), 1),
-            'avg_governance'     => round((float) DB::table('esg_questionnaires')->avg('governance_score'), 1),
-            'avg_overall'        => round((float) DB::table('esg_questionnaires')->avg('overall_score'), 1),
+            'avg_environmental' => round((float) DB::table('esg_questionnaires')->avg('environmental_score'), 1),
+            'avg_social' => round((float) DB::table('esg_questionnaires')->avg('social_score'), 1),
+            'avg_governance' => round((float) DB::table('esg_questionnaires')->avg('governance_score'), 1),
+            'avg_overall' => round((float) DB::table('esg_questionnaires')->avg('overall_score'), 1),
         ];
 
         // Carbon footprint
         $carbonStats = [
             'total_co2e_tonnes' => round((float) DB::table('carbon_footprints')->sum('co2e_kg') / 1000, 1),
-            'scope1'            => round((float) DB::table('carbon_footprints')->where('scope', 1)->sum('co2e_kg') / 1000, 1),
-            'scope2'            => round((float) DB::table('carbon_footprints')->where('scope', 2)->sum('co2e_kg') / 1000, 1),
-            'scope3'            => round((float) DB::table('carbon_footprints')->where('scope', 3)->sum('co2e_kg') / 1000, 1),
+            'scope1' => round((float) DB::table('carbon_footprints')->where('scope', 1)->sum('co2e_kg') / 1000, 1),
+            'scope2' => round((float) DB::table('carbon_footprints')->where('scope', 2)->sum('co2e_kg') / 1000, 1),
+            'scope3' => round((float) DB::table('carbon_footprints')->where('scope', 3)->sum('co2e_kg') / 1000, 1),
         ];
 
         // Modern slavery
         $slaveryStats = [
             'statements_filed' => DB::table('modern_slavery_statements')->count(),
-            'board_approved'   => DB::table('modern_slavery_statements')->where('board_approved', true)->count(),
+            'board_approved' => DB::table('modern_slavery_statements')->where('board_approved', true)->count(),
         ];
 
         // Conflict minerals
         $mineralsStats = [
-            'declarations'   => DB::table('conflict_minerals_declarations')->count(),
-            'conflict_free'  => DB::table('conflict_minerals_declarations')
+            'declarations' => DB::table('conflict_minerals_declarations')->count(),
+            'conflict_free' => DB::table('conflict_minerals_declarations')
                 ->where('tin_status', 'conflict_free')
                 ->where('tungsten_status', 'conflict_free')
                 ->where('tantalum_status', 'conflict_free')
@@ -323,10 +325,10 @@ class GovernmentController extends Controller
     {
         $stats = [
             'total_screenings' => SanctionsScreening::count(),
-            'clean'            => SanctionsScreening::where('result', 'clean')->count(),
-            'hits'             => SanctionsScreening::where('result', 'hit')->count(),
-            'reviews'          => SanctionsScreening::where('result', 'review')->count(),
-            'errors'           => SanctionsScreening::where('result', 'error')->count(),
+            'clean' => SanctionsScreening::where('result', 'clean')->count(),
+            'hits' => SanctionsScreening::where('result', 'hit')->count(),
+            'reviews' => SanctionsScreening::where('result', 'review')->count(),
+            'errors' => SanctionsScreening::where('result', 'error')->count(),
         ];
 
         // Recent hits
@@ -338,7 +340,7 @@ class GovernmentController extends Controller
 
         // Monthly screening trend
         $screeningTrend = DB::table('sanctions_screenings')
-            ->select(DB::raw($this->monthExpr() . ' as month'), DB::raw('COUNT(*) as total'), DB::raw("SUM(CASE WHEN result = 'hit' THEN 1 ELSE 0 END) as hits"))
+            ->select(DB::raw($this->monthExpr().' as month'), DB::raw('COUNT(*) as total'), DB::raw("SUM(CASE WHEN result = 'hit' THEN 1 ELSE 0 END) as hits"))
             ->where('created_at', '>=', now()->subMonths(12))
             ->groupBy('month')
             ->orderBy('month')
@@ -386,7 +388,7 @@ class GovernmentController extends Controller
 
         // New registrations (monthly trend)
         $registrationTrend = DB::table('companies')
-            ->select(DB::raw($this->monthExpr() . ' as month'), DB::raw('COUNT(*) as count'))
+            ->select(DB::raw($this->monthExpr().' as month'), DB::raw('COUNT(*) as count'))
             ->where('created_at', '>=', now()->subMonths(12))
             ->groupBy('month')
             ->orderBy('month')
@@ -416,10 +418,10 @@ class GovernmentController extends Controller
         $disputes = $query->paginate(20)->withQueryString();
 
         $stats = [
-            'total'     => Dispute::count(),
+            'total' => Dispute::count(),
             'escalated' => Dispute::where('escalated_to_government', true)->whereNotIn('status', ['resolved'])->count(),
-            'resolved'  => Dispute::where('status', 'resolved')->count(),
-            'avg_days'  => round((float) Dispute::where('status', 'resolved')
+            'resolved' => Dispute::where('status', 'resolved')->count(),
+            'avg_days' => round((float) Dispute::where('status', 'resolved')
                 ->whereNotNull('resolved_at')
                 ->selectRaw('AVG(DATEDIFF(resolved_at, created_at)) as d')
                 ->value('d'), 1),
@@ -442,11 +444,11 @@ class GovernmentController extends Controller
 
         return match ($type) {
             'contracts' => $this->exportContracts(),
-            'payments'  => $this->exportPayments(),
+            'payments' => $this->exportPayments(),
             'companies' => $this->exportCompanies(),
-            'disputes'  => $this->exportDisputes(),
-            'icv'       => $this->exportIcv(),
-            default     => abort(404),
+            'disputes' => $this->exportDisputes(),
+            'icv' => $this->exportIcv(),
+            default => abort(404),
         };
     }
 
@@ -465,7 +467,7 @@ class GovernmentController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="gov_contracts_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="gov_contracts_'.date('Y-m-d').'.csv"',
         ]);
     }
 
@@ -484,7 +486,7 @@ class GovernmentController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="gov_payments_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="gov_payments_'.date('Y-m-d').'.csv"',
         ]);
     }
 
@@ -502,7 +504,7 @@ class GovernmentController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="gov_companies_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="gov_companies_'.date('Y-m-d').'.csv"',
         ]);
     }
 
@@ -521,7 +523,7 @@ class GovernmentController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="gov_disputes_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="gov_disputes_'.date('Y-m-d').'.csv"',
         ]);
     }
 
@@ -541,7 +543,7 @@ class GovernmentController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="gov_icv_' . date('Y-m-d') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="gov_icv_'.date('Y-m-d').'.csv"',
         ]);
     }
 }

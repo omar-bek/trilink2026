@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Web;
 
 use App\Enums\BidStatus;
+use App\Enums\ShipmentStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Models\Bid;
@@ -10,6 +11,9 @@ use App\Models\Contract;
 use App\Models\Payment;
 use App\Models\PurchaseRequest;
 use App\Models\Rfq;
+use App\Models\Shipment;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 /**
@@ -48,9 +52,9 @@ class PerformanceController extends Controller
         // supplier seat still sees supplier KPIs on day one. When both
         // sides have activity, keep buyer as the safer default — contracts
         // + spend are meaningful to any company.
-        if ($hasSupplierBids && !$hasBuyerRfqs) {
+        if ($hasSupplierBids && ! $hasBuyerRfqs) {
             $showSupplier = true;
-        } elseif (!$hasSupplierBids && !$hasBuyerRfqs) {
+        } elseif (! $hasSupplierBids && ! $hasBuyerRfqs) {
             $showSupplier = auth()->user()?->role?->value === 'supplier';
         } else {
             $showSupplier = false;
@@ -84,18 +88,18 @@ class PerformanceController extends Controller
 
         // Real month-over-month growth — comparing this month to last month —
         // so the headline trend badges aren't a hardcoded lie.
-        $bidsGrowth    = $this->growthPercent(Bid::class, $companyId, 'company_id', 'created_at');
+        $bidsGrowth = $this->growthPercent(Bid::class, $companyId, 'company_id', 'created_at');
         $revenueGrowth = $this->growthPercent(Payment::class, $companyId, 'recipient_company_id', 'created_at', 'total_amount', ['status' => 'completed']);
 
         $stats = [
-            'total_bids'    => $totalBids,
-            'bids_won'      => $wonBids,
-            'win_rate'      => $winRate,
+            'total_bids' => $totalBids,
+            'bids_won' => $wonBids,
+            'win_rate' => $winRate,
             'total_revenue' => $this->shortMoney((float) $totalRevenue),
-            'avg_rating'    => $this->resolveAvgRating($companyId),
-            'rating_count'  => $this->resolveRatingCount($companyId),
-            'bids_growth'   => $bidsGrowth,
-            'revenue_growth'=> $revenueGrowth,
+            'avg_rating' => $this->resolveAvgRating($companyId),
+            'rating_count' => $this->resolveRatingCount($companyId),
+            'bids_growth' => $bidsGrowth,
+            'revenue_growth' => $revenueGrowth,
         ];
 
         $monthly = collect(range(5, 0))->map(function ($monthsBack) use ($companyId) {
@@ -122,21 +126,21 @@ class PerformanceController extends Controller
                 ->sum('total_amount');
 
             return [
-                'label'     => $month->format('M Y'),
+                'label' => $month->format('M Y'),
                 'submitted' => $submitted,
-                'won'       => $won,
-                'win_rate'  => $submitted > 0 ? round(($won / $submitted) * 100, 1) : 0,
-                'revenue'   => $this->shortMoney((float) $revenue),
+                'won' => $won,
+                'win_rate' => $submitted > 0 ? round(($won / $submitted) * 100, 1) : 0,
+                'revenue' => $this->shortMoney((float) $revenue),
             ];
         })->all();
 
         $quality = $this->qualityMetrics($companyId, true);
 
         return view('dashboard.performance.index', [
-            'stats'   => $stats,
+            'stats' => $stats,
             'monthly' => $monthly,
             'quality' => $quality,
-            'role'    => 'supplier',
+            'role' => 'supplier',
         ]);
     }
 
@@ -164,20 +168,20 @@ class PerformanceController extends Controller
             ->sum('total_amount');
 
         // Real month-over-month growth for the headline KPIs.
-        $prGrowth      = $this->growthPercent(PurchaseRequest::class, $companyId, 'company_id', 'created_at');
-        $spendGrowth   = $this->growthPercent(Payment::class, $companyId, 'company_id', 'created_at', 'total_amount', ['status' => 'completed']);
+        $prGrowth = $this->growthPercent(PurchaseRequest::class, $companyId, 'company_id', 'created_at');
+        $spendGrowth = $this->growthPercent(Payment::class, $companyId, 'company_id', 'created_at', 'total_amount', ['status' => 'completed']);
 
         // For the buyer view we keep the same view template but reuse its
         // KPI slots with buyer-relevant numbers.
         $stats = [
-            'total_bids'    => $totalPRs,           // → "Purchase Requests"
-            'bids_won'      => $totalRfqs,          // → "RFQs Published"
-            'win_rate'      => $totalContracts,     // → "Active Contracts"
+            'total_bids' => $totalPRs,           // → "Purchase Requests"
+            'bids_won' => $totalRfqs,          // → "RFQs Published"
+            'win_rate' => $totalContracts,     // → "Active Contracts"
             'total_revenue' => $this->shortMoney((float) $totalSpend),  // → "Total Spend"
-            'avg_rating'    => $this->resolveAvgRating($companyId),
-            'rating_count'  => $this->resolveRatingCount($companyId),
-            'bids_growth'   => $prGrowth,
-            'revenue_growth'=> $spendGrowth,
+            'avg_rating' => $this->resolveAvgRating($companyId),
+            'rating_count' => $this->resolveRatingCount($companyId),
+            'bids_growth' => $prGrowth,
+            'revenue_growth' => $spendGrowth,
         ];
 
         $monthly = collect(range(5, 0))->map(function ($monthsBack) use ($companyId) {
@@ -203,21 +207,21 @@ class PerformanceController extends Controller
                 ->sum('total_amount');
 
             return [
-                'label'     => $month->format('M Y'),
+                'label' => $month->format('M Y'),
                 'submitted' => $prs,
-                'won'       => $rfqs,
-                'win_rate'  => 0,
-                'revenue'   => $this->shortMoney((float) $spend),
+                'won' => $rfqs,
+                'win_rate' => 0,
+                'revenue' => $this->shortMoney((float) $spend),
             ];
         })->all();
 
         $quality = $this->qualityMetrics($companyId, false);
 
         return view('dashboard.performance.index', [
-            'stats'   => $stats,
+            'stats' => $stats,
             'monthly' => $monthly,
             'quality' => $quality,
-            'role'    => 'buyer',
+            'role' => 'buyer',
         ]);
     }
 
@@ -238,7 +242,7 @@ class PerformanceController extends Controller
         ?string $sumColumn = null,
         array $extraWhere = []
     ): ?int {
-        $build = function (\Carbon\CarbonInterface $month) use ($modelClass, $companyId, $companyColumn, $dateColumn, $sumColumn, $extraWhere) {
+        $build = function (CarbonInterface $month) use ($modelClass, $companyId, $companyColumn, $dateColumn, $sumColumn, $extraWhere) {
             $q = $modelClass::query()
                 ->when($companyId, fn ($q) => $q->where($companyColumn, $companyId))
                 ->whereYear($dateColumn, $month->year)
@@ -251,7 +255,7 @@ class PerformanceController extends Controller
             return $sumColumn ? (float) $q->sum($sumColumn) : (float) $q->count();
         };
 
-        $current  = $build(now());
+        $current = $build(now());
         $previous = $build(now()->subMonthNoOverflow());
 
         if ($previous <= 0) {
@@ -279,8 +283,8 @@ class PerformanceController extends Controller
         // scope to the company that owns the shipment in either role.
         $onTime = null;
         try {
-            $shipQuery = \App\Models\Shipment::query()
-                ->where('status', \App\Enums\ShipmentStatus::DELIVERED->value)
+            $shipQuery = Shipment::query()
+                ->where('status', ShipmentStatus::DELIVERED->value)
                 ->where('company_id', $companyId)
                 ->whereNotNull('estimated_delivery')
                 ->whereNotNull('actual_delivery');
@@ -301,15 +305,15 @@ class PerformanceController extends Controller
         $satisfactionCount = $this->resolveRatingCount($companyId);
 
         return [
-            'on_time'               => $onTime,
+            'on_time' => $onTime,
             'customer_satisfaction' => $satisfaction,
-            'satisfaction_count'    => $satisfactionCount,
+            'satisfaction_count' => $satisfactionCount,
         ];
     }
 
     private function resolveAvgRating(?int $companyId): ?float
     {
-        if (!$companyId || !\Illuminate\Support\Facades\Schema::hasTable('feedback')) {
+        if (! $companyId || ! Schema::hasTable('feedback')) {
             return null;
         }
 
@@ -322,7 +326,7 @@ class PerformanceController extends Controller
 
     private function resolveRatingCount(?int $companyId): int
     {
-        if (!$companyId || !\Illuminate\Support\Facades\Schema::hasTable('feedback')) {
+        if (! $companyId || ! Schema::hasTable('feedback')) {
             return 0;
         }
 
@@ -334,12 +338,12 @@ class PerformanceController extends Controller
     private function shortMoney(float $value, string $currency = 'AED'): string
     {
         if ($value >= 1_000_000) {
-            return $currency . ' ' . round($value / 1_000_000, 1) . 'M';
+            return $currency.' '.round($value / 1_000_000, 1).'M';
         }
         if ($value >= 1_000) {
-            return $currency . ' ' . round($value / 1_000) . 'K';
+            return $currency.' '.round($value / 1_000).'K';
         }
 
-        return $currency . ' ' . number_format($value);
+        return $currency.' '.number_format($value);
     }
 }

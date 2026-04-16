@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Rfq extends Model
 {
-    use HasFactory, SoftDeletes, Searchable;
+    use HasFactory, Searchable, SoftDeletes;
 
     protected $table = 'rfqs';
 
@@ -71,9 +71,9 @@ class Rfq extends Model
             'anti_snipe_seconds' => 'integer',
             // Phase 4 — ICV weighting on bid evaluation.
             'icv_weight_percentage' => 'integer',
-            'icv_minimum_score'     => 'decimal:2',
+            'icv_minimum_score' => 'decimal:2',
             // Phase 4.5 — issuer allowlist (e.g. ['adnoc'] for ADNOC tenders).
-            'icv_required_issuers'  => 'array',
+            'icv_required_issuers' => 'array',
         ];
     }
 
@@ -83,10 +83,11 @@ class Rfq extends Model
      */
     public function isLiveAuction(): bool
     {
-        if (!$this->is_auction) {
+        if (! $this->is_auction) {
             return false;
         }
         $now = now();
+
         return $this->auction_starts_at && $this->auction_ends_at
             && $now->gte($this->auction_starts_at)
             && $now->lte($this->auction_ends_at);
@@ -119,7 +120,7 @@ class Rfq extends Model
 
     public function isOpen(): bool
     {
-        return $this->status === \App\Enums\RfqStatus::OPEN;
+        return $this->status === RfqStatus::OPEN;
     }
 
     /**
@@ -216,8 +217,8 @@ class Rfq extends Model
     protected static function booted(): void
     {
         static::creating(function (Rfq $rfq) {
-            if (!$rfq->rfq_number) {
-                $rfq->rfq_number = 'RFQ-' . strtoupper(uniqid());
+            if (! $rfq->rfq_number) {
+                $rfq->rfq_number = 'RFQ-'.strtoupper(uniqid());
             }
         });
     }

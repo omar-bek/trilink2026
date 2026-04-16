@@ -19,11 +19,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PaymentController extends Controller
 {
-    use FormatsForViews, ExportsCsv;
+    use ExportsCsv, FormatsForViews;
 
-    public function __construct(private readonly PaymentService $service)
-    {
-    }
+    public function __construct(private readonly PaymentService $service) {}
 
     public function index(Request $request): View|StreamedResponse
     {
@@ -39,10 +37,10 @@ class PaymentController extends Controller
         // sides; this brings the index in line with that.
         $base = Payment::query()->when($companyId, fn ($q) => $q->where(function ($qq) use ($companyId) {
             $qq->where('company_id', $companyId)
-               ->orWhere('recipient_company_id', $companyId);
+                ->orWhere('recipient_company_id', $companyId);
         }));
 
-        $pendingStatuses   = [PaymentStatus::PENDING_APPROVAL->value, PaymentStatus::APPROVED->value, PaymentStatus::PROCESSING->value];
+        $pendingStatuses = [PaymentStatus::PENDING_APPROVAL->value, PaymentStatus::APPROVED->value, PaymentStatus::PROCESSING->value];
         $completedStatuses = [PaymentStatus::COMPLETED->value];
 
         // Tab filter from query string (?tab=pending|completed|all). The
@@ -82,7 +80,7 @@ class PaymentController extends Controller
 
         if ($search !== '') {
             $listing->where(function ($q) use ($search) {
-                $like = '%' . $search . '%';
+                $like = '%'.$search.'%';
                 $q->where('milestone', 'like', $like)
                     ->orWhereHas('contract', fn ($c) => $c->where('contract_number', 'like', $like))
                     ->orWhereHas('recipientCompany', fn ($c) => $c->where('name', 'like', $like));
@@ -94,25 +92,25 @@ class PaymentController extends Controller
         if ($this->isCsvExport($request)) {
             $rows = (clone $listing)->with(['contract', 'recipientCompany'])->latest()->get()
                 ->map(fn (Payment $p) => [
-                    'id'             => $p->id,
+                    'id' => $p->id,
                     'payment_number' => $this->paymentNumber($p),
-                    'contract'       => $p->contract?->contract_number ?? '',
-                    'recipient'      => $p->recipientCompany?->name ?? '',
-                    'milestone'      => $p->milestone ?? '',
-                    'amount'         => (float) $p->amount,
-                    'vat'            => (float) $p->vat_amount,
-                    'total'          => (float) $p->total_amount,
-                    'currency'       => $p->currency,
-                    'status'         => $this->statusValue($p->status),
-                    'gateway'        => $p->payment_gateway ?? '',
-                    'created_at'     => $p->created_at?->toDateTimeString(),
+                    'contract' => $p->contract?->contract_number ?? '',
+                    'recipient' => $p->recipientCompany?->name ?? '',
+                    'milestone' => $p->milestone ?? '',
+                    'amount' => (float) $p->amount,
+                    'vat' => (float) $p->vat_amount,
+                    'total' => (float) $p->total_amount,
+                    'currency' => $p->currency,
+                    'status' => $this->statusValue($p->status),
+                    'gateway' => $p->payment_gateway ?? '',
+                    'created_at' => $p->created_at?->toDateTimeString(),
                 ]);
 
             return $this->streamCsv($rows, 'payments');
         }
 
         $pendingAmount = (clone $base)->whereIn('status', $pendingStatuses)->sum('total_amount');
-        $monthAmount   = (clone $base)
+        $monthAmount = (clone $base)
             ->where('status', PaymentStatus::COMPLETED->value)
             ->whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
@@ -121,8 +119,8 @@ class PaymentController extends Controller
         // Tab counts are global (not narrowed by search) so the user can
         // tell at a glance how many records each tab holds.
         $tabCounts = [
-            'all'       => (clone $base)->count(),
-            'pending'   => (clone $base)->whereIn('status', $pendingStatuses)->count(),
+            'all' => (clone $base)->count(),
+            'pending' => (clone $base)->whereIn('status', $pendingStatuses)->count(),
             'completed' => (clone $base)->whereIn('status', $completedStatuses)->count(),
         ];
 
@@ -137,16 +135,16 @@ class PaymentController extends Controller
             $directionListing->whereIn('status', $completedStatuses);
         }
         $directionCounts = [
-            'all'      => (clone $directionListing)->count(),
+            'all' => (clone $directionListing)->count(),
             'outgoing' => $companyId ? (clone $directionListing)->where('company_id', $companyId)->count() : 0,
             'incoming' => $companyId ? (clone $directionListing)->where('recipient_company_id', $companyId)->count() : 0,
         ];
 
         $stats = [
-            'pending'        => $tabCounts['pending'],
+            'pending' => $tabCounts['pending'],
             'pending_amount' => $this->shortMoney((float) $pendingAmount),
-            'completed'      => $tabCounts['completed'],
-            'paid_month'     => $this->shortMoney((float) $monthAmount),
+            'completed' => $tabCounts['completed'],
+            'paid_month' => $this->shortMoney((float) $monthAmount),
         ];
 
         $payments = (clone $listing)
@@ -155,9 +153,9 @@ class PaymentController extends Controller
             ->get()
             ->map(function (Payment $p) use ($companyId) {
                 $statusKey = $this->mapPaymentStatus($this->statusValue($p->status));
-                $isPaid    = $statusKey === 'paid';
-                $dueDate   = $p->approved_at ?? $p->created_at;
-                $isOverdue = !$isPaid && $dueDate && $dueDate->isPast() && $dueDate->diffInDays(now()) > 7;
+                $isPaid = $statusKey === 'paid';
+                $dueDate = $p->approved_at ?? $p->created_at;
+                $isOverdue = ! $isPaid && $dueDate && $dueDate->isPast() && $dueDate->diffInDays(now()) > 7;
                 $contractTotal = (float) ($p->contract?->total_amount ?? 0);
                 $pct = $contractTotal > 0 ? (int) round(((float) $p->amount / $contractTotal) * 100) : 0;
 
@@ -165,42 +163,42 @@ class PaymentController extends Controller
                 // is the PAYER when its id matches `company_id`; otherwise
                 // it's the RECIPIENT. The counterparty is whichever side
                 // this company is NOT — same pattern as the contracts list.
-                $isOutgoing   = $companyId && (int) $p->company_id === (int) $companyId;
-                $direction    = $isOutgoing ? 'outgoing' : 'incoming';
+                $isOutgoing = $companyId && (int) $p->company_id === (int) $companyId;
+                $direction = $isOutgoing ? 'outgoing' : 'incoming';
                 $counterparty = $isOutgoing
                     ? ($p->recipientCompany?->name ?? '—')
                     : ($p->company?->name ?? '—');
 
                 return [
                     // Real DB id used for routing to the show page.
-                    'db_id'     => $p->id,
+                    'db_id' => $p->id,
                     // Display label.
-                    'id'        => $this->paymentNumber($p),
+                    'id' => $this->paymentNumber($p),
                     // Payment method is the gateway used to settle the
                     // payment when known, falling back to the platform
                     // default (Bank Transfer) for milestones that haven't
                     // been processed yet.
-                    'method'    => $p->payment_gateway
+                    'method' => $p->payment_gateway
                         ? ucfirst(str_replace('_', ' ', $p->payment_gateway))
                         : __('payments.bank_transfer'),
-                    'contract'  => $p->contract?->contract_number ?? '—',
+                    'contract' => $p->contract?->contract_number ?? '—',
                     // Direction-aware counterparty label. The view picks
                     // "From" / "To" based on `direction` so an outgoing
                     // payment shows the supplier and an incoming payment
                     // shows the buyer — without separate views.
-                    'direction'    => $direction,
+                    'direction' => $direction,
                     'counterparty' => $counterparty,
                     // Legacy `supplier` key kept so any existing snippet
                     // (older blade includes / CSV exports) doesn't break.
-                    'supplier'  => $counterparty,
+                    'supplier' => $counterparty,
                     'milestone' => $p->milestone ?? __('payments.payment'),
-                    'pct'       => $pct,
-                    'of'        => $contractTotal,
-                    'amount'    => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
-                    'due'       => $this->longDate($dueDate),
-                    'status'    => $statusKey,
-                    'urgent'    => $isOverdue,
-                    'paid'      => $isPaid,
+                    'pct' => $pct,
+                    'of' => $contractTotal,
+                    'amount' => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
+                    'due' => $this->longDate($dueDate),
+                    'status' => $statusKey,
+                    'urgent' => $isOverdue,
+                    'paid' => $isPaid,
                 ];
             })
             ->toArray();
@@ -227,7 +225,7 @@ class PaymentController extends Controller
         // Without this check any authenticated user could enumerate the
         // payment ledger by guessing numeric ids.
         $user = auth()->user();
-        if (!$user->isAdmin() && !$user->isGovernment()
+        if (! $user->isAdmin() && ! $user->isGovernment()
             && $user->company_id !== $p->company_id
             && $user->company_id !== $p->recipient_company_id
         ) {
@@ -242,39 +240,39 @@ class PaymentController extends Controller
         // map so both pages render the badge consistently. The current
         // user is the PAYER when its company id matches `company_id`,
         // otherwise it's the RECIPIENT.
-        $myCompanyId  = $user?->company_id;
-        $isOutgoing   = $myCompanyId && (int) $p->company_id === (int) $myCompanyId;
-        $direction    = $isOutgoing ? 'outgoing' : 'incoming';
+        $myCompanyId = $user?->company_id;
+        $isOutgoing = $myCompanyId && (int) $p->company_id === (int) $myCompanyId;
+        $direction = $isOutgoing ? 'outgoing' : 'incoming';
         $counterparty = [
             'name' => $isOutgoing ? ($p->recipientCompany?->name ?? '—') : ($p->company?->name ?? '—'),
             'role' => $isOutgoing ? 'supplier' : 'buyer',
         ];
 
         $payment = [
-            'db_id'     => $p->id,
-            'id'        => $this->paymentNumber($p),
-            'status'    => $statusKey,
-            'paid'      => $statusKey === 'paid',
-            'method'    => $p->payment_gateway
+            'db_id' => $p->id,
+            'id' => $this->paymentNumber($p),
+            'status' => $statusKey,
+            'paid' => $statusKey === 'paid',
+            'method' => $p->payment_gateway
                 ? ucfirst(str_replace('_', ' ', $p->payment_gateway))
                 : __('payments.bank_transfer'),
             'milestone' => $p->milestone ?? '—',
-            'pct'       => $pct,
-            'contract'  => $p->contract?->contract_number ?? '—',
-            'contract_id'  => $p->contract?->id,
+            'pct' => $pct,
+            'contract' => $p->contract?->contract_number ?? '—',
+            'contract_id' => $p->contract?->id,
             'contract_url' => $p->contract
                 ? route('dashboard.contracts.show', ['id' => $p->contract->id])
                 : null,
-            'supplier'  => $p->recipientCompany?->name ?? '—',
-            'buyer'     => $p->company?->name ?? '—',
+            'supplier' => $p->recipientCompany?->name ?? '—',
+            'buyer' => $p->company?->name ?? '—',
             // Direction-aware fields used by the unified detail view.
-            'direction'    => $direction,    // 'outgoing' | 'incoming'
+            'direction' => $direction,    // 'outgoing' | 'incoming'
             'counterparty' => $counterparty, // {name, role}
-            'amount'    => $this->money((float) $p->amount, $p->currency ?? 'AED'),
-            'vat'       => $this->money((float) $p->vat_amount, $p->currency ?? 'AED'),
-            'total'     => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
-            'due'       => $this->longDate($p->approved_at ?? $p->created_at),
-            'created'   => $this->longDate($p->created_at),
+            'amount' => $this->money((float) $p->amount, $p->currency ?? 'AED'),
+            'vat' => $this->money((float) $p->vat_amount, $p->currency ?? 'AED'),
+            'total' => $this->money((float) $p->total_amount, $p->currency ?? 'AED'),
+            'due' => $this->longDate($p->approved_at ?? $p->created_at),
+            'created' => $this->longDate($p->created_at),
             'gateway_ref' => $p->gateway_payment_id ?? '—',
         ];
 
@@ -293,13 +291,13 @@ class PaymentController extends Controller
             ->first();
 
         $taxInvoiceView = $taxInvoice ? [
-            'id'             => $taxInvoice->id,
+            'id' => $taxInvoice->id,
             'invoice_number' => $taxInvoice->invoice_number,
-            'issue_date'     => $this->longDate($taxInvoice->issue_date),
-            'total'          => $this->money((float) $taxInvoice->total_inclusive, $taxInvoice->currency ?? 'AED'),
-            'vat'            => $this->money((float) $taxInvoice->total_tax, $taxInvoice->currency ?? 'AED'),
-            'download_url'   => route('dashboard.payments.invoice.download', ['id' => $p->id]),
-            'has_pdf'        => (bool) $taxInvoice->pdf_path,
+            'issue_date' => $this->longDate($taxInvoice->issue_date),
+            'total' => $this->money((float) $taxInvoice->total_inclusive, $taxInvoice->currency ?? 'AED'),
+            'vat' => $this->money((float) $taxInvoice->total_tax, $taxInvoice->currency ?? 'AED'),
+            'download_url' => route('dashboard.payments.invoice.download', ['id' => $p->id]),
+            'has_pdf' => (bool) $taxInvoice->pdf_path,
         ] : null;
 
         return view('dashboard.payments.show', compact('payment', 'timeline', 'taxInvoiceView'));
@@ -319,7 +317,7 @@ class PaymentController extends Controller
         $payment = Payment::findOrFail((int) $id);
 
         $user = auth()->user();
-        if (!$user->isAdmin() && !$user->isGovernment()
+        if (! $user->isAdmin() && ! $user->isGovernment()
             && $user->company_id !== $payment->company_id
             && $user->company_id !== $payment->recipient_company_id
         ) {
@@ -331,7 +329,7 @@ class PaymentController extends Controller
             ->latest('id')
             ->first();
 
-        if (!$invoice) {
+        if (! $invoice) {
             return back()->withErrors([
                 'invoice' => __('tax_invoices.not_yet_issued'),
             ]);
@@ -341,13 +339,13 @@ class PaymentController extends Controller
         // mid-render, file was cleaned up, ...) regenerate it instead of
         // failing. Matches the admin download behaviour so buyers and
         // suppliers don't get stuck waiting for finance to intervene.
-        if (!$invoice->pdf_path || !Storage::disk('local')->exists($invoice->pdf_path)) {
+        if (! $invoice->pdf_path || ! Storage::disk('local')->exists($invoice->pdf_path)) {
             $invoice = $taxService->renderAndStorePdf($invoice);
         }
 
         return Storage::disk('local')->download(
             $invoice->pdf_path,
-            $invoice->invoice_number . '.pdf',
+            $invoice->invoice_number.'.pdf',
             ['Content-Type' => 'application/pdf']
         );
     }
@@ -365,7 +363,7 @@ class PaymentController extends Controller
         $payment = Payment::findOrFail((int) $id);
 
         $user = auth()->user();
-        if (!$user->isAdmin() && $user->company_id !== $payment->company_id) {
+        if (! $user->isAdmin() && $user->company_id !== $payment->company_id) {
             abort(403);
         }
 
@@ -393,14 +391,14 @@ class PaymentController extends Controller
 
         $events[] = [
             'label' => __('payments.event.created'),
-            'time'  => $this->longDate($p->created_at),
+            'time' => $this->longDate($p->created_at),
             'color' => '#4f7cff',
         ];
 
         if ($p->approved_at) {
             $events[] = [
                 'label' => __('payments.event.approved'),
-                'time'  => $this->longDate($p->approved_at),
+                'time' => $this->longDate($p->approved_at),
                 'color' => '#ffb020',
             ];
         }
@@ -410,7 +408,7 @@ class PaymentController extends Controller
         if ($statusValue === PaymentStatus::PROCESSING->value) {
             $events[] = [
                 'label' => __('payments.event.processing'),
-                'time'  => $this->longDate($p->updated_at),
+                'time' => $this->longDate($p->updated_at),
                 'color' => '#4f7cff',
             ];
         }
@@ -418,7 +416,7 @@ class PaymentController extends Controller
         if ($statusValue === PaymentStatus::COMPLETED->value && $p->updated_at) {
             $events[] = [
                 'label' => __('payments.event.completed'),
-                'time'  => $this->longDate($p->updated_at),
+                'time' => $this->longDate($p->updated_at),
                 'color' => '#00d9b5',
             ];
         }
@@ -426,7 +424,7 @@ class PaymentController extends Controller
         if (in_array($statusValue, [PaymentStatus::FAILED->value, PaymentStatus::REJECTED->value, PaymentStatus::CANCELLED->value], true)) {
             $events[] = [
                 'label' => __('payments.event.failed'),
-                'time'  => $this->longDate($p->updated_at),
+                'time' => $this->longDate($p->updated_at),
                 'color' => '#ff4d7f',
             ];
         }
@@ -434,7 +432,7 @@ class PaymentController extends Controller
         if ($statusValue === PaymentStatus::REFUNDED->value) {
             $events[] = [
                 'label' => __('payments.event.refunded'),
-                'time'  => $this->longDate($p->updated_at),
+                'time' => $this->longDate($p->updated_at),
                 'color' => '#8B5CF6',
             ];
         }
@@ -479,15 +477,15 @@ class PaymentController extends Controller
     private function mapPaymentStatus(string $status): string
     {
         return match ($status) {
-            'completed'        => 'paid',
+            'completed' => 'paid',
             'pending_approval' => 'scheduled',
             'approved',
-            'processing'       => 'due_soon',
+            'processing' => 'due_soon',
             'failed',
             'rejected',
-            'cancelled'        => 'urgent',
-            'refunded'         => 'paid',
-            default            => 'scheduled',
+            'cancelled' => 'urgent',
+            'refunded' => 'paid',
+            default => 'scheduled',
         };
     }
 
@@ -506,12 +504,12 @@ class PaymentController extends Controller
     private function shortMoney(float $value, string $currency = 'AED'): string
     {
         if ($value >= 1_000_000) {
-            return $currency . ' ' . round($value / 1_000_000, 1) . 'M';
+            return $currency.' '.round($value / 1_000_000, 1).'M';
         }
         if ($value >= 1_000) {
-            return $currency . ' ' . round($value / 1_000) . 'K';
+            return $currency.' '.round($value / 1_000).'K';
         }
 
-        return $currency . ' ' . number_format($value);
+        return $currency.' '.number_format($value);
     }
 }

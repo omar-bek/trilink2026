@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Schema;
  *   false_positive— dismissed with reason (co-working space, etc.)
  *   confirmed     — action taken (bid rejected, supplier warned)
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('collusion_alerts', function (Blueprint $table) {

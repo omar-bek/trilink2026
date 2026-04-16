@@ -29,18 +29,18 @@ class MockCreditScoringProvider implements CreditScoringProviderInterface
         $registrationNumber = trim($registrationNumber);
         if ($registrationNumber === '') {
             return [
-                'success'     => false,
-                'score'       => null,
-                'band'        => null,
-                'reasons'     => [],
+                'success' => false,
+                'score' => null,
+                'band' => null,
+                'reasons' => [],
                 'reported_at' => null,
-                'error'       => 'Empty registration number',
+                'error' => 'Empty registration number',
             ];
         }
 
         // Deterministic-but-spread hash of the input. Modulo 1000 maps
         // straight onto the score scale.
-        $seed  = crc32($registrationNumber . '|' . ($country ?? ''));
+        $seed = crc32($registrationNumber.'|'.($country ?? ''));
         $bucket = $seed % 100;
 
         // Buckets matching the docblock distribution above.
@@ -55,12 +55,12 @@ class MockCreditScoringProvider implements CreditScoringProviderInterface
         }
 
         return [
-            'success'     => true,
-            'score'       => $score,
-            'band'        => $this->scoreBand($score),
-            'reasons'     => $this->reasons($score),
+            'success' => true,
+            'score' => $score,
+            'band' => $this->scoreBand($score),
+            'reasons' => $this->reasons($score),
             'reported_at' => now()->toIso8601String(),
-            'error'       => null,
+            'error' => null,
         ];
     }
 
@@ -74,7 +74,7 @@ class MockCreditScoringProvider implements CreditScoringProviderInterface
             $score >= 750 => 'excellent',
             $score >= 650 => 'good',
             $score >= 500 => 'fair',
-            default       => 'poor',
+            default => 'poor',
         };
     }
 
@@ -96,6 +96,7 @@ class MockCreditScoringProvider implements CreditScoringProviderInterface
         if ($score >= 500) {
             return ['Limited credit history', 'Some late payments in last 12 months'];
         }
+
         return ['Recent default on file', 'High utilisation', 'Short credit history'];
     }
 }

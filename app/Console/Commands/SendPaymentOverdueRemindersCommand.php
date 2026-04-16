@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Notification;
 class SendPaymentOverdueRemindersCommand extends Command
 {
     protected $signature = 'payments:overdue-reminders';
+
     protected $description = 'Notify finance approvers about milestone payments that are overdue (7/14/30 days).';
 
     private const TIERS = [7, 14, 30];
@@ -70,10 +71,11 @@ class SendPaymentOverdueRemindersCommand extends Command
                 Cache::put($cacheKey, true, now()->addDays(120));
             }
 
-            $this->info("Tier {$daysOverdue}d: processed " . $payments->count() . " payment(s).");
+            $this->info("Tier {$daysOverdue}d: processed ".$payments->count().' payment(s).');
         }
 
         $this->info("Sent {$totalNotified} overdue reminder(s).");
+
         return self::SUCCESS;
     }
 }

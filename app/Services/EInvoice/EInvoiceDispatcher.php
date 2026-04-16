@@ -10,6 +10,7 @@ use App\Notifications\EInvoiceAcceptedNotification;
 use App\Notifications\EInvoiceDispatchedNotification;
 use App\Notifications\EInvoiceRejectedNotification;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Notification;
 use RuntimeException;
@@ -39,8 +40,7 @@ class EInvoiceDispatcher
 {
     public function __construct(
         private readonly PintAeMapper $mapper,
-    ) {
-    }
+    ) {}
 
     /**
      * Build the payload, persist a submission row, hand it to the
@@ -49,28 +49,28 @@ class EInvoiceDispatcher
      */
     public function dispatchFor(TaxInvoice $invoice): ?EInvoiceSubmission
     {
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return null;
         }
 
         $providerKey = (string) config('einvoice.default_provider', 'mock');
-        $provider    = $this->resolveProvider($providerKey);
+        $provider = $this->resolveProvider($providerKey);
 
         $payload = $this->mapper->toUbl($invoice);
-        $sha     = hash('sha256', $payload);
+        $sha = hash('sha256', $payload);
 
         $submission = EInvoiceSubmission::create([
-            'tax_invoice_id'  => $invoice->id,
+            'tax_invoice_id' => $invoice->id,
             // Phase 5.5 — explicit document_type stamp so the retry +
             // webhook flows can discriminate without re-deriving from
             // tax_invoice_id IS NOT NULL.
-            'document_type'   => EInvoiceSubmission::DOC_INVOICE,
-            'asp_provider'    => $providerKey,
+            'document_type' => EInvoiceSubmission::DOC_INVOICE,
+            'asp_provider' => $providerKey,
             'asp_environment' => (string) config('einvoice.environment', 'sandbox'),
-            'status'          => EInvoiceSubmission::STATUS_QUEUED,
-            'payload_xml'     => $payload,
-            'payload_sha256'  => $sha,
-            'submitted_at'    => null,
+            'status' => EInvoiceSubmission::STATUS_QUEUED,
+            'payload_xml' => $payload,
+            'payload_sha256' => $sha,
+            'submitted_at' => null,
         ]);
 
         $result = $provider->submit($submission);
@@ -95,25 +95,25 @@ class EInvoiceDispatcher
      */
     public function dispatchForCreditNote(TaxCreditNote $creditNote): ?EInvoiceSubmission
     {
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return null;
         }
 
         $providerKey = (string) config('einvoice.default_provider', 'mock');
-        $provider    = $this->resolveProvider($providerKey);
+        $provider = $this->resolveProvider($providerKey);
 
         $payload = $this->mapper->toCreditNoteUbl($creditNote);
-        $sha     = hash('sha256', $payload);
+        $sha = hash('sha256', $payload);
 
         $submission = EInvoiceSubmission::create([
             'tax_credit_note_id' => $creditNote->id,
-            'document_type'      => EInvoiceSubmission::DOC_CREDIT_NOTE,
-            'asp_provider'       => $providerKey,
-            'asp_environment'    => (string) config('einvoice.environment', 'sandbox'),
-            'status'             => EInvoiceSubmission::STATUS_QUEUED,
-            'payload_xml'        => $payload,
-            'payload_sha256'     => $sha,
-            'submitted_at'       => null,
+            'document_type' => EInvoiceSubmission::DOC_CREDIT_NOTE,
+            'asp_provider' => $providerKey,
+            'asp_environment' => (string) config('einvoice.environment', 'sandbox'),
+            'status' => EInvoiceSubmission::STATUS_QUEUED,
+            'payload_xml' => $payload,
+            'payload_sha256' => $sha,
+            'submitted_at' => null,
         ]);
 
         $result = $provider->submit($submission);
@@ -132,7 +132,7 @@ class EInvoiceDispatcher
      */
     public function retry(EInvoiceSubmission $submission): EInvoiceSubmission
     {
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return $submission;
         }
 
@@ -143,36 +143,38 @@ class EInvoiceDispatcher
         // payload generation differs.
         if ($submission->isCreditNote()) {
             $creditNote = $submission->taxCreditNote;
-            if (!$creditNote) {
+            if (! $creditNote) {
                 $submission->update([
-                    'status'        => EInvoiceSubmission::STATUS_REJECTED,
+                    'status' => EInvoiceSubmission::STATUS_REJECTED,
                     'error_message' => 'Tax credit note no longer exists.',
                 ]);
+
                 return $submission->fresh();
             }
             $payload = $this->mapper->toCreditNoteUbl($creditNote);
         } else {
             $invoice = $submission->taxInvoice;
-            if (!$invoice) {
+            if (! $invoice) {
                 $submission->update([
-                    'status'        => EInvoiceSubmission::STATUS_REJECTED,
+                    'status' => EInvoiceSubmission::STATUS_REJECTED,
                     'error_message' => 'Tax invoice no longer exists.',
                 ]);
+
                 return $submission->fresh();
             }
             $payload = $this->mapper->toUbl($invoice);
         }
 
         $provider = $this->resolveProvider($submission->asp_provider);
-        $sha      = hash('sha256', $payload);
+        $sha = hash('sha256', $payload);
 
         $submission->update([
-            'status'         => EInvoiceSubmission::STATUS_QUEUED,
-            'payload_xml'    => $payload,
+            'status' => EInvoiceSubmission::STATUS_QUEUED,
+            'payload_xml' => $payload,
             'payload_sha256' => $sha,
-            'retries'        => $submission->retries + 1,
-            'next_retry_at'  => null,
-            'error_message'  => null,
+            'retries' => $submission->retries + 1,
+            'next_retry_at' => null,
+            'error_message' => null,
         ]);
 
         return $provider->submit($submission->fresh());
@@ -188,14 +190,14 @@ class EInvoiceDispatcher
         $accepted = ($payload['status'] ?? '') === 'accepted';
 
         $submission->update([
-            'status'              => $accepted
+            'status' => $accepted
                 ? EInvoiceSubmission::STATUS_ACCEPTED
                 : EInvoiceSubmission::STATUS_REJECTED,
-            'fta_clearance_id'    => $payload['clearance_id'] ?? $submission->fta_clearance_id,
+            'fta_clearance_id' => $payload['clearance_id'] ?? $submission->fta_clearance_id,
             'asp_acknowledgment_id' => $payload['acknowledgment_id'] ?? $submission->asp_acknowledgment_id,
-            'asp_response_raw'    => array_merge((array) $submission->asp_response_raw, $payload),
-            'acknowledged_at'     => CarbonImmutable::now(),
-            'error_message'       => $accepted ? null : ($payload['error'] ?? 'Rejected by FTA'),
+            'asp_response_raw' => array_merge((array) $submission->asp_response_raw, $payload),
+            'acknowledged_at' => CarbonImmutable::now(),
+            'error_message' => $accepted ? null : ($payload['error'] ?? 'Rejected by FTA'),
         ]);
 
         $fresh = $submission->fresh();
@@ -219,9 +221,10 @@ class EInvoiceDispatcher
     private function resolveProvider(string $key): AspProviderInterface
     {
         $registry = (array) config('einvoice.providers', []);
-        if (!isset($registry[$key]['class'])) {
+        if (! isset($registry[$key]['class'])) {
             throw new RuntimeException("Unknown e-invoice provider: {$key}");
         }
+
         return App::make($registry[$key]['class']);
     }
 
@@ -231,14 +234,14 @@ class EInvoiceDispatcher
      * fan-outs below — kept central so a future "tax_recipients_only"
      * filter only needs to change one place.
      */
-    private function resolveSupplierRecipients(EInvoiceSubmission $submission): \Illuminate\Database\Eloquent\Collection
+    private function resolveSupplierRecipients(EInvoiceSubmission $submission): Collection
     {
         $companyId = $submission->taxInvoice?->seller_company_id
             ?? $submission->taxCreditNote?->seller_company_id
             ?? null;
 
-        if (!$companyId) {
-            return new \Illuminate\Database\Eloquent\Collection();
+        if (! $companyId) {
+            return new Collection;
         }
 
         return User::where('company_id', $companyId)->active()->get();
@@ -260,7 +263,7 @@ class EInvoiceDispatcher
         } catch (\Throwable $e) {
             \Log::warning('EInvoiceDispatcher::notifyDispatched failed', [
                 'submission_id' => $submission->id,
-                'error'         => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -286,8 +289,8 @@ class EInvoiceDispatcher
         } catch (\Throwable $e) {
             \Log::warning('EInvoiceDispatcher::notifyAckOutcome failed', [
                 'submission_id' => $submission->id,
-                'accepted'      => $accepted,
-                'error'         => $e->getMessage(),
+                'accepted' => $accepted,
+                'error' => $e->getMessage(),
             ]);
         }
     }

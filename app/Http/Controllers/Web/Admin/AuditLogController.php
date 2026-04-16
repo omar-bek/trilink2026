@@ -26,7 +26,7 @@ class AuditLogController extends Controller
             ->paginate(50)
             ->withQueryString();
 
-        $actions   = AuditAction::cases();
+        $actions = AuditAction::cases();
         $resources = AuditLog::query()->select('resource_type')->distinct()->pluck('resource_type')->filter()->values();
 
         return view('dashboard.admin.audit.index', array_merge(
@@ -55,7 +55,7 @@ class AuditLogController extends Controller
             ->with('user')
             ->latest();
 
-        $filename = 'audit-log-' . now()->format('Ymd-His') . '.csv';
+        $filename = 'audit-log-'.now()->format('Ymd-His').'.csv';
 
         return response()->streamDownload(function () use ($query) {
             $out = fopen('php://output', 'w');
@@ -85,7 +85,7 @@ class AuditLogController extends Controller
                         $log->id,
                         $log->created_at?->toDateTimeString() ?? '',
                         $log->user_id,
-                        trim(($log->user?->first_name ?? '') . ' ' . ($log->user?->last_name ?? '')),
+                        trim(($log->user?->first_name ?? '').' '.($log->user?->last_name ?? '')),
                         $log->user?->email ?? '',
                         $log->action instanceof \BackedEnum ? $log->action->value : $log->action,
                         $log->resource_type,
@@ -114,30 +114,30 @@ class AuditLogController extends Controller
     private function collectFilters(Request $request): array
     {
         return [
-            'action'    => $request->query('action'),
-            'resource'  => $request->query('resource'),
-            'userId'    => $request->query('user_id'),
-            'ip'        => trim((string) $request->query('ip', '')),
+            'action' => $request->query('action'),
+            'resource' => $request->query('resource'),
+            'userId' => $request->query('user_id'),
+            'ip' => trim((string) $request->query('ip', '')),
             'userAgent' => trim((string) $request->query('ua', '')),
-            'from'      => $request->query('from'),
-            'to'        => $request->query('to'),
+            'from' => $request->query('from'),
+            'to' => $request->query('to'),
         ];
     }
 
     /**
      * Build the base query with all filters applied.
      *
-     * @param array<string,mixed> $f
+     * @param  array<string,mixed>  $f
      */
     private function baseQuery(array $f)
     {
         return AuditLog::query()
-            ->when($f['action'],   fn ($q, $v) => $q->where('action', $v))
+            ->when($f['action'], fn ($q, $v) => $q->where('action', $v))
             ->when($f['resource'], fn ($q, $v) => $q->where('resource_type', $v))
-            ->when($f['userId'],   fn ($q, $v) => $q->where('user_id', $v))
-            ->when($f['ip'] !== '', fn ($q) => $q->where('ip_address', 'like', '%' . $f['ip'] . '%'))
-            ->when($f['userAgent'] !== '', fn ($q) => $q->where('user_agent', 'like', '%' . $f['userAgent'] . '%'))
-            ->when($f['from'],     fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
-            ->when($f['to'],       fn ($q, $v) => $q->whereDate('created_at', '<=', $v));
+            ->when($f['userId'], fn ($q, $v) => $q->where('user_id', $v))
+            ->when($f['ip'] !== '', fn ($q) => $q->where('ip_address', 'like', '%'.$f['ip'].'%'))
+            ->when($f['userAgent'] !== '', fn ($q) => $q->where('user_agent', 'like', '%'.$f['userAgent'].'%'))
+            ->when($f['from'], fn ($q, $v) => $q->whereDate('created_at', '>=', $v))
+            ->when($f['to'], fn ($q, $v) => $q->whereDate('created_at', '<=', $v));
     }
 }

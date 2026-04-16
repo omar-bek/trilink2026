@@ -125,17 +125,17 @@ return [
         // CloudWatch Insights) wants. Set LOG_CHANNEL=json in .env on
         // production boxes.
         'json' => [
-            'driver'   => 'monolog',
-            'level'    => env('LOG_LEVEL', 'warning'),
-            'handler'  => RotatingFileHandler::class,
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'warning'),
+            'handler' => RotatingFileHandler::class,
             'handler_with' => [
                 'filename' => storage_path('logs/laravel.json.log'),
                 'maxFiles' => env('LOG_JSON_DAYS', 14),
             ],
             'formatter' => JsonFormatter::class,
             'formatter_with' => [
-                'batchMode'      => JsonFormatter::BATCH_MODE_JSON,
-                'appendNewline'  => true,
+                'batchMode' => JsonFormatter::BATCH_MODE_JSON,
+                'appendNewline' => true,
                 'ignoreEmptyContextAndExtra' => true,
             ],
             'processors' => [PsrLogMessageProcessor::class],

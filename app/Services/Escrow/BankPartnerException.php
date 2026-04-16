@@ -10,6 +10,4 @@ use RuntimeException;
  * EscrowController catches it and surfaces the message to the buyer
  * through the standard error flash channel.
  */
-class BankPartnerException extends RuntimeException
-{
-}
+class BankPartnerException extends RuntimeException {}

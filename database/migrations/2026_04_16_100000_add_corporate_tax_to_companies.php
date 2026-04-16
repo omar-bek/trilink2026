@@ -28,7 +28,8 @@ use Illuminate\Support\Facades\Schema;
  * corporate_tax_status = 'unknown' — the admin queue surfaces them
  * for review.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('companies', function (Blueprint $table) {

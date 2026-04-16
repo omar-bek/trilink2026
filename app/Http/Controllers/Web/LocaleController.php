@@ -12,7 +12,7 @@ class LocaleController extends Controller
     {
         $locale = $request->input('locale', 'en');
 
-        if (!in_array($locale, ['en', 'ar'], true)) {
+        if (! in_array($locale, ['en', 'ar'], true)) {
             $locale = 'en';
         }
 

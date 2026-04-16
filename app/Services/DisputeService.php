@@ -47,13 +47,16 @@ class DisputeService
         $dispute = Dispute::findOrFail($id);
 
         $dispute->update($data);
+
         return $dispute->fresh(['contract', 'company']);
     }
 
     public function escalate(int $id): ?Dispute
     {
         $dispute = Dispute::findOrFail($id);
-        if ($dispute->escalated_to_government) return null;
+        if ($dispute->escalated_to_government) {
+            return null;
+        }
 
         $dispute->update([
             'escalated_to_government' => true,

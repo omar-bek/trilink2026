@@ -17,8 +17,8 @@ use Illuminate\Notifications\Notification;
  */
 class RfqInvitationNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Rfq $rfq,
@@ -49,11 +49,11 @@ class RfqInvitationNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'info',
-            'title'       => $this->t($notifiable, 'notifications.rfq.invitation.title'),
-            'message'     => $this->t($notifiable, 'notifications.rfq.invitation.message', ['rfq' => $this->rfq->rfq_number]),
+            'type' => 'info',
+            'title' => $this->t($notifiable, 'notifications.rfq.invitation.title'),
+            'message' => $this->t($notifiable, 'notifications.rfq.invitation.message', ['rfq' => $this->rfq->rfq_number]),
             'entity_type' => 'rfq',
-            'entity_id'   => $this->rfq->id,
+            'entity_id' => $this->rfq->id,
         ];
     }
 }

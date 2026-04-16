@@ -9,6 +9,7 @@ use App\Http\Requests\Auth\RegisterRequest;
 use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Cookie;
 
 class AuthController extends Controller
 {
@@ -40,7 +41,7 @@ class AuthController extends Controller
     {
         $result = $this->authService->login($request->email, $request->password);
 
-        if (!$result) {
+        if (! $result) {
             return response()->json(['message' => 'Invalid credentials or account inactive'], 401);
         }
 
@@ -54,13 +55,13 @@ class AuthController extends Controller
     {
         $refreshToken = $request->cookie('refresh_token') ?? $request->input('refresh_token');
 
-        if (!$refreshToken) {
+        if (! $refreshToken) {
             return response()->json(['message' => 'Refresh token required'], 400);
         }
 
         $result = $this->authService->refresh($refreshToken);
 
-        if (!$result) {
+        if (! $result) {
             return response()->json(['message' => 'Invalid or expired refresh token'], 401);
         }
 
@@ -97,7 +98,7 @@ class AuthController extends Controller
             $request->password
         );
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Invalid or expired reset token'], 400);
         }
 
@@ -124,7 +125,7 @@ class AuthController extends Controller
         return response()->json(['data' => $user]);
     }
 
-    private function refreshCookie(string $token): \Symfony\Component\HttpFoundation\Cookie
+    private function refreshCookie(string $token): Cookie
     {
         return cookie(
             'refresh_token',

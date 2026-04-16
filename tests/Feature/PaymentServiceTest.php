@@ -49,23 +49,23 @@ class PaymentServiceTest extends TestCase
     private function makeCompany(string $name, CompanyType $type, bool $withLicense = true): Company
     {
         $company = Company::create([
-            'name'                => $name,
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@p.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => $name,
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@p.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         if ($withLicense) {
             CompanyDocument::create([
                 'company_id' => $company->id,
-                'type'       => DocumentType::TRADE_LICENSE,
-                'label'      => 'Trade License',
-                'file_path'  => 'test/trade-license.pdf',
-                'status'     => CompanyDocument::STATUS_VERIFIED,
-                'issued_at'  => now()->subYear(),
+                'type' => DocumentType::TRADE_LICENSE,
+                'label' => 'Trade License',
+                'file_path' => 'test/trade-license.pdf',
+                'status' => CompanyDocument::STATUS_VERIFIED,
+                'issued_at' => now()->subYear(),
                 'expires_at' => now()->addYear(),
             ]);
         }
@@ -77,11 +77,11 @@ class PaymentServiceTest extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => 'u-' . uniqid() . '@p.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'u-'.uniqid().'@p.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -94,18 +94,18 @@ class PaymentServiceTest extends TestCase
     private function makeContract(Company $buyer, Company $supplier, array $schedule): Contract
     {
         return Contract::create([
-            'title'             => 'C-' . uniqid(),
-            'buyer_company_id'  => $buyer->id,
-            'status'            => ContractStatus::ACTIVE,
-            'parties'           => [
+            'title' => 'C-'.uniqid(),
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [
                 ['company_id' => $buyer->id,    'role' => 'buyer'],
                 ['company_id' => $supplier->id, 'role' => 'supplier'],
             ],
-            'total_amount'      => 100000,
-            'currency'          => 'AED',
-            'start_date'        => now(),
-            'end_date'          => now()->addMonths(3),
-            'payment_schedule'  => $schedule,
+            'total_amount' => 100000,
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonths(3),
+            'payment_schedule' => $schedule,
         ]);
     }
 
@@ -115,7 +115,7 @@ class PaymentServiceTest extends TestCase
 
     public function test_generates_one_payment_per_schedule_milestone(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $this->makeUser($buyer); // satisfies buyer_id NOT NULL FK fallback
 
@@ -145,7 +145,7 @@ class PaymentServiceTest extends TestCase
 
     public function test_is_idempotent_when_payments_already_exist(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $this->makeUser($buyer);
 
@@ -165,7 +165,7 @@ class PaymentServiceTest extends TestCase
 
     public function test_skips_milestones_with_zero_or_missing_amount(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $this->makeUser($buyer);
 
@@ -189,17 +189,17 @@ class PaymentServiceTest extends TestCase
 
         // Contract has only the buyer party — no supplier role anywhere.
         $contract = Contract::create([
-            'title'             => 'Lonely',
-            'buyer_company_id'  => $buyer->id,
-            'status'            => ContractStatus::ACTIVE,
-            'parties'           => [
+            'title' => 'Lonely',
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [
                 ['company_id' => $buyer->id, 'role' => 'buyer'],
             ],
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'start_date'        => now(),
-            'end_date'          => now()->addMonth(),
-            'payment_schedule'  => [
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonth(),
+            'payment_schedule' => [
                 ['milestone' => 'Advance', 'amount' => 1000, 'tax_rate' => 5],
             ],
         ]);
@@ -212,7 +212,7 @@ class PaymentServiceTest extends TestCase
 
     public function test_returns_zero_when_buyer_company_has_no_users(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         // INTENTIONALLY: no makeUser($buyer) call. The fallback can't
         // satisfy buyer_id and the service must bail out cleanly.
@@ -229,7 +229,7 @@ class PaymentServiceTest extends TestCase
 
     public function test_returns_zero_when_schedule_is_empty(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $this->makeUser($buyer);
 
@@ -242,7 +242,7 @@ class PaymentServiceTest extends TestCase
 
     public function test_inherits_currency_from_milestone_then_contract(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $this->makeUser($buyer);
 
@@ -266,7 +266,7 @@ class PaymentServiceTest extends TestCase
     public function test_approve_blocks_when_payer_trade_license_expired(): void
     {
         // Buyer has NO valid trade license (withLicense=false).
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER, withLicense: false);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER, withLicense: false);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $approver = $this->makeUser($buyer);
 
@@ -275,14 +275,14 @@ class PaymentServiceTest extends TestCase
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
             'recipient_company_id' => $supplier->id,
-            'buyer_id'             => $approver->id,
-            'status'               => PaymentStatus::PENDING_APPROVAL,
-            'amount'               => 5000,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
+            'buyer_id' => $approver->id,
+            'status' => PaymentStatus::PENDING_APPROVAL,
+            'amount' => 5000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
         ]);
 
         $this->expectException(\RuntimeException::class);
@@ -293,7 +293,7 @@ class PaymentServiceTest extends TestCase
 
     public function test_approve_succeeds_when_both_licenses_valid(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $approver = $this->makeUser($buyer);
 
@@ -302,14 +302,14 @@ class PaymentServiceTest extends TestCase
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
             'recipient_company_id' => $supplier->id,
-            'buyer_id'             => $approver->id,
-            'status'               => PaymentStatus::PENDING_APPROVAL,
-            'amount'               => 5000,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
+            'buyer_id' => $approver->id,
+            'status' => PaymentStatus::PENDING_APPROVAL,
+            'amount' => 5000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
         ]);
 
         $result = app(PaymentService::class)->approve($payment->id, $approver->id);
@@ -322,7 +322,7 @@ class PaymentServiceTest extends TestCase
 
     public function test_approve_returns_null_when_payment_not_pending(): void
     {
-        $buyer    = $this->makeCompany('Buyer Co', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Buyer Co', CompanyType::BUYER);
         $supplier = $this->makeCompany('Supplier Co', CompanyType::SUPPLIER);
         $approver = $this->makeUser($buyer);
 
@@ -331,14 +331,14 @@ class PaymentServiceTest extends TestCase
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
             'recipient_company_id' => $supplier->id,
-            'buyer_id'             => $approver->id,
-            'status'               => PaymentStatus::APPROVED, // already approved
-            'amount'               => 5000,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
+            'buyer_id' => $approver->id,
+            'status' => PaymentStatus::APPROVED, // already approved
+            'amount' => 5000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
         ]);
 
         $result = app(PaymentService::class)->approve($payment->id, $approver->id);

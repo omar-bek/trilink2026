@@ -18,14 +18,12 @@ use Illuminate\View\View;
  */
 class GlobalSearchController extends Controller
 {
-    public function __construct(private readonly GlobalSearchService $search)
-    {
-    }
+    public function __construct(private readonly GlobalSearchService $search) {}
 
     public function index(Request $request): View
     {
-        $term  = trim((string) $request->query('q', ''));
-        $user  = $request->user();
+        $term = trim((string) $request->query('q', ''));
+        $user = $request->user();
 
         $results = $this->search->search($term, $user?->company_id);
 
@@ -41,8 +39,8 @@ class GlobalSearchController extends Controller
             : collect();
 
         return view('dashboard.search.index', [
-            'q'              => $term,
-            'results'        => $results,
+            'q' => $term,
+            'results' => $results,
             'recent_searches' => $recentSearches,
         ]);
     }

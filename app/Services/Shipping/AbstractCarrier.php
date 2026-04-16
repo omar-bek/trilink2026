@@ -20,9 +20,7 @@ use Illuminate\Support\Facades\Log;
  */
 abstract class AbstractCarrier implements CarrierInterface
 {
-    public function __construct(protected readonly array $config = [])
-    {
-    }
+    public function __construct(protected readonly array $config = []) {}
 
     abstract public function code(): string;
 
@@ -39,47 +37,61 @@ abstract class AbstractCarrier implements CarrierInterface
 
     public function quote(array $request): array
     {
-        if (!$this->isLive()) {
+        if (! $this->isLive()) {
             return $this->mockQuote($request);
         }
         try {
             return $this->liveQuote($request);
         } catch (\Throwable $e) {
             Log::warning("[carrier:{$this->code()}] quote failed", ['error' => $e->getMessage()]);
+
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
 
     public function createShipment(array $request): array
     {
-        if (!$this->isLive()) {
+        if (! $this->isLive()) {
             return $this->mockCreateShipment($request);
         }
         try {
             return $this->liveCreateShipment($request);
         } catch (\Throwable $e) {
             Log::warning("[carrier:{$this->code()}] createShipment failed", ['error' => $e->getMessage()]);
+
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
 
     public function track(string $trackingNumber): array
     {
-        if (!$this->isLive()) {
+        if (! $this->isLive()) {
             return $this->mockTrack($trackingNumber);
         }
         try {
             return $this->liveTrack($trackingNumber);
         } catch (\Throwable $e) {
             Log::warning("[carrier:{$this->code()}] track failed", ['error' => $e->getMessage()]);
+
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
 
     // Subclasses override these for the real carrier API.
-    protected function liveQuote(array $request): array { return $this->mockQuote($request); }
-    protected function liveCreateShipment(array $request): array { return $this->mockCreateShipment($request); }
-    protected function liveTrack(string $trackingNumber): array { return $this->mockTrack($trackingNumber); }
+    protected function liveQuote(array $request): array
+    {
+        return $this->mockQuote($request);
+    }
+
+    protected function liveCreateShipment(array $request): array
+    {
+        return $this->mockCreateShipment($request);
+    }
+
+    protected function liveTrack(string $trackingNumber): array
+    {
+        return $this->mockTrack($trackingNumber);
+    }
 
     /**
      * Deterministic synthetic quote. Pricing model: a flat carrier base
@@ -88,29 +100,29 @@ abstract class AbstractCarrier implements CarrierInterface
      */
     protected function mockQuote(array $request): array
     {
-        $weight   = max(0.1, (float) ($request['weight_kg'] ?? 1));
-        $parcels  = max(1, (int) ($request['parcels'] ?? 1));
+        $weight = max(0.1, (float) ($request['weight_kg'] ?? 1));
+        $parcels = max(1, (int) ($request['parcels'] ?? 1));
         $currency = $request['currency'] ?? 'AED';
-        $base     = $this->mockBaseFee();
-        $perKg    = $this->mockPerKgRate();
+        $base = $this->mockBaseFee();
+        $perKg = $this->mockPerKgRate();
         $routeMod = (crc32(json_encode($request['destination'] ?? [])) % 50) / 10;
 
         $standard = round($base + ($perKg * $weight * $parcels) + $routeMod, 2);
-        $express  = round($standard * 1.6, 2);
+        $express = round($standard * 1.6, 2);
 
         return [
             'success' => true,
             'rates' => [
                 [
-                    'service'      => 'standard',
-                    'price'        => $standard,
-                    'currency'     => $currency,
+                    'service' => 'standard',
+                    'price' => $standard,
+                    'currency' => $currency,
                     'transit_days' => $this->mockTransitDays('standard'),
                 ],
                 [
-                    'service'      => 'express',
-                    'price'        => $express,
-                    'currency'     => $currency,
+                    'service' => 'express',
+                    'price' => $express,
+                    'currency' => $currency,
                     'transit_days' => $this->mockTransitDays('express'),
                 ],
             ],
@@ -123,9 +135,9 @@ abstract class AbstractCarrier implements CarrierInterface
         // Real carriers use their own format; this is enough for the UI to
         // round-trip end-to-end during demos.
         return [
-            'success'         => true,
-            'tracking_number' => strtoupper($this->code()) . '-' . strtoupper(substr(uniqid(), -10)),
-            'label_url'       => null,
+            'success' => true,
+            'tracking_number' => strtoupper($this->code()).'-'.strtoupper(substr(uniqid(), -10)),
+            'label_url' => null,
         ];
     }
 
@@ -133,33 +145,41 @@ abstract class AbstractCarrier implements CarrierInterface
     {
         return [
             'success' => true,
-            'status'  => 'in_transit',
-            'events'  => [
+            'status' => 'in_transit',
+            'events' => [
                 [
-                    'at'          => now()->subDays(2)->toIso8601String(),
-                    'location'    => 'Origin warehouse',
-                    'description' => 'Picked up by ' . $this->name(),
-                    'status'      => 'picked_up',
+                    'at' => now()->subDays(2)->toIso8601String(),
+                    'location' => 'Origin warehouse',
+                    'description' => 'Picked up by '.$this->name(),
+                    'status' => 'picked_up',
                 ],
                 [
-                    'at'          => now()->subDay()->toIso8601String(),
-                    'location'    => 'Sorting facility',
+                    'at' => now()->subDay()->toIso8601String(),
+                    'location' => 'Sorting facility',
                     'description' => 'Departed sorting facility',
-                    'status'      => 'in_transit',
+                    'status' => 'in_transit',
                 ],
                 [
-                    'at'          => now()->toIso8601String(),
-                    'location'    => 'Destination hub',
+                    'at' => now()->toIso8601String(),
+                    'location' => 'Destination hub',
                     'description' => 'Arrived at destination hub',
-                    'status'      => 'in_transit',
+                    'status' => 'in_transit',
                 ],
             ],
         ];
     }
 
     // Per-carrier base fees. Subclasses override to differentiate quotes.
-    protected function mockBaseFee(): float { return 25.0; }
-    protected function mockPerKgRate(): float { return 5.0; }
+    protected function mockBaseFee(): float
+    {
+        return 25.0;
+    }
+
+    protected function mockPerKgRate(): float
+    {
+        return 5.0;
+    }
+
     protected function mockTransitDays(string $service): int
     {
         return $service === 'express' ? 2 : 5;

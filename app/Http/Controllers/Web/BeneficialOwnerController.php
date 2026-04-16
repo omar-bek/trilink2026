@@ -23,9 +23,7 @@ use Illuminate\View\View;
  */
 class BeneficialOwnerController extends Controller
 {
-    public function __construct(private readonly VerificationService $verification)
-    {
-    }
+    public function __construct(private readonly VerificationService $verification) {}
 
     public function index(): View
     {
@@ -38,12 +36,12 @@ class BeneficialOwnerController extends Controller
             ->get();
 
         $totalOwnership = (float) $owners->sum('ownership_percentage');
-        $isComplete     = $totalOwnership >= 100.0;
+        $isComplete = $totalOwnership >= 100.0;
 
         return view('dashboard.beneficial-owners.index', [
-            'owners'         => $owners,
+            'owners' => $owners,
             'totalOwnership' => $totalOwnership,
-            'isComplete'     => $isComplete,
+            'isComplete' => $isComplete,
         ]);
     }
 
@@ -98,16 +96,16 @@ class BeneficialOwnerController extends Controller
     private function validateData(Request $request): array
     {
         return $request->validate([
-            'full_name'            => ['required', 'string', 'max:191'],
-            'nationality'          => ['nullable', 'string', 'max:64'],
-            'date_of_birth'        => ['nullable', 'date', 'before:today'],
-            'id_type'              => ['nullable', 'string', 'in:' . implode(',', BeneficialOwner::ID_TYPES)],
-            'id_number'            => ['nullable', 'string', 'max:64'],
-            'id_expiry'            => ['nullable', 'date', 'after:today'],
+            'full_name' => ['required', 'string', 'max:191'],
+            'nationality' => ['nullable', 'string', 'max:64'],
+            'date_of_birth' => ['nullable', 'date', 'before:today'],
+            'id_type' => ['nullable', 'string', 'in:'.implode(',', BeneficialOwner::ID_TYPES)],
+            'id_number' => ['nullable', 'string', 'max:64'],
+            'id_expiry' => ['nullable', 'date', 'after:today'],
             'ownership_percentage' => ['required', 'numeric', 'min:0', 'max:100'],
-            'role'                 => ['nullable', 'string', 'in:' . implode(',', BeneficialOwner::ROLES)],
-            'is_pep'               => ['nullable', 'boolean'],
-            'source_of_wealth'     => ['nullable', 'string', 'max:1000'],
+            'role' => ['nullable', 'string', 'in:'.implode(',', BeneficialOwner::ROLES)],
+            'is_pep' => ['nullable', 'boolean'],
+            'source_of_wealth' => ['nullable', 'string', 'max:1000'],
         ]);
     }
 }

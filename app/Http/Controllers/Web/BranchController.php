@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Category;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -58,7 +59,7 @@ class BranchController extends Controller
 
         // If a manager was picked, promote them to BRANCH_MANAGER and link
         // them to this branch in a single touch — saves a separate edit step.
-        if (!empty($data['branch_manager_id'])) {
+        if (! empty($data['branch_manager_id'])) {
             $this->assignManager($branch, (int) $data['branch_manager_id'], $user->company_id);
         }
 
@@ -87,7 +88,7 @@ class BranchController extends Controller
 
         $branch->update($data);
 
-        if (!empty($data['branch_manager_id'])) {
+        if (! empty($data['branch_manager_id'])) {
             $this->assignManager($branch, (int) $data['branch_manager_id'], $user->company_id);
         }
 
@@ -116,18 +117,18 @@ class BranchController extends Controller
     private function assignManager(Branch $branch, int $userId, int $companyId): void
     {
         $candidate = User::where('company_id', $companyId)->find($userId);
-        if (!$candidate) {
+        if (! $candidate) {
             return;
         }
 
         $candidate->update([
-            'role'      => UserRole::BRANCH_MANAGER,
+            'role' => UserRole::BRANCH_MANAGER,
             'branch_id' => $branch->id,
         ]);
     }
 
     /**
-     * @return \Illuminate\Database\Eloquent\Collection<int, User>
+     * @return Collection<int, User>
      */
     private function managerCandidates(int $companyId)
     {
@@ -144,14 +145,14 @@ class BranchController extends Controller
     private function validateData(Request $request): array
     {
         return $request->validate([
-            'name'              => ['required', 'string', 'max:191'],
-            'name_ar'           => ['nullable', 'string', 'max:191'],
-            'category_id'       => ['nullable', 'exists:categories,id'],
-            'address'           => ['nullable', 'string', 'max:255'],
-            'city'              => ['nullable', 'string', 'max:100'],
-            'country'           => ['nullable', 'string', 'size:2'],
+            'name' => ['required', 'string', 'max:191'],
+            'name_ar' => ['nullable', 'string', 'max:191'],
+            'category_id' => ['nullable', 'exists:categories,id'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'country' => ['nullable', 'string', 'size:2'],
             'branch_manager_id' => ['nullable', 'exists:users,id'],
-            'is_active'         => ['sometimes', 'boolean'],
+            'is_active' => ['sometimes', 'boolean'],
         ]);
     }
 }

@@ -19,7 +19,7 @@ class RfqController extends Controller
         $filters = $request->only(['type', 'status', 'target_role', 'category_id', 'per_page']);
         $user = auth()->user();
 
-        if (!$user->isAdmin() && !$user->isGovernment()) {
+        if (! $user->isAdmin() && ! $user->isGovernment()) {
             $filters['company_id'] = $user->company_id;
         }
 
@@ -54,6 +54,7 @@ class RfqController extends Controller
     public function show(int $id): JsonResponse
     {
         $rfq = $this->service->find($id);
+
         return $rfq ? $this->success($rfq) : $this->notFound();
     }
 
@@ -103,6 +104,7 @@ class RfqController extends Controller
         ]);
 
         $rfq = $this->service->update($id, $data);
+
         return $rfq ? $this->success($rfq) : $this->notFound();
     }
 
@@ -121,7 +123,9 @@ class RfqController extends Controller
     public function compareBids(int $id): JsonResponse
     {
         $rfq = Rfq::with(['bids.company', 'bids.provider'])->find($id);
-        if (!$rfq) return $this->notFound();
+        if (! $rfq) {
+            return $this->notFound();
+        }
 
         $comparison = $rfq->bids->map(fn ($bid) => [
             'bid_id' => $bid->id,
@@ -140,18 +144,24 @@ class RfqController extends Controller
     public function enableAnonymity(int $id): JsonResponse
     {
         $rfq = Rfq::find($id);
-        if (!$rfq) return $this->notFound();
+        if (! $rfq) {
+            return $this->notFound();
+        }
 
         $rfq->update(['is_anonymous' => true]);
+
         return $this->success($rfq->fresh(), 'Anonymity enabled');
     }
 
     public function revealIdentity(int $id): JsonResponse
     {
         $rfq = Rfq::find($id);
-        if (!$rfq) return $this->notFound();
+        if (! $rfq) {
+            return $this->notFound();
+        }
 
         $rfq->update(['is_anonymous' => false]);
+
         return $this->success($rfq->fresh(), 'Identity revealed');
     }
 }

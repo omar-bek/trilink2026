@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Shipment;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -15,8 +16,10 @@ Broadcast::channel('company.{companyId}', function ($user, $companyId) {
 
 // Shipment channel - company members of involved companies
 Broadcast::channel('shipment.{shipmentId}', function ($user, $shipmentId) {
-    $shipment = \App\Models\Shipment::find($shipmentId);
-    if (!$shipment) return false;
+    $shipment = Shipment::find($shipmentId);
+    if (! $shipment) {
+        return false;
+    }
 
     return $user->company_id === $shipment->company_id
         || $user->company_id === $shipment->logistics_company_id;

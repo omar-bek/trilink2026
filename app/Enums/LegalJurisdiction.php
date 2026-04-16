@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use App\Services\ContractService;
+
 /**
  * The legal system that governs a company's contracts.
  *
@@ -23,22 +25,22 @@ namespace App\Enums;
  *     English common law and equity directly. Disputes go to ADGM
  *     Courts.
  *
- * The {@see \App\Services\ContractService::buildBilingualUaeContractTerms()}
+ * The {@see ContractService::buildBilingualUaeContractTerms()}
  * dispatcher routes to the right clause-set generator based on the
  * combined jurisdiction of the buyer and supplier on the contract.
  */
 enum LegalJurisdiction: string
 {
     case FEDERAL = 'federal';
-    case DIFC    = 'difc';
-    case ADGM    = 'adgm';
+    case DIFC = 'difc';
+    case ADGM = 'adgm';
 
     public function label(): string
     {
         return match ($this) {
             self::FEDERAL => 'UAE Federal',
-            self::DIFC    => 'DIFC',
-            self::ADGM    => 'ADGM',
+            self::DIFC => 'DIFC',
+            self::ADGM => 'ADGM',
         };
     }
 
@@ -56,7 +58,7 @@ enum LegalJurisdiction: string
      */
     public static function resolveForPair(?self $buyer, ?self $supplier): self
     {
-        $buyer    = $buyer    ?? self::FEDERAL;
+        $buyer = $buyer ?? self::FEDERAL;
         $supplier = $supplier ?? self::FEDERAL;
 
         if ($buyer === self::DIFC && $supplier === self::DIFC) {

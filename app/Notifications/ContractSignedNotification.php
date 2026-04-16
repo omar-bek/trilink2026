@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Contract;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,8 +13,8 @@ use Illuminate\Notifications\Notification;
 
 class ContractSignedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Contract $contract,
@@ -23,8 +25,8 @@ class ContractSignedNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'contract_milestones',
             ['database', 'mail']
         );
@@ -35,11 +37,11 @@ class ContractSignedNotification extends Notification implements ShouldQueue
         $number = $this->contract->contract_number;
 
         return $this->baseMail($notifiable, 'notifications.contract.signed.subject', [
-                'number' => $number,
-                'party'  => $this->signerName,
-            ])
+            'number' => $number,
+            'party' => $this->signerName,
+        ])
             ->line($this->t($notifiable, 'notifications.contract.signed.line1', [
-                'party'  => $this->signerName,
+                'party' => $this->signerName,
                 'number' => $number,
             ]))
             ->action(
@@ -51,14 +53,14 @@ class ContractSignedNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'success',
-            'title'       => $this->t($notifiable, 'notifications.contract.signed.title'),
-            'message'     => $this->t($notifiable, 'notifications.contract.signed.message', [
-                'party'  => $this->signerName,
+            'type' => 'success',
+            'title' => $this->t($notifiable, 'notifications.contract.signed.title'),
+            'message' => $this->t($notifiable, 'notifications.contract.signed.message', [
+                'party' => $this->signerName,
                 'number' => $this->contract->contract_number,
             ]),
             'entity_type' => 'contract',
-            'entity_id'   => $this->contract->id,
+            'entity_id' => $this->contract->id,
         ];
     }
 }

@@ -19,9 +19,7 @@ use Illuminate\View\View;
  */
 class NotificationController extends Controller
 {
-    public function __construct(private readonly NotificationFormatter $formatter)
-    {
-    }
+    public function __construct(private readonly NotificationFormatter $formatter) {}
 
     public function index(Request $request): View
     {
@@ -36,9 +34,9 @@ class NotificationController extends Controller
         $items = $this->formatter->formatMany($notifications);
 
         return view('dashboard.notifications.index', [
-            'items'        => $items,
-            'pagination'   => $notifications,
-            'unreadCount'  => $user->unreadNotifications()->count(),
+            'items' => $items,
+            'pagination' => $notifications,
+            'unreadCount' => $user->unreadNotifications()->count(),
         ]);
     }
 
@@ -47,7 +45,7 @@ class NotificationController extends Controller
         $user = $request->user();
         $notification = $user->notifications()->where('id', $id)->first();
 
-        if (!$notification) {
+        if (! $notification) {
             abort(404);
         }
 

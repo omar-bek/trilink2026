@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\Schema;
  * row and the latest one is denormalised onto `companies.latest_credit_*`
  * for cheap reads.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('credit_scores', function (Blueprint $table) {

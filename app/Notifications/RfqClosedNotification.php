@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Rfq;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,8 +19,8 @@ use Illuminate\Notifications\Notification;
  */
 class RfqClosedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Rfq $rfq,
@@ -28,8 +30,8 @@ class RfqClosedNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'rfq_matches',
             ['database', 'mail']
         );
@@ -38,7 +40,7 @@ class RfqClosedNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $rfqNumber = $this->rfq->rfq_number;
-        $title     = (string) $this->rfq->title;
+        $title = (string) $this->rfq->title;
 
         return $this->baseMail($notifiable, 'notifications.rfq.closed.subject', ['rfq' => $rfqNumber])
             ->line($this->t($notifiable, 'notifications.rfq.closed.line1', ['rfq' => $rfqNumber, 'title' => $title]))
@@ -51,11 +53,11 @@ class RfqClosedNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'info',
-            'title'       => $this->t($notifiable, 'notifications.rfq.closed.title'),
-            'message'     => $this->t($notifiable, 'notifications.rfq.closed.message', ['rfq' => $this->rfq->rfq_number]),
+            'type' => 'info',
+            'title' => $this->t($notifiable, 'notifications.rfq.closed.title'),
+            'message' => $this->t($notifiable, 'notifications.rfq.closed.message', ['rfq' => $this->rfq->rfq_number]),
             'entity_type' => 'rfq',
-            'entity_id'   => $this->rfq->id,
+            'entity_id' => $this->rfq->id,
         ];
     }
 }

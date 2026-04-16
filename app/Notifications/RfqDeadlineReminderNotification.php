@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Rfq;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -18,8 +20,8 @@ use Illuminate\Notifications\Notification;
  */
 class RfqDeadlineReminderNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Rfq $rfq,
@@ -30,8 +32,8 @@ class RfqDeadlineReminderNotification extends Notification implements ShouldQueu
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'rfq_matches',
             ['database', 'mail']
         );
@@ -40,15 +42,15 @@ class RfqDeadlineReminderNotification extends Notification implements ShouldQueu
     public function toMail(object $notifiable): MailMessage
     {
         $rfqNumber = $this->rfq->rfq_number;
-        $title     = (string) $this->rfq->title;
-        $deadline  = $this->rfq->deadline?->format('M j, Y H:i') ?? '—';
+        $title = (string) $this->rfq->title;
+        $deadline = $this->rfq->deadline?->format('M j, Y H:i') ?? '—';
 
         return $this->baseMail($notifiable, 'notifications.rfq.deadline.subject', [
-                'rfq'   => $rfqNumber,
-                'hours' => $this->hoursLeft,
-            ])
+            'rfq' => $rfqNumber,
+            'hours' => $this->hoursLeft,
+        ])
             ->line($this->t($notifiable, 'notifications.rfq.deadline.line1', [
-                'rfq'   => $rfqNumber,
+                'rfq' => $rfqNumber,
                 'title' => $title,
             ]))
             ->line($this->t($notifiable, 'notifications.rfq.deadline.line_deadline', ['deadline' => $deadline]))
@@ -61,14 +63,14 @@ class RfqDeadlineReminderNotification extends Notification implements ShouldQueu
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'warning',
-            'title'       => $this->t($notifiable, 'notifications.rfq.deadline.title'),
-            'message'     => $this->t($notifiable, 'notifications.rfq.deadline.message', [
-                'rfq'   => $this->rfq->rfq_number,
+            'type' => 'warning',
+            'title' => $this->t($notifiable, 'notifications.rfq.deadline.title'),
+            'message' => $this->t($notifiable, 'notifications.rfq.deadline.message', [
+                'rfq' => $this->rfq->rfq_number,
                 'hours' => $this->hoursLeft,
             ]),
             'entity_type' => 'rfq',
-            'entity_id'   => $this->rfq->id,
+            'entity_id' => $this->rfq->id,
         ];
     }
 }

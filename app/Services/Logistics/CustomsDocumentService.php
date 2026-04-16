@@ -2,6 +2,8 @@
 
 namespace App\Services\Logistics;
 
+use App\Models\Contract;
+use App\Models\Product;
 use App\Models\Shipment;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Symfony\Component\HttpFoundation\Response;
@@ -36,26 +38,26 @@ class CustomsDocumentService
         $contract = $shipment->contract;
 
         return [
-            'document_type'  => 'commercial_invoice',
-            'document_number'=> 'CI-' . $shipment->tracking_number,
-            'issue_date'     => now()->toDateString(),
-            'shipper'        => $this->shipperBlock($shipment),
-            'consignee'      => $this->consigneeBlock($shipment),
-            'shipment'       => [
+            'document_type' => 'commercial_invoice',
+            'document_number' => 'CI-'.$shipment->tracking_number,
+            'issue_date' => now()->toDateString(),
+            'shipper' => $this->shipperBlock($shipment),
+            'consignee' => $this->consigneeBlock($shipment),
+            'shipment' => [
                 'tracking_number' => $shipment->tracking_number,
-                'origin'          => $shipment->origin,
-                'destination'     => $shipment->destination,
-                'estimated'       => $shipment->estimated_delivery?->toDateString(),
-                'incoterm'        => 'FOB',
+                'origin' => $shipment->origin,
+                'destination' => $shipment->destination,
+                'estimated' => $shipment->estimated_delivery?->toDateString(),
+                'incoterm' => 'FOB',
             ],
-            'lines'          => $this->buildLines($contract),
-            'totals'         => [
-                'subtotal'  => (float) ($contract?->amounts['subtotal'] ?? 0),
-                'tax'       => (float) ($contract?->amounts['tax'] ?? 0),
-                'total'     => (float) ($contract?->total_amount ?? 0),
-                'currency'  => $contract?->currency ?? 'AED',
+            'lines' => $this->buildLines($contract),
+            'totals' => [
+                'subtotal' => (float) ($contract?->amounts['subtotal'] ?? 0),
+                'tax' => (float) ($contract?->amounts['tax'] ?? 0),
+                'total' => (float) ($contract?->total_amount ?? 0),
+                'currency' => $contract?->currency ?? 'AED',
             ],
-            'notes'          => 'Goods of preferential origin, customs clearance value as declared above.',
+            'notes' => 'Goods of preferential origin, customs clearance value as declared above.',
         ];
     }
 
@@ -64,37 +66,37 @@ class CustomsDocumentService
         $shipment->loadMissing(['contract.buyerCompany']);
         $contract = $shipment->contract;
 
-        $lines    = $this->buildLines($contract);
+        $lines = $this->buildLines($contract);
         $totalQty = collect($lines)->sum('quantity');
         // Default 5kg per unit until we add a real weight column.
         $estimatedWeight = max(1, $totalQty) * 5;
 
         return [
-            'document_type'   => 'packing_list',
-            'document_number' => 'PL-' . $shipment->tracking_number,
-            'issue_date'      => now()->toDateString(),
-            'shipper'         => $this->shipperBlock($shipment),
-            'consignee'       => $this->consigneeBlock($shipment),
-            'shipment'        => [
+            'document_type' => 'packing_list',
+            'document_number' => 'PL-'.$shipment->tracking_number,
+            'issue_date' => now()->toDateString(),
+            'shipper' => $this->shipperBlock($shipment),
+            'consignee' => $this->consigneeBlock($shipment),
+            'shipment' => [
                 'tracking_number' => $shipment->tracking_number,
-                'origin'          => $shipment->origin,
-                'destination'     => $shipment->destination,
+                'origin' => $shipment->origin,
+                'destination' => $shipment->destination,
             ],
-            'packages'        => [
+            'packages' => [
                 [
-                    'package_no'  => 1,
-                    'marks'       => 'TRILINK',
+                    'package_no' => 1,
+                    'marks' => 'TRILINK',
                     'description' => 'Mixed goods',
-                    'quantity'    => $totalQty,
-                    'gross_kg'    => $estimatedWeight + 5,
-                    'net_kg'      => $estimatedWeight,
-                    'dimensions'  => '120 x 80 x 100 cm',
+                    'quantity' => $totalQty,
+                    'gross_kg' => $estimatedWeight + 5,
+                    'net_kg' => $estimatedWeight,
+                    'dimensions' => '120 x 80 x 100 cm',
                 ],
             ],
-            'totals'          => [
+            'totals' => [
                 'package_count' => 1,
-                'gross_kg'      => $estimatedWeight + 5,
-                'net_kg'        => $estimatedWeight,
+                'gross_kg' => $estimatedWeight + 5,
+                'net_kg' => $estimatedWeight,
             ],
         ];
     }
@@ -107,7 +109,8 @@ class CustomsDocumentService
     public function renderPdf(array $data): Response
     {
         $pdf = Pdf::loadView('dashboard.shipments.pdf.customs', ['doc' => $data]);
-        return $pdf->download($data['document_number'] . '.pdf');
+
+        return $pdf->download($data['document_number'].'.pdf');
     }
 
     private function shipperBlock(Shipment $shipment): array
@@ -115,22 +118,24 @@ class CustomsDocumentService
         // The shipper is the company that opened the shipment row — that's
         // the supplier in our model.
         $supplier = $shipment->company;
+
         return [
-            'name'    => $supplier?->name,
+            'name' => $supplier?->name,
             'country' => $supplier?->country,
             'address' => $supplier?->address,
-            'tax_no'  => $supplier?->tax_number,
+            'tax_no' => $supplier?->tax_number,
         ];
     }
 
     private function consigneeBlock(Shipment $shipment): array
     {
         $buyer = $shipment->contract?->buyerCompany;
+
         return [
-            'name'    => $buyer?->name,
+            'name' => $buyer?->name,
             'country' => $buyer?->country,
             'address' => $buyer?->address,
-            'tax_no'  => $buyer?->tax_number,
+            'tax_no' => $buyer?->tax_number,
         ];
     }
 
@@ -139,34 +144,34 @@ class CustomsDocumentService
      * the templates can render. For older contracts that don't have a
      * lines array we synthesize a single line from the total amount.
      */
-    private function buildLines(?\App\Models\Contract $contract): array
+    private function buildLines(?Contract $contract): array
     {
-        if (!$contract) {
+        if (! $contract) {
             return [];
         }
 
         $amounts = is_array($contract->amounts) ? $contract->amounts : [];
-        $lines   = $amounts['lines'] ?? [];
+        $lines = $amounts['lines'] ?? [];
 
-        if (!empty($lines)) {
+        if (! empty($lines)) {
             return array_map(fn ($line) => [
                 'description' => (string) ($line['name'] ?? 'Goods'),
-                'hs_code'     => $this->lookupHsCode((int) ($line['product_id'] ?? 0)),
-                'quantity'    => (int) ($line['quantity'] ?? 1),
-                'unit_price'  => (float) ($line['unit_price'] ?? 0),
-                'currency'    => (string) ($line['currency'] ?? $contract->currency ?? 'AED'),
-                'line_total'  => (float) ($line['line_total'] ?? 0),
+                'hs_code' => $this->lookupHsCode((int) ($line['product_id'] ?? 0)),
+                'quantity' => (int) ($line['quantity'] ?? 1),
+                'unit_price' => (float) ($line['unit_price'] ?? 0),
+                'currency' => (string) ($line['currency'] ?? $contract->currency ?? 'AED'),
+                'line_total' => (float) ($line['line_total'] ?? 0),
             ], $lines);
         }
 
         // Fallback for non-cart contracts — single synthesized line.
         return [[
             'description' => $contract->title,
-            'hs_code'     => null,
-            'quantity'    => 1,
-            'unit_price'  => (float) $contract->total_amount,
-            'currency'    => $contract->currency ?? 'AED',
-            'line_total'  => (float) $contract->total_amount,
+            'hs_code' => null,
+            'quantity' => 1,
+            'unit_price' => (float) $contract->total_amount,
+            'currency' => $contract->currency ?? 'AED',
+            'line_total' => (float) $contract->total_amount,
         ]];
     }
 
@@ -180,6 +185,7 @@ class CustomsDocumentService
         if ($productId <= 0) {
             return null;
         }
-        return \App\Models\Product::query()->where('id', $productId)->value('hs_code');
+
+        return Product::query()->where('id', $productId)->value('hs_code');
     }
 }

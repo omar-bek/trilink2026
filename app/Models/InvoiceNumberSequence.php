@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Services\Tax\InvoiceNumberAllocator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Per-(company, series, year) sequential counter for tax invoices and
  * credit notes. The actual atomic allocation lives in
- * {@see \App\Services\Tax\InvoiceNumberAllocator} — this model is just
+ * {@see InvoiceNumberAllocator} — this model is just
  * the row holder. Don't update next_value directly; always go through
  * the allocator so the row lock is held correctly.
  */

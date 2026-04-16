@@ -35,7 +35,8 @@ use Illuminate\Support\Facades\Schema;
  * The Phase 1 PaymentInvoiceObserver tested in production has only
  * ever produced standard 5% invoices, so this is correct.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('tax_invoices', function (Blueprint $table) {

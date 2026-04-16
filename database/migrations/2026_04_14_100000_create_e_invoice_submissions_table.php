@@ -34,7 +34,8 @@ use Illuminate\Support\Facades\Schema;
  * provider class is added; everything in this table and the dispatch
  * pipeline stays unchanged.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('e_invoice_submissions', function (Blueprint $table) {

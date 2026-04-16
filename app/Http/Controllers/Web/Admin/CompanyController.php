@@ -8,19 +8,25 @@ use App\Enums\CompanyType;
 use App\Enums\UserRole;
 use App\Enums\VerificationLevel;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Web\CompanyProfileController;
 use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\Company;
 use App\Models\CompanyDocument;
-use App\Services\SanctionsScreeningService;
+use App\Models\CompanyInfoRequest;
+use App\Models\CompanyInsurance;
 use App\Notifications\CompanyInfoRequestedNotification;
+use App\Services\SanctionsScreeningService;
+use App\Services\VerificationService;
 use App\Support\CompanyInfoFields;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Admin-side company management. Admins can approve pending registrations,
@@ -32,9 +38,9 @@ class CompanyController extends Controller
 {
     public function index(Request $request): View
     {
-        $q      = trim((string) $request->query('q', ''));
+        $q = trim((string) $request->query('q', ''));
         $status = $request->query('status');
-        $type   = $request->query('type');
+        $type = $request->query('type');
 
         $companies = Company::query()
             ->withCount(['users', 'purchaseRequests', 'rfqs', 'bids'])
@@ -46,9 +52,9 @@ class CompanyController extends Controller
             ->withQueryString();
 
         $stats = [
-            'total'    => Company::count(),
-            'active'   => Company::where('status', CompanyStatus::ACTIVE->value)->count(),
-            'pending'  => Company::where('status', CompanyStatus::PENDING->value)->count(),
+            'total' => Company::count(),
+            'active' => Company::where('status', CompanyStatus::ACTIVE->value)->count(),
+            'pending' => Company::where('status', CompanyStatus::PENDING->value)->count(),
             'inactive' => Company::where('status', CompanyStatus::INACTIVE->value)->count(),
         ];
 
@@ -70,14 +76,14 @@ class CompanyController extends Controller
             ->withCount(['purchaseRequests', 'rfqs', 'bids', 'buyerContracts', 'payments'])
             ->findOrFail($id);
 
-        $data = \App\Http\Controllers\Web\CompanyProfileController::buildViewData($company, mode: 'admin');
+        $data = CompanyProfileController::buildViewData($company, mode: 'admin');
 
         return view('dashboard.company.profile', $data);
     }
 
     public function edit(int $id): View
     {
-        $company    = Company::findOrFail($id);
+        $company = Company::findOrFail($id);
         $categories = Category::where('is_active', true)->orderBy('path')->get();
 
         return view('dashboard.admin.companies.edit', compact('company', 'categories'));
@@ -86,24 +92,24 @@ class CompanyController extends Controller
     public function update(Request $request, int $id): RedirectResponse
     {
         $company = Company::findOrFail($id);
-        $before  = $company->only(['name', 'name_ar', 'email', 'phone', 'address', 'city', 'country', 'type', 'status', 'description']);
+        $before = $company->only(['name', 'name_ar', 'email', 'phone', 'address', 'city', 'country', 'type', 'status', 'description']);
 
         $data = $request->validate([
-            'name'                => ['required', 'string', 'max:255'],
-            'name_ar'             => ['nullable', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
+            'name_ar' => ['nullable', 'string', 'max:255'],
             'registration_number' => ['required', 'string', 'max:100', Rule::unique('companies', 'registration_number')->ignore($company->id)->whereNull('deleted_at')],
-            'tax_number'          => ['nullable', 'string', 'max:100'],
-            'type'                => ['required', new Enum(CompanyType::class)],
-            'status'              => ['required', new Enum(CompanyStatus::class)],
-            'email'               => ['nullable', 'email', 'max:255'],
-            'phone'               => ['nullable', 'string', 'max:30'],
-            'website'             => ['nullable', 'url', 'max:255'],
-            'address'             => ['nullable', 'string', 'max:1000'],
-            'city'                => ['nullable', 'string', 'max:100'],
-            'country'             => ['nullable', 'string', 'max:100'],
-            'description'         => ['nullable', 'string', 'max:5000'],
-            'categories'          => ['nullable', 'array'],
-            'categories.*'        => ['integer', 'exists:categories,id'],
+            'tax_number' => ['nullable', 'string', 'max:100'],
+            'type' => ['required', new Enum(CompanyType::class)],
+            'status' => ['required', new Enum(CompanyStatus::class)],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'website' => ['nullable', 'url', 'max:255'],
+            'address' => ['nullable', 'string', 'max:1000'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'country' => ['nullable', 'string', 'max:100'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'categories' => ['nullable', 'array'],
+            'categories.*' => ['integer', 'exists:categories,id'],
         ]);
 
         $categories = $data['categories'] ?? [];
@@ -122,7 +128,7 @@ class CompanyController extends Controller
     public function approve(int $id): RedirectResponse
     {
         $company = Company::findOrFail($id);
-        $before  = ['status' => $company->status?->value];
+        $before = ['status' => $company->status?->value];
 
         $company->update(['status' => CompanyStatus::ACTIVE]);
 
@@ -147,18 +153,18 @@ class CompanyController extends Controller
         $company = Company::findOrFail($id);
 
         $data = $request->validate([
-            'items'   => ['required', 'array', 'min:1'],
+            'items' => ['required', 'array', 'min:1'],
             'items.*' => ['string', Rule::in(CompanyInfoFields::allKeys())],
-            'note'    => ['nullable', 'string', 'max:2000'],
+            'note' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $items = array_values(array_unique($data['items']));
-        $note  = $data['note'] ?? '';
+        $note = $data['note'] ?? '';
 
         $before = $company->infoRequest
             ? [
-                'items'        => $company->infoRequest->items,
-                'note'         => $company->infoRequest->note,
+                'items' => $company->infoRequest->items,
+                'note' => $company->infoRequest->note,
                 'requested_at' => $company->infoRequest->requested_at?->toDateTimeString(),
                 'requested_by' => $company->infoRequest->requested_by,
             ]
@@ -167,11 +173,11 @@ class CompanyController extends Controller
         // Upsert the typed row (single active request per company is
         // enforced by the unique index). Previous responses on the row
         // are cleared — this is a fresh ask.
-        \App\Models\CompanyInfoRequest::updateOrCreate(
+        CompanyInfoRequest::updateOrCreate(
             ['company_id' => $company->id],
             [
-                'items'        => $items,
-                'note'         => $note,
+                'items' => $items,
+                'note' => $note,
                 'requested_at' => now(),
                 'requested_by' => auth()->id(),
                 'responded_at' => null,
@@ -210,7 +216,7 @@ class CompanyController extends Controller
         $company = Company::findOrFail($id);
 
         $existing = $company->infoRequest;
-        $before   = $existing ? ['items' => $existing->items, 'note' => $existing->note] : null;
+        $before = $existing ? ['items' => $existing->items, 'note' => $existing->note] : null;
 
         $existing?->delete();
 
@@ -222,7 +228,7 @@ class CompanyController extends Controller
     public function reject(Request $request, int $id): RedirectResponse
     {
         $company = Company::findOrFail($id);
-        $before  = ['status' => $company->status?->value];
+        $before = ['status' => $company->status?->value];
 
         $company->update(['status' => CompanyStatus::INACTIVE]);
 
@@ -234,7 +240,7 @@ class CompanyController extends Controller
     public function suspend(int $id): RedirectResponse
     {
         $company = Company::findOrFail($id);
-        $before  = ['status' => $company->status?->value];
+        $before = ['status' => $company->status?->value];
 
         $company->update(['status' => CompanyStatus::INACTIVE]);
 
@@ -246,7 +252,7 @@ class CompanyController extends Controller
     public function reactivate(int $id): RedirectResponse
     {
         $company = Company::findOrFail($id);
-        $before  = ['status' => $company->status?->value];
+        $before = ['status' => $company->status?->value];
 
         $company->update(['status' => CompanyStatus::ACTIVE]);
 
@@ -265,15 +271,15 @@ class CompanyController extends Controller
         $company = Company::findOrFail($id);
 
         $data = $request->validate([
-            'verification_level' => ['required', new \Illuminate\Validation\Rules\Enum(VerificationLevel::class)],
+            'verification_level' => ['required', new Enum(VerificationLevel::class)],
         ]);
 
         $before = ['verification_level' => $company->verification_level?->value];
 
         $company->update([
             'verification_level' => $data['verification_level'],
-            'verified_by'        => auth()->id(),
-            'verified_at'        => now(),
+            'verified_by' => auth()->id(),
+            'verified_at' => now(),
         ]);
 
         $this->audit(AuditAction::UPDATE, $company, $before, ['verification_level' => $data['verification_level']]);
@@ -290,14 +296,14 @@ class CompanyController extends Controller
     public function bulkRescreen(Request $request, SanctionsScreeningService $service): RedirectResponse
     {
         $data = $request->validate([
-            'ids'   => ['required', 'array', 'min:1'],
+            'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer'],
         ]);
 
         $companies = Company::whereIn('id', $data['ids'])->get();
         $processed = 0;
-        $hits      = 0;
-        $errors    = 0;
+        $hits = 0;
+        $errors = 0;
 
         foreach ($companies as $company) {
             try {
@@ -319,8 +325,8 @@ class CompanyController extends Controller
 
         return back()->with('status', __('trust.bulk_rescreen_summary', [
             'processed' => $processed,
-            'hits'      => $hits,
-            'errors'    => $errors,
+            'hits' => $hits,
+            'errors' => $errors,
         ]));
     }
 
@@ -348,17 +354,17 @@ class CompanyController extends Controller
      * Stream a company document file to the admin for review before
      * approving or rejecting it.
      */
-    public function downloadDocument(int $documentId): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function downloadDocument(int $documentId): StreamedResponse
     {
         $document = CompanyDocument::findOrFail($documentId);
 
         abort_unless(
-            $document->file_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($document->file_path),
+            $document->file_path && Storage::disk('local')->exists($document->file_path),
             404,
             __('trust.file_not_found')
         );
 
-        return \Illuminate\Support\Facades\Storage::disk('local')->download(
+        return Storage::disk('local')->download(
             $document->file_path,
             $document->original_filename ?? basename($document->file_path)
         );
@@ -380,17 +386,17 @@ class CompanyController extends Controller
 
         if ($data['action'] === 'verify') {
             $document->update([
-                'status'           => CompanyDocument::STATUS_VERIFIED,
-                'verified_by'      => auth()->id(),
-                'verified_at'      => now(),
+                'status' => CompanyDocument::STATUS_VERIFIED,
+                'verified_by' => auth()->id(),
+                'verified_at' => now(),
                 'rejection_reason' => null,
             ]);
         } else {
             $document->update([
-                'status'           => CompanyDocument::STATUS_REJECTED,
+                'status' => CompanyDocument::STATUS_REJECTED,
                 'rejection_reason' => $data['reason'] ?? null,
-                'verified_by'      => auth()->id(),
-                'verified_at'      => now(),
+                'verified_by' => auth()->id(),
+                'verified_at' => now(),
             ]);
         }
 
@@ -399,7 +405,7 @@ class CompanyController extends Controller
         // higher tier and bump it automatically.
         if ($data['action'] === 'verify') {
             try {
-                app(\App\Services\VerificationService::class)
+                app(VerificationService::class)
                     ->autoPromoteIfEligible($document->company, auth()->id());
             } catch (\Throwable $e) {
                 report($e);
@@ -416,7 +422,7 @@ class CompanyController extends Controller
      */
     public function verifyInsurance(Request $request, int $insuranceId): RedirectResponse
     {
-        $policy = \App\Models\CompanyInsurance::findOrFail($insuranceId);
+        $policy = CompanyInsurance::findOrFail($insuranceId);
 
         $data = $request->validate([
             'action' => ['required', 'in:verify,reject'],
@@ -425,9 +431,9 @@ class CompanyController extends Controller
 
         if ($data['action'] === 'verify') {
             $policy->update([
-                'status'           => \App\Models\CompanyInsurance::STATUS_VERIFIED,
-                'verified_by'      => auth()->id(),
-                'verified_at'      => now(),
+                'status' => CompanyInsurance::STATUS_VERIFIED,
+                'verified_by' => auth()->id(),
+                'verified_at' => now(),
                 'rejection_reason' => null,
             ]);
 
@@ -435,17 +441,17 @@ class CompanyController extends Controller
             // promotion, since the verification service treats insurance
             // as a hard requirement at that level.
             try {
-                app(\App\Services\VerificationService::class)
+                app(VerificationService::class)
                     ->autoPromoteIfEligible($policy->company, auth()->id());
             } catch (\Throwable $e) {
                 report($e);
             }
         } else {
             $policy->update([
-                'status'           => \App\Models\CompanyInsurance::STATUS_REJECTED,
+                'status' => CompanyInsurance::STATUS_REJECTED,
                 'rejection_reason' => $data['reason'] ?? null,
-                'verified_by'      => auth()->id(),
-                'verified_at'      => now(),
+                'verified_by' => auth()->id(),
+                'verified_at' => now(),
             ]);
         }
 
@@ -479,16 +485,16 @@ class CompanyController extends Controller
     private function audit(AuditAction $action, Company $company, ?array $before = null, ?array $after = null): void
     {
         AuditLog::create([
-            'user_id'       => auth()->id(),
-            'company_id'    => $company->id,
-            'action'        => $action,
+            'user_id' => auth()->id(),
+            'company_id' => $company->id,
+            'action' => $action,
             'resource_type' => 'Company',
-            'resource_id'   => $company->id,
-            'before'        => $before,
-            'after'         => $after,
-            'ip_address'    => request()->ip(),
-            'user_agent'    => substr((string) request()->userAgent(), 0, 255),
-            'status'        => 'success',
+            'resource_id' => $company->id,
+            'before' => $before,
+            'after' => $after,
+            'ip_address' => request()->ip(),
+            'user_agent' => substr((string) request()->userAgent(), 0, 255),
+            'status' => 'success',
         ]);
     }
 }

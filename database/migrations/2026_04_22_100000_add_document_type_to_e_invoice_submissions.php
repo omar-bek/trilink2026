@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -31,7 +32,8 @@ use Illuminate\Support\Facades\Schema;
  *     a credit note row may have tax_invoice_id = null. The existing
  *     status indexes still work.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('e_invoice_submissions', function (Blueprint $table) {
@@ -61,10 +63,10 @@ return new class extends Migration {
                 Schema::table('e_invoice_submissions', function (Blueprint $table) {
                     $table->dropForeign(['tax_invoice_id']);
                 });
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // FK name may differ across schemas — best-effort drop.
             }
-            \Illuminate\Support\Facades\DB::statement(
+            DB::statement(
                 'ALTER TABLE e_invoice_submissions MODIFY COLUMN tax_invoice_id BIGINT UNSIGNED NULL'
             );
             Schema::table('e_invoice_submissions', function (Blueprint $table) {

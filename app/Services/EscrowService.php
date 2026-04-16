@@ -49,18 +49,18 @@ class EscrowService
         }
 
         $partnerKey = $this->factory->defaultKey();
-        $partner    = $this->factory->make($partnerKey);
+        $partner = $this->factory->make($partnerKey);
 
         return DB::transaction(function () use ($contract, $partner, $partnerKey) {
             $payload = $partner->openAccount($contract);
 
             $account = EscrowAccount::create([
-                'contract_id'         => $contract->id,
-                'bank_partner'        => $partnerKey,
+                'contract_id' => $contract->id,
+                'bank_partner' => $partnerKey,
                 'external_account_id' => $payload['external_account_id'] ?? null,
-                'currency'            => $payload['currency'] ?? ($contract->currency ?? 'AED'),
-                'status'              => EscrowAccount::STATUS_PENDING,
-                'metadata'            => $payload['metadata'] ?? null,
+                'currency' => $payload['currency'] ?? ($contract->currency ?? 'AED'),
+                'status' => EscrowAccount::STATUS_PENDING,
+                'metadata' => $payload['metadata'] ?? null,
             ]);
 
             $contract->update(['escrow_account_id' => $account->id]);
@@ -85,16 +85,16 @@ class EscrowService
             $bankResponse = $partner->deposit($account, $amount, $currency);
 
             $release = EscrowRelease::create([
-                'escrow_account_id'    => $account->id,
-                'type'                 => EscrowRelease::TYPE_DEPOSIT,
-                'amount'               => $amount,
-                'currency'             => $currency,
-                'milestone'            => null,
-                'triggered_by'         => EscrowRelease::TRIGGER_MANUAL,
+                'escrow_account_id' => $account->id,
+                'type' => EscrowRelease::TYPE_DEPOSIT,
+                'amount' => $amount,
+                'currency' => $currency,
+                'milestone' => null,
+                'triggered_by' => EscrowRelease::TRIGGER_MANUAL,
                 'triggered_by_user_id' => $user?->id,
-                'bank_reference'       => $bankResponse['reference'] ?? null,
-                'notes'                => 'Buyer deposit',
-                'recorded_at'          => now(),
+                'bank_reference' => $bankResponse['reference'] ?? null,
+                'notes' => 'Buyer deposit',
+                'recorded_at' => now(),
             ]);
 
             // Banks that settle synchronously (mock + most card-funded
@@ -105,7 +105,7 @@ class EscrowService
                 $account->increment('total_deposited', $amount);
                 if ($account->status === EscrowAccount::STATUS_PENDING) {
                     $account->update([
-                        'status'       => EscrowAccount::STATUS_ACTIVE,
+                        'status' => EscrowAccount::STATUS_ACTIVE,
                         'activated_at' => now(),
                     ]);
                 }
@@ -122,7 +122,7 @@ class EscrowService
      * Phase 3 operation. Optionally links the release to a Payment row so
      * the milestone is marked completed in one transaction.
      *
-     * @param string $trigger one of EscrowRelease::TRIGGER_*
+     * @param  string  $trigger  one of EscrowRelease::TRIGGER_*
      */
     public function release(
         EscrowAccount $account,
@@ -136,7 +136,7 @@ class EscrowService
     ): EscrowRelease {
         $this->guardAmount($amount);
 
-        if (!$account->isActive()) {
+        if (! $account->isActive()) {
             throw new BankPartnerException('Escrow account is not active.');
         }
 
@@ -156,7 +156,7 @@ class EscrowService
             // the account. The check + the increment + the status flip
             // all run against this locked row.
             $locked = EscrowAccount::whereKey($account->id)->lockForUpdate()->first();
-            if (!$locked) {
+            if (! $locked) {
                 throw new BankPartnerException('Escrow account no longer exists.');
             }
 
@@ -172,17 +172,17 @@ class EscrowService
             $bankResponse = $partner->release($locked, $amount, $currency, $milestone ?? 'milestone');
 
             $release = EscrowRelease::create([
-                'escrow_account_id'    => $locked->id,
-                'payment_id'           => $payment?->id,
-                'type'                 => EscrowRelease::TYPE_RELEASE,
-                'amount'               => $amount,
-                'currency'             => $currency,
-                'milestone'            => $milestone,
-                'triggered_by'         => $trigger,
+                'escrow_account_id' => $locked->id,
+                'payment_id' => $payment?->id,
+                'type' => EscrowRelease::TYPE_RELEASE,
+                'amount' => $amount,
+                'currency' => $currency,
+                'milestone' => $milestone,
+                'triggered_by' => $trigger,
                 'triggered_by_user_id' => $user?->id,
-                'bank_reference'       => $bankResponse['reference'] ?? null,
-                'notes'                => $notes,
-                'recorded_at'          => now(),
+                'bank_reference' => $bankResponse['reference'] ?? null,
+                'notes' => $notes,
+                'recorded_at' => now(),
             ]);
 
             $locked->increment('total_released', $amount);
@@ -192,18 +192,18 @@ class EscrowService
             // the cash inflow. Skip if the payment is already completed.
             if ($payment && $payment->status !== PaymentStatus::COMPLETED) {
                 $payment->update([
-                    'status'             => PaymentStatus::COMPLETED,
-                    'escrow_release_id'  => $release->id,
-                    'payment_gateway'    => 'escrow',
+                    'status' => PaymentStatus::COMPLETED,
+                    'escrow_release_id' => $release->id,
+                    'payment_gateway' => 'escrow',
                     'gateway_payment_id' => $bankResponse['reference'] ?? null,
-                    'approved_at'        => $payment->approved_at ?? now(),
+                    'approved_at' => $payment->approved_at ?? now(),
                 ]);
             }
 
             // Auto-close the account once everything has been released.
             if (bccomp((string) $locked->fresh()->availableBalance(), '0', 2) <= 0 && bccomp((string) $locked->total_deposited, '0', 2) > 0) {
                 $locked->update([
-                    'status'    => EscrowAccount::STATUS_CLOSED,
+                    'status' => EscrowAccount::STATUS_CLOSED,
                     'closed_at' => now(),
                 ]);
             }
@@ -236,7 +236,7 @@ class EscrowService
             // Pessimistic row lock — blocks any concurrent release/refund
             // on the same account until this transaction commits.
             $locked = EscrowAccount::whereKey($account->id)->lockForUpdate()->first();
-            if (!$locked) {
+            if (! $locked) {
                 throw new BankPartnerException('Escrow account no longer exists.');
             }
 
@@ -247,22 +247,22 @@ class EscrowService
             $bankResponse = $partner->refund($locked, $amount, $currency, $reason);
 
             $release = EscrowRelease::create([
-                'escrow_account_id'    => $locked->id,
-                'type'                 => EscrowRelease::TYPE_REFUND,
-                'amount'               => $amount,
-                'currency'             => $currency,
-                'triggered_by'         => EscrowRelease::TRIGGER_MANUAL,
+                'escrow_account_id' => $locked->id,
+                'type' => EscrowRelease::TYPE_REFUND,
+                'amount' => $amount,
+                'currency' => $currency,
+                'triggered_by' => EscrowRelease::TRIGGER_MANUAL,
                 'triggered_by_user_id' => $user?->id,
-                'bank_reference'       => $bankResponse['reference'] ?? null,
-                'notes'                => $reason,
-                'recorded_at'          => now(),
+                'bank_reference' => $bankResponse['reference'] ?? null,
+                'notes' => $reason,
+                'recorded_at' => now(),
             ]);
 
             $locked->increment('total_released', $amount);
 
             if (bccomp((string) $locked->fresh()->availableBalance(), '0', 2) <= 0) {
                 $locked->update([
-                    'status'    => EscrowAccount::STATUS_REFUNDED,
+                    'status' => EscrowAccount::STATUS_REFUNDED,
                     'closed_at' => now(),
                 ]);
             }
@@ -293,7 +293,7 @@ class EscrowService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$release) {
+            if (! $release) {
                 return null;
             }
 
@@ -308,14 +308,14 @@ class EscrowService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$account) {
+            if (! $account) {
                 return null;
             }
 
             $account->increment('total_deposited', $amount);
             if ($account->status === EscrowAccount::STATUS_PENDING) {
                 $account->update([
-                    'status'       => EscrowAccount::STATUS_ACTIVE,
+                    'status' => EscrowAccount::STATUS_ACTIVE,
                     'activated_at' => now(),
                 ]);
             }
@@ -362,6 +362,7 @@ class EscrowService
 
         return $payments->filter(function (Payment $payment) use ($matchingMilestoneKeys) {
             $label = strtolower(trim((string) $payment->milestone));
+
             return $label !== '' && in_array($label, $matchingMilestoneKeys, true);
         })->values()->all();
     }
@@ -388,7 +389,7 @@ class EscrowService
      */
     private function assertContractPartiesLicensed(?Contract $contract): void
     {
-        if (!$contract) {
+        if (! $contract) {
             return;
         }
 
@@ -407,7 +408,7 @@ class EscrowService
         $missing = [];
         foreach ($partyIds as $cid) {
             $company = $companies->get($cid);
-            if ($company && !$company->hasValidTradeLicense()) {
+            if ($company && ! $company->hasValidTradeLicense()) {
                 $missing[] = $company->name;
             }
         }
@@ -415,8 +416,8 @@ class EscrowService
         if ($missing !== []) {
             throw new BankPartnerException(
                 'Cannot release escrow funds — trade license missing, expired or unverified for: '
-                . implode(', ', $missing)
-                . '. Renew the trade license document before retrying.'
+                .implode(', ', $missing)
+                .'. Renew the trade license document before retrying.'
             );
         }
     }
@@ -429,7 +430,7 @@ class EscrowService
      */
     private function notifyParties(?Contract $contract, string $action, ?float $amount): void
     {
-        if (!$contract) {
+        if (! $contract) {
             return;
         }
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\CompanyInsurance;
+use App\Rules\SafeUpload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -34,10 +35,10 @@ class CompanyInsuranceController extends Controller
             ->get();
 
         $stats = [
-            'total'    => $policies->count(),
+            'total' => $policies->count(),
             'verified' => $policies->where('status', CompanyInsurance::STATUS_VERIFIED)->count(),
-            'pending'  => $policies->where('status', CompanyInsurance::STATUS_PENDING)->count(),
-            'expired'  => $policies->filter(fn ($p) => $p->status === CompanyInsurance::STATUS_EXPIRED || ($p->expires_at && $p->expires_at->isPast()))->count(),
+            'pending' => $policies->where('status', CompanyInsurance::STATUS_PENDING)->count(),
+            'expired' => $policies->filter(fn ($p) => $p->status === CompanyInsurance::STATUS_EXPIRED || ($p->expires_at && $p->expires_at->isPast()))->count(),
         ];
 
         return view('dashboard.insurances.index', compact('policies', 'stats'));
@@ -49,34 +50,34 @@ class CompanyInsuranceController extends Controller
         abort_unless($user?->company_id, 403);
 
         $data = $request->validate([
-            'type'            => ['required', 'string', 'in:' . implode(',', CompanyInsurance::TYPES)],
-            'insurer'         => ['required', 'string', 'max:191'],
-            'policy_number'   => ['required', 'string', 'max:128'],
+            'type' => ['required', 'string', 'in:'.implode(',', CompanyInsurance::TYPES)],
+            'insurer' => ['required', 'string', 'max:191'],
+            'policy_number' => ['required', 'string', 'max:128'],
             'coverage_amount' => ['required', 'numeric', 'min:0'],
-            'currency'        => ['required', 'string', 'size:3'],
-            'starts_at'       => ['required', 'date'],
-            'expires_at'      => ['required', 'date', 'after:starts_at'],
-            'file'            => ['required', 'file', 'max:10240', ...\App\Rules\SafeUpload::pdfOrImage()],
+            'currency' => ['required', 'string', 'size:3'],
+            'starts_at' => ['required', 'date'],
+            'expires_at' => ['required', 'date', 'after:starts_at'],
+            'file' => ['required', 'file', 'max:10240', ...SafeUpload::pdfOrImage()],
         ]);
 
         $file = $request->file('file');
         $path = $file->store("company-insurances/{$user->company_id}", 'local');
 
         CompanyInsurance::create([
-            'company_id'        => $user->company_id,
-            'type'              => $data['type'],
-            'insurer'           => $data['insurer'],
-            'policy_number'     => $data['policy_number'],
-            'coverage_amount'   => $data['coverage_amount'],
-            'currency'          => $data['currency'],
-            'starts_at'         => $data['starts_at'],
-            'expires_at'        => $data['expires_at'],
-            'file_path'         => $path,
+            'company_id' => $user->company_id,
+            'type' => $data['type'],
+            'insurer' => $data['insurer'],
+            'policy_number' => $data['policy_number'],
+            'coverage_amount' => $data['coverage_amount'],
+            'currency' => $data['currency'],
+            'starts_at' => $data['starts_at'],
+            'expires_at' => $data['expires_at'],
+            'file_path' => $path,
             'original_filename' => $file->getClientOriginalName(),
-            'file_size'         => $file->getSize(),
-            'mime_type'         => $file->getMimeType(),
-            'status'            => CompanyInsurance::STATUS_PENDING,
-            'uploaded_by'       => $user->id,
+            'file_size' => $file->getSize(),
+            'mime_type' => $file->getMimeType(),
+            'status' => CompanyInsurance::STATUS_PENDING,
+            'uploaded_by' => $user->id,
         ]);
 
         return redirect()

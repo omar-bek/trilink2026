@@ -5,14 +5,14 @@ namespace Tests\Feature;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
 use App\Enums\ContractStatus;
-use App\Enums\PaymentStatus;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
 use App\Jobs\ExecutePrivacyErasureJob;
+use App\Models\BeneficialOwner;
 use App\Models\Company;
+use App\Models\CompanyBankDetail;
 use App\Models\Consent;
 use App\Models\Contract;
-use App\Models\Payment;
 use App\Models\PrivacyRequest;
 use App\Models\User;
 use App\Notifications\DataBreachNotification;
@@ -57,15 +57,15 @@ class PdplPhase2Test extends TestCase
     private function makeCompany(string $name, CompanyType $type = CompanyType::BUYER): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => 'TRN-100200300400500', // will be encrypted by cast
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@t.test',
-            'address'             => '101 Sheikh Zayed Road',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => 'TRN-100200300400500', // will be encrypted by cast
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@t.test',
+            'address' => '101 Sheikh Zayed Road',
+            'city' => 'Dubai',
+            'country' => 'AE',
         ]);
     }
 
@@ -73,11 +73,11 @@ class PdplPhase2Test extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'Subject',
-            'email'      => 'sub-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'Subject',
+            'email' => 'sub-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -106,16 +106,16 @@ class PdplPhase2Test extends TestCase
     {
         $company = $this->makeCompany('BO Co');
 
-        $bo = \App\Models\BeneficialOwner::create([
-            'company_id'           => $company->id,
-            'full_name'            => 'Test Owner',
-            'nationality'          => 'AE',
-            'date_of_birth'        => '1985-06-15',
-            'id_type'              => 'emirates_id',
-            'id_number'            => '784-1985-1234567-1',
+        $bo = BeneficialOwner::create([
+            'company_id' => $company->id,
+            'full_name' => 'Test Owner',
+            'nationality' => 'AE',
+            'date_of_birth' => '1985-06-15',
+            'id_type' => 'emirates_id',
+            'id_number' => '784-1985-1234567-1',
             'ownership_percentage' => 75.0,
-            'is_pep'               => false,
-            'source_of_wealth'     => 'Inherited family business',
+            'is_pep' => false,
+            'source_of_wealth' => 'Inherited family business',
         ]);
 
         $reloaded = $bo->fresh();
@@ -133,14 +133,14 @@ class PdplPhase2Test extends TestCase
     {
         $company = $this->makeCompany('Bank Co');
 
-        $bd = \App\Models\CompanyBankDetail::create([
-            'company_id'  => $company->id,
+        $bd = CompanyBankDetail::create([
+            'company_id' => $company->id,
             'holder_name' => 'Sensitive Holder',
-            'bank_name'   => 'Mashreq',
-            'branch'      => 'DIFC',
-            'iban'        => 'AE070331234567890123456',
-            'swift'       => 'BOMLAEAD',
-            'currency'    => 'AED',
+            'bank_name' => 'Mashreq',
+            'branch' => 'DIFC',
+            'iban' => 'AE070331234567890123456',
+            'swift' => 'BOMLAEAD',
+            'currency' => 'AED',
         ]);
 
         $this->assertSame('AE070331234567890123456', $bd->fresh()->iban);
@@ -157,8 +157,8 @@ class PdplPhase2Test extends TestCase
     public function test_consent_ledger_grants_and_records_capture_context(): void
     {
         $company = $this->makeCompany('Consent Co');
-        $user    = $this->makeUser($company);
-        $ledger  = $this->app->make(ConsentLedger::class);
+        $user = $this->makeUser($company);
+        $ledger = $this->app->make(ConsentLedger::class);
 
         $consent = $ledger->grant($user, Consent::TYPE_MARKETING_EMAIL, '1.0');
 
@@ -172,8 +172,8 @@ class PdplPhase2Test extends TestCase
     public function test_consent_withdrawal_stamps_existing_grant_and_inserts_marker(): void
     {
         $company = $this->makeCompany('Withdraw Co');
-        $user    = $this->makeUser($company);
-        $ledger  = $this->app->make(ConsentLedger::class);
+        $user = $this->makeUser($company);
+        $ledger = $this->app->make(ConsentLedger::class);
 
         $original = $ledger->grant($user, Consent::TYPE_MARKETING_EMAIL, '1.0');
         $this->assertTrue($ledger->hasActive($user, Consent::TYPE_MARKETING_EMAIL));
@@ -199,8 +199,8 @@ class PdplPhase2Test extends TestCase
     public function test_consent_ledger_rejects_unknown_type(): void
     {
         $company = $this->makeCompany('Bad Type Co');
-        $user    = $this->makeUser($company);
-        $ledger  = $this->app->make(ConsentLedger::class);
+        $user = $this->makeUser($company);
+        $ledger = $this->app->make(ConsentLedger::class);
 
         $this->expectException(\InvalidArgumentException::class);
         $ledger->grant($user, 'made_up_consent', '1.0');
@@ -215,7 +215,7 @@ class PdplPhase2Test extends TestCase
         Storage::fake('local');
 
         $company = $this->makeCompany('Export Co');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $ledger = $this->app->make(ConsentLedger::class);
         $ledger->grant($user, Consent::TYPE_PRIVACY_POLICY, '1.0');
@@ -228,7 +228,7 @@ class PdplPhase2Test extends TestCase
 
         // Open the archive and inspect contents
         $absolute = Storage::disk('local')->path($path);
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
         $this->assertTrue($zip->open($absolute) === true);
 
         $expectedFiles = ['index.json', 'profile.json', 'company.json', 'consents.json', 'privacy_requests.json', 'audit_logs.json'];
@@ -254,15 +254,15 @@ class PdplPhase2Test extends TestCase
     public function test_erasure_blocked_by_active_contract(): void
     {
         $buyerCompany = $this->makeCompany('Active Buyer');
-        $buyer        = $this->makeUser($buyerCompany);
+        $buyer = $this->makeUser($buyerCompany);
 
         Contract::create([
-            'title'             => 'Active Contract',
-            'buyer_company_id'  => $buyerCompany->id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 100000,
-            'currency'          => 'AED',
-            'parties'           => [],
+            'title' => 'Active Contract',
+            'buyer_company_id' => $buyerCompany->id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 100000,
+            'currency' => 'AED',
+            'parties' => [],
         ]);
 
         $service = $this->app->make(DataErasureService::class);
@@ -275,7 +275,7 @@ class PdplPhase2Test extends TestCase
     public function test_erasure_schedules_with_cooling_period_when_no_blockers(): void
     {
         $company = $this->makeCompany('Clean Buyer');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $service = $this->app->make(DataErasureService::class);
         $request = $service->scheduleErasure($user);
@@ -289,7 +289,7 @@ class PdplPhase2Test extends TestCase
     public function test_erasure_execution_anonymises_user_in_place(): void
     {
         $company = $this->makeCompany('Erase Buyer');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
         $originalEmail = $user->email;
         $userId = $user->id;
 
@@ -310,7 +310,7 @@ class PdplPhase2Test extends TestCase
     public function test_user_can_cancel_pending_erasure(): void
     {
         $company = $this->makeCompany('Cancel Buyer');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $service = $this->app->make(DataErasureService::class);
         $request = $service->scheduleErasure($user);
@@ -350,17 +350,17 @@ class PdplPhase2Test extends TestCase
     public function test_cookie_consent_post_records_consents_for_logged_in_user(): void
     {
         $company = $this->makeCompany('Cookie Co');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $this->actingAs($user)
             ->post(route('public.privacy.cookies'), ['analytics' => 1]);
 
         $this->assertDatabaseHas('consents', [
-            'user_id'      => $user->id,
+            'user_id' => $user->id,
             'consent_type' => Consent::TYPE_COOKIES_ESSENTIAL,
         ]);
         $this->assertDatabaseHas('consents', [
-            'user_id'      => $user->id,
+            'user_id' => $user->id,
             'consent_type' => Consent::TYPE_COOKIES_ANALYTICS,
         ]);
     }
@@ -374,7 +374,7 @@ class PdplPhase2Test extends TestCase
     public function test_dashboard_privacy_hub_renders_for_authenticated_user(): void
     {
         $company = $this->makeCompany('Hub Co');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $this->actingAs($user)
             ->get(route('dashboard.privacy.index'))
@@ -385,7 +385,7 @@ class PdplPhase2Test extends TestCase
     public function test_dashboard_export_request_creates_completed_record(): void
     {
         $company = $this->makeCompany('Export Hub Co');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $this->actingAs($user)
             ->post(route('dashboard.privacy.export'))
@@ -403,7 +403,7 @@ class PdplPhase2Test extends TestCase
         Bus::fake([ExecutePrivacyErasureJob::class]);
 
         $company = $this->makeCompany('Erasure Hub Co');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $this->actingAs($user)
             ->post(route('dashboard.privacy.erasure'))
@@ -411,9 +411,9 @@ class PdplPhase2Test extends TestCase
 
         Bus::assertDispatched(ExecutePrivacyErasureJob::class);
         $this->assertDatabaseHas('privacy_requests', [
-            'user_id'      => $user->id,
+            'user_id' => $user->id,
             'request_type' => PrivacyRequest::TYPE_ERASURE,
-            'status'       => PrivacyRequest::STATUS_PENDING,
+            'status' => PrivacyRequest::STATUS_PENDING,
         ]);
     }
 
@@ -430,11 +430,11 @@ class PdplPhase2Test extends TestCase
         $admin = $this->makeUser($adminCompany, UserRole::ADMIN);
 
         $exitCode = $this->artisan('privacy:report-breach', [
-            '--severity'    => 'high',
-            '--affected'    => 42,
+            '--severity' => 'high',
+            '--affected' => 42,
             '--description' => 'Test breach for unit tests',
-            '--detection'   => 'audit_log',
-            '--reporter'    => 'unit-test',
+            '--detection' => 'audit_log',
+            '--reporter' => 'unit-test',
         ])->run();
 
         $this->assertSame(0, $exitCode);
@@ -444,7 +444,7 @@ class PdplPhase2Test extends TestCase
     public function test_report_breach_command_rejects_unknown_severity(): void
     {
         $exitCode = $this->artisan('privacy:report-breach', [
-            '--severity'    => 'extreme',
+            '--severity' => 'extreme',
             '--description' => 'Test',
         ])->run();
 

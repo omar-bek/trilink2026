@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\IcvCertificate;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -21,8 +23,8 @@ use Illuminate\Notifications\Notification;
  */
 class IcvCertificateExpiringNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         public readonly IcvCertificate $certificate,
@@ -33,8 +35,8 @@ class IcvCertificateExpiringNotification extends Notification implements ShouldQ
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'compliance_alerts',
             ['database', 'mail']
         );
@@ -57,15 +59,15 @@ class IcvCertificateExpiringNotification extends Notification implements ShouldQ
     public function toArray(object $notifiable): array
     {
         return [
-            'type'                => 'icv_certificate_expiring',
-            'title'               => $this->t($notifiable, 'notifications.icv.expiring.title'),
-            'message'             => $this->t($notifiable, 'notifications.icv.expiring.message', ['days' => $this->daysUntilExpiry]),
-            'icv_certificate_id'  => $this->certificate->id,
-            'issuer'              => $this->certificate->issuer,
-            'certificate_number'  => $this->certificate->certificate_number,
-            'expires_date'        => $this->certificate->expires_date?->toIso8601String(),
-            'days_until_expiry'   => $this->daysUntilExpiry,
-            'action_url'          => '/dashboard/icv-certificates',
+            'type' => 'icv_certificate_expiring',
+            'title' => $this->t($notifiable, 'notifications.icv.expiring.title'),
+            'message' => $this->t($notifiable, 'notifications.icv.expiring.message', ['days' => $this->daysUntilExpiry]),
+            'icv_certificate_id' => $this->certificate->id,
+            'issuer' => $this->certificate->issuer,
+            'certificate_number' => $this->certificate->certificate_number,
+            'expires_date' => $this->certificate->expires_date?->toIso8601String(),
+            'days_until_expiry' => $this->daysUntilExpiry,
+            'action_url' => '/dashboard/icv-certificates',
         ];
     }
 }

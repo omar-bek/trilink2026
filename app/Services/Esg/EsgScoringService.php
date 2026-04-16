@@ -115,8 +115,8 @@ class EsgScoringService
 
         $pillarScores = [
             'environmental' => $this->scorePillar($questions, $answers, 'environmental'),
-            'social'        => $this->scorePillar($questions, $answers, 'social'),
-            'governance'    => $this->scorePillar($questions, $answers, 'governance'),
+            'social' => $this->scorePillar($questions, $answers, 'social'),
+            'governance' => $this->scorePillar($questions, $answers, 'governance'),
         ];
 
         $overall = (int) round(($pillarScores['environmental'] + $pillarScores['social'] + $pillarScores['governance']) / 3);
@@ -125,13 +125,13 @@ class EsgScoringService
             ['company_id' => $company->id],
             [
                 'environmental_score' => $pillarScores['environmental'],
-                'social_score'        => $pillarScores['social'],
-                'governance_score'    => $pillarScores['governance'],
-                'overall_score'       => $overall,
-                'grade'               => $this->grade($overall),
-                'answers'             => $answers,
-                'submitted_by'        => $submittedBy?->id,
-                'submitted_at'        => now(),
+                'social_score' => $pillarScores['social'],
+                'governance_score' => $pillarScores['governance'],
+                'overall_score' => $overall,
+                'grade' => $this->grade($overall),
+                'answers' => $answers,
+                'submitted_by' => $submittedBy?->id,
+                'submitted_at' => now(),
             ],
         );
     }
@@ -174,7 +174,7 @@ class EsgScoringService
             $overall >= 65 => 'B',
             $overall >= 50 => 'C',
             $overall >= 35 => 'D',
-            default        => 'F',
+            default => 'F',
         };
     }
 }

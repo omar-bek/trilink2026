@@ -31,7 +31,7 @@ class CompanyInfoRequest extends Model
     protected function casts(): array
     {
         return [
-            'items'        => 'array',
+            'items' => 'array',
             'requested_at' => 'datetime',
             'responded_at' => 'datetime',
         ];

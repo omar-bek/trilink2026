@@ -35,11 +35,12 @@ use Throwable;
  *   - executeErasure() inside the service is itself a no-op for
  *     already-completed requests.
  */
-class ExecutePrivacyErasureJob implements ShouldQueue, ShouldBeUnique
+class ExecutePrivacyErasureJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $backoff = 60;
 
     public function __construct(
@@ -50,14 +51,14 @@ class ExecutePrivacyErasureJob implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        return 'privacy-erasure:' . $this->privacyRequestId;
+        return 'privacy-erasure:'.$this->privacyRequestId;
     }
 
     public function handle(DataErasureService $service): void
     {
         $request = PrivacyRequest::find($this->privacyRequestId);
 
-        if (!$request) {
+        if (! $request) {
             // Request was hard-deleted (shouldn't happen — privacy_requests
             // are append-only — but defensive). Drop the job silently.
             return;

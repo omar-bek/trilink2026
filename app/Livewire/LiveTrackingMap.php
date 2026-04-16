@@ -52,11 +52,12 @@ class LiveTrackingMap extends Component
             ->get()
             ->map(function (TrackingEvent $e) {
                 $loc = $e->location ?? [];
+
                 return [
-                    'lat'         => (float) ($loc['lat'] ?? 0),
-                    'lng'         => (float) ($loc['lng'] ?? 0),
+                    'lat' => (float) ($loc['lat'] ?? 0),
+                    'lng' => (float) ($loc['lng'] ?? 0),
                     'description' => $e->description,
-                    'at'          => $e->event_at?->toIso8601String() ?? '',
+                    'at' => $e->event_at?->toIso8601String() ?? '',
                 ];
             })
             ->filter(fn ($p) => $p['lat'] !== 0.0 || $p['lng'] !== 0.0)

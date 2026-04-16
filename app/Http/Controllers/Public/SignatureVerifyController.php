@@ -34,8 +34,7 @@ class SignatureVerifyController extends Controller
 {
     public function __construct(
         private readonly SignatureGradeResolver $resolver,
-    ) {
-    }
+    ) {}
 
     public function show(int $id): View
     {
@@ -47,10 +46,10 @@ class SignatureVerifyController extends Controller
         // edited after signing.
         $currentHash = hash('sha256', json_encode([
             'contract_number' => $contract->contract_number,
-            'version'         => $contract->version,
-            'terms'           => $contract->terms,
-            'amounts'         => $contract->amounts,
-            'parties'         => $contract->parties,
+            'version' => $contract->version,
+            'terms' => $contract->terms,
+            'amounts' => $contract->amounts,
+            'parties' => $contract->parties,
         ], JSON_UNESCAPED_UNICODE));
 
         $required = $this->resolver->requiredFor($contract);
@@ -60,29 +59,29 @@ class SignatureVerifyController extends Controller
             $achieved = SignatureGrade::tryFrom($achievedRaw) ?? SignatureGrade::SIMPLE;
 
             return [
-                'company_id'       => $row['company_id'] ?? null,
-                'user_id'          => $row['user_id'] ?? null,
-                'signed_at'        => $row['signed_at'] ?? null,
-                'achieved_grade'   => $achieved->value,
-                'achieved_label'   => $achieved->label(),
-                'meets_required'   => $achieved->satisfies($required),
-                'tsp_provider'     => $row['tsp_provider'] ?? null,
+                'company_id' => $row['company_id'] ?? null,
+                'user_id' => $row['user_id'] ?? null,
+                'signed_at' => $row['signed_at'] ?? null,
+                'achieved_grade' => $achieved->value,
+                'achieved_label' => $achieved->label(),
+                'meets_required' => $achieved->satisfies($required),
+                'tsp_provider' => $row['tsp_provider'] ?? null,
                 'uae_pass_user_id' => $row['uae_pass_user_id'] ?? null,
-                'hash_at_sign'     => $row['contract_hash'] ?? null,
-                'hash_matches'     => isset($row['contract_hash']) && hash_equals((string) $row['contract_hash'], $currentHash),
-                'ip_address'       => $row['ip_address'] ?? null,
+                'hash_at_sign' => $row['contract_hash'] ?? null,
+                'hash_matches' => isset($row['contract_hash']) && hash_equals((string) $row['contract_hash'], $currentHash),
+                'ip_address' => $row['ip_address'] ?? null,
             ];
         })->all();
 
         return view('public.contracts.verify', [
-            'contract'         => $contract,
-            'current_hash'     => $currentHash,
-            'signatures'       => $signatures,
-            'required_grade'   => $required->value,
-            'required_label'   => $required->label(),
-            'required_reason'  => $this->resolver->reasonFor($contract),
-            'all_intact'       => collect($signatures)->every(fn ($s) => $s['hash_matches']),
-            'all_meet_grade'   => collect($signatures)->every(fn ($s) => $s['meets_required']),
+            'contract' => $contract,
+            'current_hash' => $currentHash,
+            'signatures' => $signatures,
+            'required_grade' => $required->value,
+            'required_label' => $required->label(),
+            'required_reason' => $this->resolver->reasonFor($contract),
+            'all_intact' => collect($signatures)->every(fn ($s) => $s['hash_matches']),
+            'all_meet_grade' => collect($signatures)->every(fn ($s) => $s['meets_required']),
         ]);
     }
 }

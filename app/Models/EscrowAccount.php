@@ -18,9 +18,12 @@ class EscrowAccount extends Model
 {
     use HasFactory, SoftDeletes;
 
-    public const STATUS_PENDING  = 'pending';
-    public const STATUS_ACTIVE   = 'active';
-    public const STATUS_CLOSED   = 'closed';
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_CLOSED = 'closed';
+
     public const STATUS_REFUNDED = 'refunded';
 
     protected $fillable = [
@@ -40,10 +43,10 @@ class EscrowAccount extends Model
     {
         return [
             'total_deposited' => 'decimal:2',
-            'total_released'  => 'decimal:2',
-            'activated_at'    => 'datetime',
-            'closed_at'       => 'datetime',
-            'metadata'        => 'array',
+            'total_released' => 'decimal:2',
+            'activated_at' => 'datetime',
+            'closed_at' => 'datetime',
+            'metadata' => 'array',
         ];
     }
 

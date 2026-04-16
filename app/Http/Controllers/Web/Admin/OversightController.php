@@ -40,19 +40,19 @@ class OversightController extends Controller
     public function index(Request $request): View
     {
         $scope = (string) $request->query('scope', 'purchase_requests');
-        if (!in_array($scope, self::SCOPES, true)) {
+        if (! in_array($scope, self::SCOPES, true)) {
             $scope = 'purchase_requests';
         }
         $q = trim((string) $request->query('q', ''));
 
-        $rows     = $this->loadScope($scope, $q);
-        $totals   = $this->scopeTotals();
+        $rows = $this->loadScope($scope, $q);
+        $totals = $this->scopeTotals();
 
         return view('dashboard.admin.oversight.index', [
-            'scope'  => $scope,
+            'scope' => $scope,
             'scopes' => self::SCOPES,
-            'q'      => $q,
-            'rows'   => $rows,
+            'q' => $q,
+            'rows' => $rows,
             'totals' => $totals,
         ]);
     }
@@ -128,12 +128,12 @@ class OversightController extends Controller
     {
         return [
             'purchase_requests' => PurchaseRequest::count(),
-            'rfqs'              => Rfq::count(),
-            'bids'              => Bid::count(),
-            'contracts'         => Contract::count(),
-            'payments'          => Payment::count(),
-            'shipments'         => Shipment::count(),
-            'disputes'          => Dispute::count(),
+            'rfqs' => Rfq::count(),
+            'bids' => Bid::count(),
+            'contracts' => Contract::count(),
+            'payments' => Payment::count(),
+            'shipments' => Shipment::count(),
+            'disputes' => Dispute::count(),
             'completed_payments' => (float) Payment::where('status', PaymentStatus::COMPLETED->value)->sum('total_amount'),
         ];
     }

@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Schema;
  * rather than per-company, because the same company may ship
  * different products with different certifications.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('certificate_uploads', function (Blueprint $table) {

@@ -78,7 +78,7 @@ class SendContractNotificationsJob implements ShouldQueue
             $configuredRoles = $companyRoles[$cid] ?? null;
             $query = User::query()->where('company_id', $cid);
 
-            if (is_array($configuredRoles) && !empty($configuredRoles)) {
+            if (is_array($configuredRoles) && ! empty($configuredRoles)) {
                 $query->whereIn('role', $configuredRoles);
             }
             // No filter when null/empty → legacy "notify everyone".
@@ -94,7 +94,7 @@ class SendContractNotificationsJob implements ShouldQueue
             } catch (\Throwable $e) {
                 \Log::warning('SendContractNotificationsJob delivery failed', [
                     'recipients' => $allRecipients->count(),
-                    'error'      => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }

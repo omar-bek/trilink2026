@@ -5,8 +5,6 @@ namespace App\Services;
 use App\Models\Shipment;
 use App\Models\TrackingEvent;
 use App\Services\Shipping\CarrierFactory;
-use App\Services\Shipping\CarrierInterface;
-use Illuminate\Support\Facades\DB;
 
 /**
  * High-level facade over the carrier adapters. Application code (controllers,
@@ -22,9 +20,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ShippingService
 {
-    public function __construct(private readonly CarrierFactory $factory)
-    {
-    }
+    public function __construct(private readonly CarrierFactory $factory) {}
 
     /**
      * Ask every carrier for a quote and return the flattened, sorted list
@@ -38,18 +34,19 @@ class ShippingService
         $all = [];
         foreach ($this->factory->all() as $carrier) {
             $result = $carrier->quote($request);
-            if (!($result['success'] ?? false)) {
+            if (! ($result['success'] ?? false)) {
                 continue;
             }
             foreach ($result['rates'] ?? [] as $rate) {
                 $all[] = array_merge($rate, [
-                    'carrier'      => $carrier->code(),
+                    'carrier' => $carrier->code(),
                     'carrier_name' => $carrier->name(),
                 ]);
             }
         }
 
         usort($all, fn ($a, $b) => $a['price'] <=> $b['price']);
+
         return $all;
     }
 
@@ -70,14 +67,14 @@ class ShippingService
      */
     public function syncTracking(Shipment $shipment, string $carrierCode): int
     {
-        if (!$shipment->tracking_number) {
+        if (! $shipment->tracking_number) {
             return 0;
         }
 
         $carrier = $this->factory->make($carrierCode);
-        $result  = $carrier->track($shipment->tracking_number);
+        $result = $carrier->track($shipment->tracking_number);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return 0;
         }
 
@@ -93,10 +90,10 @@ class ShippingService
 
             TrackingEvent::create([
                 'shipment_id' => $shipment->id,
-                'event_at'    => $event['at'],
-                'location'    => $event['location'] ?? null,
+                'event_at' => $event['at'],
+                'location' => $event['location'] ?? null,
                 'description' => $event['description'],
-                'status'      => $event['status'] ?? null,
+                'status' => $event['status'] ?? null,
             ]);
             $inserted++;
         }
@@ -111,7 +108,7 @@ class ShippingService
     public function bookShipment(Shipment $shipment, string $carrierCode, array $request): array
     {
         $carrier = $this->factory->make($carrierCode);
-        $result  = $carrier->createShipment($request);
+        $result = $carrier->createShipment($request);
 
         if ($result['success'] ?? false) {
             $shipment->update([

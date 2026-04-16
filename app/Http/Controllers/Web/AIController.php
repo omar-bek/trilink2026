@@ -13,7 +13,6 @@ use App\Services\AI\ProcurementCopilotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 /**
@@ -45,6 +44,7 @@ class AIController extends Controller
     public function ocrForm(): View
     {
         abort_unless(auth()->user()?->hasPermission('ai.use'), 403);
+
         return view('dashboard.ai.ocr');
     }
 
@@ -53,11 +53,11 @@ class AIController extends Controller
         abort_unless(auth()->user()?->hasPermission('ai.use'), 403);
 
         $request->validate([
-            'document'  => ['required', 'file', 'max:5120', 'mimes:pdf,png,jpg,jpeg,webp'],
+            'document' => ['required', 'file', 'max:5120', 'mimes:pdf,png,jpg,jpeg,webp'],
             'hint_type' => ['nullable', 'string', 'in:invoice,bill_of_lading,packing_list'],
         ]);
 
-        $path = $request->file('document')->store('ocr-uploads/' . auth()->id(), 'local');
+        $path = $request->file('document')->store('ocr-uploads/'.auth()->id(), 'local');
         $result = $this->ocr->extract($path, 'local', $request->input('hint_type'));
 
         return response()->json($result);
@@ -79,10 +79,11 @@ class AIController extends Controller
 
         // Authorise — user's company must be a party of the negotiation.
         $isRfqOwner = $bid->rfq && $user->company_id === $bid->rfq->company_id;
-        $isBidder   = $user->company_id === $bid->company_id;
+        $isBidder = $user->company_id === $bid->company_id;
         abort_unless($isRfqOwner || $isBidder, 403);
 
         $suggestion = $this->negotiation->suggestCounterOffer($bid);
+
         return response()->json($suggestion);
     }
 
@@ -104,6 +105,7 @@ class AIController extends Controller
         abort_unless(in_array($user->company_id, $partyIds, true), 403);
 
         $analysis = $this->risk->analyse($contract);
+
         return response()->json($analysis);
     }
 
@@ -118,7 +120,7 @@ class AIController extends Controller
 
         $request->validate([
             'category_id' => ['required', 'integer', 'exists:categories,id'],
-            'days'        => ['nullable', 'integer', 'min:7', 'max:730'],
+            'days' => ['nullable', 'integer', 'min:7', 'max:730'],
         ]);
 
         $forecast = $this->predictive->averagePriceForCategory(
@@ -137,6 +139,7 @@ class AIController extends Controller
     {
         abort_unless(auth()->user()?->hasPermission('ai.use'), 403);
         $history = session('copilot_history', []);
+
         return view('dashboard.ai.copilot', compact('history'));
     }
 
@@ -168,6 +171,7 @@ class AIController extends Controller
     public function copilotReset(): RedirectResponse
     {
         session()->forget('copilot_history');
+
         return back();
     }
 }

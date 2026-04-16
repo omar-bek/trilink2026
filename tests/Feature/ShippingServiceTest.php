@@ -37,21 +37,25 @@ class ShippingServiceTest extends TestCase
      * carriers we hand it. Lets each test inject success / failure
      * combinations without monkey-patching globals.
      *
-     * @param array<int, CarrierInterface> $carriers
+     * @param  array<int, CarrierInterface>  $carriers
      */
     private function service(array $carriers): ShippingService
     {
-        $factory = new class($carriers) extends CarrierFactory {
+        $factory = new class($carriers) extends CarrierFactory
+        {
             /** @var array<int, CarrierInterface> */
             private array $stub;
+
             public function __construct(array $stub)
             {
                 $this->stub = $stub;
             }
+
             public function all(): array
             {
                 return $this->stub;
             }
+
             public function make(string $code): CarrierInterface
             {
                 foreach ($this->stub as $c) {
@@ -74,33 +78,33 @@ class ShippingServiceTest extends TestCase
     private function makeShipment(?string $trackingNumber = null): Shipment
     {
         $buyer = Company::create([
-            'name'                => 'Buyer ' . uniqid(),
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => CompanyType::BUYER,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => uniqid() . '@s.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => 'Buyer '.uniqid(),
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => CompanyType::BUYER,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => uniqid().'@s.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         $contract = Contract::create([
-            'title'             => 'C-' . uniqid(),
-            'buyer_company_id'  => $buyer->id,
-            'status'            => ContractStatus::ACTIVE,
-            'parties'           => [
+            'title' => 'C-'.uniqid(),
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [
                 ['company_id' => $buyer->id, 'role' => 'buyer'],
             ],
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'start_date'        => now(),
-            'end_date'          => now()->addMonth(),
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonth(),
         ]);
 
         return Shipment::create([
-            'contract_id'    => $contract->id,
-            'company_id'     => $buyer->id,
-            'origin'         => ['city' => 'Dubai'],
-            'destination'    => ['city' => 'Riyadh'],
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
+            'origin' => ['city' => 'Dubai'],
+            'destination' => ['city' => 'Riyadh'],
             'tracking_number' => $trackingNumber,
         ]);
     }
@@ -111,18 +115,39 @@ class ShippingServiceTest extends TestCase
      */
     private function carrier(string $code, string $name, array $quoteResponse, array $trackResponse = ['success' => false]): CarrierInterface
     {
-        return new class($code, $name, $quoteResponse, $trackResponse) implements CarrierInterface {
+        return new class($code, $name, $quoteResponse, $trackResponse) implements CarrierInterface
+        {
             public function __construct(
                 private string $code,
                 private string $name,
                 private array $quoteResponse,
                 private array $trackResponse,
             ) {}
-            public function code(): string { return $this->code; }
-            public function name(): string { return $this->name; }
-            public function quote(array $request): array { return $this->quoteResponse; }
-            public function createShipment(array $request): array { return ['success' => true, 'tracking_number' => 'T-' . $this->code]; }
-            public function track(string $trackingNumber): array { return $this->trackResponse; }
+
+            public function code(): string
+            {
+                return $this->code;
+            }
+
+            public function name(): string
+            {
+                return $this->name;
+            }
+
+            public function quote(array $request): array
+            {
+                return $this->quoteResponse;
+            }
+
+            public function createShipment(array $request): array
+            {
+                return ['success' => true, 'tracking_number' => 'T-'.$this->code];
+            }
+
+            public function track(string $trackingNumber): array
+            {
+                return $this->trackResponse;
+            }
         };
     }
 
@@ -135,24 +160,24 @@ class ShippingServiceTest extends TestCase
         $service = $this->service([
             $this->carrier('a', 'A Express', [
                 'success' => true,
-                'rates'   => [
+                'rates' => [
                     ['service' => 'Standard', 'price' => 250.0, 'currency' => 'AED', 'transit_days' => 5],
                     ['service' => 'Express',  'price' => 480.0, 'currency' => 'AED', 'transit_days' => 2],
                 ],
             ]),
             $this->carrier('b', 'B Logistics', [
                 'success' => true,
-                'rates'   => [
+                'rates' => [
                     ['service' => 'Ground', 'price' => 175.0, 'currency' => 'AED', 'transit_days' => 7],
                 ],
             ]),
         ]);
 
         $quotes = $service->quoteAll([
-            'origin'      => ['country' => 'AE'],
+            'origin' => ['country' => 'AE'],
             'destination' => ['country' => 'SA'],
-            'weight_kg'   => 12.5,
-            'parcels'     => 1,
+            'weight_kg' => 12.5,
+            'parcels' => 1,
         ]);
 
         // 3 rates total, sorted by price ascending.
@@ -170,7 +195,7 @@ class ShippingServiceTest extends TestCase
     public function test_quote_all_silently_drops_carriers_that_failed(): void
     {
         $service = $this->service([
-            $this->carrier('ok',   'OK Co', ['success' => true,  'rates' => [
+            $this->carrier('ok', 'OK Co', ['success' => true,  'rates' => [
                 ['service' => 'Standard', 'price' => 100.0, 'currency' => 'AED', 'transit_days' => 5],
             ]]),
             // The buyer should still see options from the working
@@ -200,7 +225,7 @@ class ShippingServiceTest extends TestCase
         // because the lane isn't served) should not contribute rows.
         $service = $this->service([
             $this->carrier('empty', 'Empty Co', ['success' => true, 'rates' => []]),
-            $this->carrier('full',  'Full Co',  ['success' => true, 'rates' => [
+            $this->carrier('full', 'Full Co', ['success' => true, 'rates' => [
                 ['service' => 'Standard', 'price' => 50.0, 'currency' => 'AED', 'transit_days' => 3],
             ]]),
         ]);
@@ -234,7 +259,7 @@ class ShippingServiceTest extends TestCase
         $serviceFirst = $this->service([
             $this->carrier('a', 'A', ['success' => true], [
                 'success' => true,
-                'events'  => [
+                'events' => [
                     ['at' => '2026-04-01 10:00:00', 'description' => 'Picked up',  'location' => 'Dubai',  'status' => 'in_transit'],
                     ['at' => '2026-04-02 14:00:00', 'description' => 'In transit', 'location' => 'Riyadh', 'status' => 'in_transit'],
                 ],
@@ -250,7 +275,7 @@ class ShippingServiceTest extends TestCase
         $serviceSecond = $this->service([
             $this->carrier('a', 'A', ['success' => true], [
                 'success' => true,
-                'events'  => [
+                'events' => [
                     ['at' => '2026-04-01 10:00:00', 'description' => 'Picked up',  'location' => 'Dubai',  'status' => 'in_transit'],
                     ['at' => '2026-04-02 14:00:00', 'description' => 'In transit', 'location' => 'Riyadh', 'status' => 'in_transit'],
                     ['at' => '2026-04-03 09:30:00', 'description' => 'Delivered',  'location' => 'Riyadh', 'status' => 'delivered'],

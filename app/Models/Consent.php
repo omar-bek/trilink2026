@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Privacy\ConsentLedger;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * on the same row OR (preferred) insert a new row with `granted_at` and
  * `withdrawn_at` set to keep the original grant intact.
  *
- * The {@see \App\Services\Privacy\ConsentLedger} service is the only
+ * The {@see ConsentLedger} service is the only
  * legitimate writer for this table; controllers should call into it
  * rather than newing up a Consent directly.
  */
@@ -22,12 +23,17 @@ class Consent extends Model
 {
     use HasFactory;
 
-    public const TYPE_PRIVACY_POLICY     = 'privacy_policy';
-    public const TYPE_DATA_PROCESSING    = 'data_processing';
-    public const TYPE_COOKIES_ESSENTIAL  = 'cookies_essential';
-    public const TYPE_COOKIES_ANALYTICS  = 'cookies_analytics';
-    public const TYPE_MARKETING_EMAIL    = 'marketing_email';
-    public const TYPE_THIRD_PARTY_SHARE  = 'third_party_share';
+    public const TYPE_PRIVACY_POLICY = 'privacy_policy';
+
+    public const TYPE_DATA_PROCESSING = 'data_processing';
+
+    public const TYPE_COOKIES_ESSENTIAL = 'cookies_essential';
+
+    public const TYPE_COOKIES_ANALYTICS = 'cookies_analytics';
+
+    public const TYPE_MARKETING_EMAIL = 'marketing_email';
+
+    public const TYPE_THIRD_PARTY_SHARE = 'third_party_share';
 
     public const ALL_TYPES = [
         self::TYPE_PRIVACY_POLICY,
@@ -53,7 +59,7 @@ class Consent extends Model
     protected function casts(): array
     {
         return [
-            'granted_at'   => 'datetime',
+            'granted_at' => 'datetime',
             'withdrawn_at' => 'datetime',
         ];
     }

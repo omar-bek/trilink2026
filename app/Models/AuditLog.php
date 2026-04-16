@@ -43,8 +43,8 @@ class AuditLog extends Model
             // stable in the DB (we never re-encrypt at read time), the
             // chain stays internally consistent — see the canonicalize()
             // and verify-chain command for the recipe.
-            'before'     => 'encrypted:array',
-            'after'      => 'encrypted:array',
+            'before' => 'encrypted:array',
+            'after' => 'encrypted:array',
             'ip_address' => 'encrypted',
             'user_agent' => 'encrypted',
         ];
@@ -90,17 +90,17 @@ class AuditLog extends Model
         // doesn't get \uXXXX escaped (which would make canonical bytes
         // different on different PHP versions).
         $payload = [
-            'user_id'       => $row['user_id'] ?? null,
-            'company_id'    => $row['company_id'] ?? null,
-            'action'        => $action,
+            'user_id' => $row['user_id'] ?? null,
+            'company_id' => $row['company_id'] ?? null,
+            'action' => $action,
             'resource_type' => $row['resource_type'] ?? null,
-            'resource_id'   => isset($row['resource_id']) ? (int) $row['resource_id'] : null,
-            'before'        => $row['before'] ?? null,
-            'after'         => $row['after'] ?? null,
-            'ip_address'    => $row['ip_address'] ?? null,
-            'user_agent'    => $row['user_agent'] ?? null,
-            'status'        => $row['status'] ?? null,
-            'created_at'    => isset($row['created_at'])
+            'resource_id' => isset($row['resource_id']) ? (int) $row['resource_id'] : null,
+            'before' => $row['before'] ?? null,
+            'after' => $row['after'] ?? null,
+            'ip_address' => $row['ip_address'] ?? null,
+            'user_agent' => $row['user_agent'] ?? null,
+            'status' => $row['status'] ?? null,
+            'created_at' => isset($row['created_at'])
                 ? (is_string($row['created_at']) ? $row['created_at'] : (string) $row['created_at'])
                 : null,
         ];
@@ -117,7 +117,7 @@ class AuditLog extends Model
      */
     public static function computeHash(string $canonical, ?string $previousHash): string
     {
-        return hash('sha256', ($previousHash ?? '') . '|' . $canonical);
+        return hash('sha256', ($previousHash ?? '').'|'.$canonical);
     }
 
     protected static function booted(): void

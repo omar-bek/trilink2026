@@ -14,16 +14,14 @@ class ShipmentLocationUpdated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function __construct(public Shipment $shipment)
-    {
-    }
+    public function __construct(public Shipment $shipment) {}
 
     /**
      * @return array<int, Channel>
      */
     public function broadcastOn(): array
     {
-        return [new PrivateChannel('shipment.' . $this->shipment->id)];
+        return [new PrivateChannel('shipment.'.$this->shipment->id)];
     }
 
     /**
@@ -35,11 +33,11 @@ class ShipmentLocationUpdated implements ShouldBroadcast
 
         return [
             'shipment_id' => $this->shipment->id,
-            'tracking'    => $this->shipment->tracking_number,
-            'status'      => $this->shipment->status?->value,
-            'lat'         => $loc['lat'] ?? null,
-            'lng'         => $loc['lng'] ?? null,
-            'at'          => now()->toIso8601String(),
+            'tracking' => $this->shipment->tracking_number,
+            'status' => $this->shipment->status?->value,
+            'lat' => $loc['lat'] ?? null,
+            'lng' => $loc['lng'] ?? null,
+            'at' => now()->toIso8601String(),
         ];
     }
 }

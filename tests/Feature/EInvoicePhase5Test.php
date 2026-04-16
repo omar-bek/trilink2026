@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
+use App\Enums\ContractStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
@@ -48,14 +49,14 @@ class EInvoicePhase5Test extends TestCase
     private function makeCompany(string $name, CompanyType $type = CompanyType::BUYER): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => 'TRN-' . random_int(100000, 999999),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'address'             => '101 Sheikh Zayed Road',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => 'TRN-'.random_int(100000, 999999),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'address' => '101 Sheikh Zayed Road',
+            'city' => 'Dubai',
+            'country' => 'AE',
         ]);
     }
 
@@ -63,11 +64,11 @@ class EInvoicePhase5Test extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => 'u-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'u-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -75,38 +76,38 @@ class EInvoicePhase5Test extends TestCase
     private function makeTaxInvoice(): TaxInvoice
     {
         $supplier = $this->makeCompany('Phase5 Supplier', CompanyType::SUPPLIER);
-        $buyer    = $this->makeCompany('Phase5 Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Phase5 Buyer', CompanyType::BUYER);
 
         return TaxInvoice::create([
-            'invoice_number'      => 'INV-2026-' . str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT),
-            'issue_date'          => now()->toDateString(),
-            'supply_date'         => now()->toDateString(),
+            'invoice_number' => 'INV-2026-'.str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT),
+            'issue_date' => now()->toDateString(),
+            'supply_date' => now()->toDateString(),
             'supplier_company_id' => $supplier->id,
-            'supplier_trn'        => 'TRN-100200300400500',
-            'supplier_name'       => $supplier->name,
-            'supplier_address'    => '101 Sheikh Zayed Road, Dubai',
-            'supplier_country'    => 'AE',
-            'buyer_company_id'    => $buyer->id,
-            'buyer_trn'           => 'TRN-200300400500600',
-            'buyer_name'          => $buyer->name,
-            'buyer_address'       => '202 Hamdan St, Abu Dhabi',
-            'buyer_country'       => 'AE',
-            'line_items'          => [[
-                'description'    => 'Project services — milestone 1',
-                'quantity'       => 1,
-                'unit'           => 'lump sum',
-                'unit_price'     => 10000,
+            'supplier_trn' => 'TRN-100200300400500',
+            'supplier_name' => $supplier->name,
+            'supplier_address' => '101 Sheikh Zayed Road, Dubai',
+            'supplier_country' => 'AE',
+            'buyer_company_id' => $buyer->id,
+            'buyer_trn' => 'TRN-200300400500600',
+            'buyer_name' => $buyer->name,
+            'buyer_address' => '202 Hamdan St, Abu Dhabi',
+            'buyer_country' => 'AE',
+            'line_items' => [[
+                'description' => 'Project services — milestone 1',
+                'quantity' => 1,
+                'unit' => 'lump sum',
+                'unit_price' => 10000,
                 'taxable_amount' => 10000,
-                'tax_rate'       => 5,
-                'tax_amount'     => 500,
-                'line_total'     => 10500,
+                'tax_rate' => 5,
+                'tax_amount' => 500,
+                'line_total' => 10500,
             ]],
-            'subtotal_excl_tax'   => 10000,
-            'total_tax'           => 500,
-            'total_inclusive'     => 10500,
-            'currency'            => 'AED',
-            'status'              => TaxInvoice::STATUS_ISSUED,
-            'issued_at'           => now(),
+            'subtotal_excl_tax' => 10000,
+            'total_tax' => 500,
+            'total_inclusive' => 10500,
+            'currency' => 'AED',
+            'status' => TaxInvoice::STATUS_ISSUED,
+            'issued_at' => now(),
         ]);
     }
 
@@ -116,7 +117,7 @@ class EInvoicePhase5Test extends TestCase
 
     public function test_mapper_produces_wellformed_xml_with_pint_ae_headers(): void
     {
-        $mapper  = $this->app->make(PintAeMapper::class);
+        $mapper = $this->app->make(PintAeMapper::class);
         $invoice = $this->makeTaxInvoice();
 
         $xml = $mapper->toUbl($invoice);
@@ -146,7 +147,7 @@ class EInvoicePhase5Test extends TestCase
         // XPath proves the namespaced elements really do live in the
         // CBC namespace, regardless of how the prefix is repeated in
         // the source.
-        $doc = new \DOMDocument();
+        $doc = new \DOMDocument;
         $this->assertTrue($doc->loadXML($xml));
         $this->assertSame('Invoice', $doc->documentElement->localName);
 
@@ -161,7 +162,7 @@ class EInvoicePhase5Test extends TestCase
 
     public function test_mapper_includes_total_amounts(): void
     {
-        $mapper  = $this->app->make(PintAeMapper::class);
+        $mapper = $this->app->make(PintAeMapper::class);
         $invoice = $this->makeTaxInvoice();
 
         $xml = $mapper->toUbl($invoice);
@@ -183,7 +184,7 @@ class EInvoicePhase5Test extends TestCase
         config()->set('einvoice.enabled', false);
 
         $dispatcher = $this->app->make(EInvoiceDispatcher::class);
-        $invoice    = $this->makeTaxInvoice();
+        $invoice = $this->makeTaxInvoice();
 
         $result = $dispatcher->dispatchFor($invoice);
 
@@ -197,7 +198,7 @@ class EInvoicePhase5Test extends TestCase
         config()->set('einvoice.default_provider', 'mock');
 
         $dispatcher = $this->app->make(EInvoiceDispatcher::class);
-        $invoice    = $this->makeTaxInvoice();
+        $invoice = $this->makeTaxInvoice();
 
         $submission = $dispatcher->dispatchFor($invoice);
 
@@ -216,7 +217,7 @@ class EInvoicePhase5Test extends TestCase
         config()->set('einvoice.default_provider', 'made_up_provider');
 
         $dispatcher = $this->app->make(EInvoiceDispatcher::class);
-        $invoice    = $this->makeTaxInvoice();
+        $invoice = $this->makeTaxInvoice();
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/Unknown e-invoice provider/');
@@ -231,7 +232,7 @@ class EInvoicePhase5Test extends TestCase
         config()->set('einvoice.providers.avalara.api_key', null);
 
         $dispatcher = $this->app->make(EInvoiceDispatcher::class);
-        $invoice    = $this->makeTaxInvoice();
+        $invoice = $this->makeTaxInvoice();
 
         $submission = $dispatcher->dispatchFor($invoice);
 
@@ -245,7 +246,7 @@ class EInvoicePhase5Test extends TestCase
         config()->set('einvoice.default_provider', 'mock');
 
         $dispatcher = $this->app->make(EInvoiceDispatcher::class);
-        $invoice    = $this->makeTaxInvoice();
+        $invoice = $this->makeTaxInvoice();
 
         $submission = $dispatcher->dispatchFor($invoice);
         // Force into "failed" so retry is allowed
@@ -266,29 +267,29 @@ class EInvoicePhase5Test extends TestCase
         Bus::fake([SubmitEInvoiceJob::class]);
 
         $supplier = $this->makeCompany('Auto Supplier', CompanyType::SUPPLIER);
-        $buyer    = $this->makeCompany('Auto Buyer', CompanyType::BUYER);
+        $buyer = $this->makeCompany('Auto Buyer', CompanyType::BUYER);
         $buyerUser = $this->makeUser($buyer, UserRole::BUYER);
 
         $contract = Contract::create([
-            'title'             => 'Auto Contract',
-            'buyer_company_id'  => $buyer->id,
-            'status'            => \App\Enums\ContractStatus::ACTIVE,
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->id, 'role' => 'supplier']],
+            'title' => 'Auto Contract',
+            'buyer_company_id' => $buyer->id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->id, 'role' => 'supplier']],
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->id,
             'recipient_company_id' => $supplier->id,
-            'buyer_id'             => $buyerUser->id,
-            'status'               => PaymentStatus::COMPLETED,
-            'amount'               => 1000,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
-            'milestone'            => 'Milestone 1',
-            'approved_at'          => now(),
+            'buyer_id' => $buyerUser->id,
+            'status' => PaymentStatus::COMPLETED,
+            'amount' => 1000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
+            'milestone' => 'Milestone 1',
+            'approved_at' => now(),
         ]);
 
         $service = $this->app->make(TaxInvoiceService::class);
@@ -355,7 +356,7 @@ class EInvoicePhase5Test extends TestCase
         config()->set('einvoice.default_provider', 'mock');
 
         $dispatcher = $this->app->make(EInvoiceDispatcher::class);
-        $invoice    = $this->makeTaxInvoice();
+        $invoice = $this->makeTaxInvoice();
         $submission = $dispatcher->dispatchFor($invoice);
 
         // The mock leaves the row already in "accepted"; force it to
@@ -363,23 +364,23 @@ class EInvoicePhase5Test extends TestCase
         $submission->update([
             'status' => EInvoiceSubmission::STATUS_SUBMITTED,
             'asp_submission_id' => 'WH-TEST-001',
-            'fta_clearance_id'  => null,
+            'fta_clearance_id' => null,
         ]);
 
         $payload = [
-            'submission_id'    => 'WH-TEST-001',
-            'status'           => 'accepted',
-            'clearance_id'     => 'FTA-CLEAR-99',
-            'acknowledgment_id'=> 'WH-ACK-99',
+            'submission_id' => 'WH-TEST-001',
+            'status' => 'accepted',
+            'clearance_id' => 'FTA-CLEAR-99',
+            'acknowledgment_id' => 'WH-ACK-99',
         ];
         $body = json_encode($payload);
-        $sig  = hash_hmac('sha256', $body, 'shared-secret');
+        $sig = hash_hmac('sha256', $body, 'shared-secret');
 
         $this->call(
             method: 'POST',
             uri: '/api/webhooks/e-invoice/mock',
             server: [
-                'CONTENT_TYPE'             => 'application/json',
+                'CONTENT_TYPE' => 'application/json',
                 'HTTP_X_EINVOICE_SIGNATURE' => $sig,
             ],
             content: $body,

@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ExecutePrivacyErasureJob;
 use App\Models\Consent;
 use App\Models\PrivacyRequest;
 use App\Services\Privacy\ConsentLedger;
 use App\Services\Privacy\DataErasureService;
 use App\Services\Privacy\DataExportService;
-use App\Jobs\ExecutePrivacyErasureJob;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -38,8 +38,7 @@ class PrivacyController extends Controller
         private readonly ConsentLedger $consents,
         private readonly DataExportService $exportService,
         private readonly DataErasureService $erasureService,
-    ) {
-    }
+    ) {}
 
     // ─────────────────────────────────────────────────────────────────
     //  Public surfaces
@@ -48,20 +47,20 @@ class PrivacyController extends Controller
     public function showPolicy(): View
     {
         return view('public.privacy-policy', [
-            'version'        => config('data_residency.privacy_policy_version'),
-            'region'         => config('data_residency.region'),
+            'version' => config('data_residency.privacy_policy_version'),
+            'region' => config('data_residency.region'),
             'adequacy_basis' => config('data_residency.adequacy_basis'),
             'sub_processors' => config('data_residency.sub_processors', []),
-            'dpo'            => config('data_residency.dpo'),
+            'dpo' => config('data_residency.dpo'),
         ]);
     }
 
     public function showDpa(): View
     {
         return view('public.dpa', [
-            'version'        => config('data_residency.dpa_version'),
+            'version' => config('data_residency.dpa_version'),
             'sub_processors' => config('data_residency.sub_processors', []),
-            'dpo'            => config('data_residency.dpo'),
+            'dpo' => config('data_residency.dpo'),
         ]);
     }
 
@@ -84,7 +83,7 @@ class PrivacyController extends Controller
             // for the performance of a contract).
             $this->consents->grant(auth()->user(), Consent::TYPE_COOKIES_ESSENTIAL, $version);
 
-            if (!empty($data['analytics'])) {
+            if (! empty($data['analytics'])) {
                 $this->consents->grant(auth()->user(), Consent::TYPE_COOKIES_ANALYTICS, $version);
             } else {
                 $this->consents->withdraw(auth()->user(), Consent::TYPE_COOKIES_ANALYTICS);
@@ -120,15 +119,15 @@ class PrivacyController extends Controller
         $erasureBlockers = $this->erasureService->findBlockers($user);
 
         return view('dashboard.privacy.index', [
-            'activeConsents'    => $activeConsents,
-            'consentLedger'     => $consentLedger,
-            'requests'          => $requests,
-            'erasureBlockers'   => $erasureBlockers,
-            'dataResidency'     => [
-                'region'         => config('data_residency.region'),
+            'activeConsents' => $activeConsents,
+            'consentLedger' => $consentLedger,
+            'requests' => $requests,
+            'erasureBlockers' => $erasureBlockers,
+            'dataResidency' => [
+                'region' => config('data_residency.region'),
                 'adequacy_basis' => config('data_residency.adequacy_basis'),
                 'sub_processors' => config('data_residency.sub_processors', []),
-                'dpo'            => config('data_residency.dpo'),
+                'dpo' => config('data_residency.dpo'),
             ],
         ]);
     }
@@ -138,11 +137,11 @@ class PrivacyController extends Controller
         $user = $request->user();
 
         $privacyRequest = PrivacyRequest::create([
-            'user_id'      => $user->id,
+            'user_id' => $user->id,
             'request_type' => PrivacyRequest::TYPE_DATA_EXPORT,
-            'status'       => PrivacyRequest::STATUS_PENDING,
+            'status' => PrivacyRequest::STATUS_PENDING,
             'requested_at' => now(),
-            'scheduled_for'=> now()->addDays(30),
+            'scheduled_for' => now()->addDays(30),
         ]);
 
         // Build inline — DSAR archives are small (~few MB) and the
@@ -153,7 +152,7 @@ class PrivacyController extends Controller
             $zipPath = $this->exportService->buildArchive($user, $privacyRequest);
 
             $privacyRequest->update([
-                'status'       => PrivacyRequest::STATUS_COMPLETED,
+                'status' => PrivacyRequest::STATUS_COMPLETED,
                 'completed_at' => now(),
                 'fulfillment_metadata' => [
                     'archive_path' => $zipPath,
@@ -162,9 +161,10 @@ class PrivacyController extends Controller
             ]);
         } catch (\Throwable $e) {
             $privacyRequest->update([
-                'status'           => PrivacyRequest::STATUS_REJECTED,
-                'rejection_reason' => 'Archive build failed: ' . $e->getMessage(),
+                'status' => PrivacyRequest::STATUS_REJECTED,
+                'rejection_reason' => 'Archive build failed: '.$e->getMessage(),
             ]);
+
             return back()->withErrors(['export' => __('privacy.export_failed')]);
         }
 
@@ -185,7 +185,7 @@ class PrivacyController extends Controller
 
         $path = $privacyRequest->fulfillment_metadata['archive_path'] ?? null;
 
-        if (!$path || !Storage::disk('local')->exists($path)) {
+        if (! $path || ! Storage::disk('local')->exists($path)) {
             return back()->withErrors(['export' => __('privacy.archive_missing')]);
         }
 
@@ -222,7 +222,7 @@ class PrivacyController extends Controller
 
         $privacyRequest = PrivacyRequest::where('user_id', $user->id)->findOrFail($id);
 
-        if (!$privacyRequest->isErasure()) {
+        if (! $privacyRequest->isErasure()) {
             abort(404);
         }
 
@@ -233,7 +233,7 @@ class PrivacyController extends Controller
 
     public function grantConsent(Request $request, string $type): RedirectResponse
     {
-        if (!in_array($type, Consent::ALL_TYPES, true)) {
+        if (! in_array($type, Consent::ALL_TYPES, true)) {
             abort(404);
         }
 
@@ -245,7 +245,7 @@ class PrivacyController extends Controller
 
     public function withdrawConsent(Request $request, string $type): RedirectResponse
     {
-        if (!in_array($type, Consent::ALL_TYPES, true)) {
+        if (! in_array($type, Consent::ALL_TYPES, true)) {
             abort(404);
         }
 

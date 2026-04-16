@@ -3,6 +3,7 @@
 namespace App\Services\Tax;
 
 use App\Enums\PaymentStatus;
+use App\Jobs\SubmitEInvoiceCreditNoteJob;
 use App\Jobs\SubmitEInvoiceJob;
 use App\Models\Company;
 use App\Models\Contract;
@@ -39,8 +40,7 @@ class TaxInvoiceService
     public function __construct(
         private readonly InvoiceNumberAllocator $allocator,
         private readonly TaxInvoiceQrEncoder $qrEncoder,
-    ) {
-    }
+    ) {}
 
     /**
      * Issue a tax invoice for a completed Payment. Pulls the supplier from
@@ -83,9 +83,9 @@ class TaxInvoiceService
             $payment->loadMissing(['contract.buyerCompany', 'recipientCompany', 'company']);
 
             $supplier = $payment->recipientCompany;
-            $buyer    = $payment->company; // The party that paid is the buyer.
+            $buyer = $payment->company; // The party that paid is the buyer.
 
-            if (!$supplier || !$buyer) {
+            if (! $supplier || ! $buyer) {
                 throw new RuntimeException(
                     "Cannot issue invoice for payment {$payment->id}: missing supplier or buyer company."
                 );
@@ -117,31 +117,31 @@ class TaxInvoiceService
             );
 
             $invoice = TaxInvoice::create([
-                'invoice_number'      => $invoiceNumber,
-                'contract_id'         => $contract?->id,
-                'payment_id'          => $payment->id,
-                'issue_date'          => CarbonImmutable::now()->toDateString(),
-                'supply_date'         => $payment->approved_at?->toDateString() ?? CarbonImmutable::now()->toDateString(),
+                'invoice_number' => $invoiceNumber,
+                'contract_id' => $contract?->id,
+                'payment_id' => $payment->id,
+                'issue_date' => CarbonImmutable::now()->toDateString(),
+                'supply_date' => $payment->approved_at?->toDateString() ?? CarbonImmutable::now()->toDateString(),
                 'supplier_company_id' => $supplier->id,
-                'supplier_trn'        => $supplier->tax_number,
-                'supplier_name'       => $supplier->name,
-                'supplier_address'    => $this->formatAddress($supplier),
-                'supplier_country'    => $supplier->country,
-                'buyer_company_id'    => $buyer->id,
-                'buyer_trn'           => $buyer->tax_number,
-                'buyer_name'          => $buyer->name,
-                'buyer_address'       => $this->formatAddress($buyer),
-                'buyer_country'       => $buyer->country,
-                'line_items'          => $lineItems,
-                'subtotal_excl_tax'   => $subtotal,
-                'total_discount'      => 0,
-                'total_tax'           => $totalTax,
-                'total_inclusive'     => $totalInclusive,
-                'currency'            => $payment->currency ?? 'AED',
-                'vat_treatment'       => $vatTreatment,
-                'status'              => TaxInvoice::STATUS_ISSUED,
-                'issued_by'           => $issuedBy,
-                'issued_at'           => now(),
+                'supplier_trn' => $supplier->tax_number,
+                'supplier_name' => $supplier->name,
+                'supplier_address' => $this->formatAddress($supplier),
+                'supplier_country' => $supplier->country,
+                'buyer_company_id' => $buyer->id,
+                'buyer_trn' => $buyer->tax_number,
+                'buyer_name' => $buyer->name,
+                'buyer_address' => $this->formatAddress($buyer),
+                'buyer_country' => $buyer->country,
+                'line_items' => $lineItems,
+                'subtotal_excl_tax' => $subtotal,
+                'total_discount' => 0,
+                'total_tax' => $totalTax,
+                'total_inclusive' => $totalInclusive,
+                'currency' => $payment->currency ?? 'AED',
+                'vat_treatment' => $vatTreatment,
+                'status' => TaxInvoice::STATUS_ISSUED,
+                'issued_by' => $issuedBy,
+                'issued_at' => now(),
             ]);
 
             // Render + persist the PDF inside the same transaction. If PDF
@@ -158,7 +158,7 @@ class TaxInvoiceService
             // AFTER the transaction commits (afterCommit) so a queue
             // worker that picks the job up immediately doesn't see a
             // tax invoice that hasn't been persisted yet.
-            \App\Jobs\SubmitEInvoiceJob::dispatch($invoice->id)->afterCommit();
+            SubmitEInvoiceJob::dispatch($invoice->id)->afterCommit();
 
             return $invoice->fresh();
         });
@@ -178,7 +178,7 @@ class TaxInvoiceService
         ?string $notes = null,
         ?int $issuedBy = null,
     ): TaxCreditNote {
-        if (!in_array($reason, TaxCreditNote::REASONS, true)) {
+        if (! in_array($reason, TaxCreditNote::REASONS, true)) {
             throw new RuntimeException("Invalid credit note reason: {$reason}");
         }
 
@@ -196,18 +196,18 @@ class TaxInvoiceService
             );
 
             $cn = TaxCreditNote::create([
-                'credit_note_number'  => $creditNoteNumber,
+                'credit_note_number' => $creditNoteNumber,
                 'original_invoice_id' => $original->id,
-                'issue_date'          => CarbonImmutable::now()->toDateString(),
-                'reason'              => $reason,
-                'notes'               => $notes,
-                'line_items'          => $lineItems,
-                'subtotal_excl_tax'   => $subtotal,
-                'total_tax'           => $totalTax,
-                'total_inclusive'     => $totalInclusive,
-                'currency'            => $original->currency,
-                'issued_by'           => $issuedBy,
-                'issued_at'           => now(),
+                'issue_date' => CarbonImmutable::now()->toDateString(),
+                'reason' => $reason,
+                'notes' => $notes,
+                'line_items' => $lineItems,
+                'subtotal_excl_tax' => $subtotal,
+                'total_tax' => $totalTax,
+                'total_inclusive' => $totalInclusive,
+                'currency' => $original->currency,
+                'issued_by' => $issuedBy,
+                'issued_at' => now(),
             ]);
 
             $this->renderAndStoreCreditNotePdf($cn);
@@ -221,7 +221,7 @@ class TaxInvoiceService
             // inflated on the next return. Gated by config; afterCommit
             // so the queue worker can't pick the job up before the row
             // is persisted.
-            \App\Jobs\SubmitEInvoiceCreditNoteJob::dispatch($cn->id)->afterCommit();
+            SubmitEInvoiceCreditNoteJob::dispatch($cn->id)->afterCommit();
 
             return $cn->fresh();
         });
@@ -245,9 +245,9 @@ class TaxInvoiceService
         }
 
         $invoice->update([
-            'status'      => TaxInvoice::STATUS_VOIDED,
-            'voided_at'   => now(),
-            'voided_by'   => $voidedBy,
+            'status' => TaxInvoice::STATUS_VOIDED,
+            'voided_at' => now(),
+            'voided_by' => $voidedBy,
             'void_reason' => $reason,
         ]);
 
@@ -278,15 +278,15 @@ class TaxInvoiceService
 
         return [
             [
-                'description'    => $description,
-                'quantity'       => 1,
-                'unit'           => __('tax_invoices.unit_lump_sum'),
-                'unit_price'     => $taxableAmount,
-                'discount'       => 0,
+                'description' => $description,
+                'quantity' => 1,
+                'unit' => __('tax_invoices.unit_lump_sum'),
+                'unit_price' => $taxableAmount,
+                'discount' => 0,
                 'taxable_amount' => $taxableAmount,
-                'tax_rate'       => $taxRate,
-                'tax_amount'     => $taxAmount,
-                'line_total'     => $lineTotal,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $taxAmount,
+                'line_total' => $lineTotal,
             ],
         ];
     }
@@ -300,14 +300,15 @@ class TaxInvoiceService
     private function totalsFromLineItems(array $lines): array
     {
         $subtotal = 0.0;
-        $tax      = 0.0;
+        $tax = 0.0;
         foreach ($lines as $line) {
             $subtotal += (float) ($line['taxable_amount'] ?? 0);
-            $tax      += (float) ($line['tax_amount'] ?? 0);
+            $tax += (float) ($line['tax_amount'] ?? 0);
         }
         $subtotal = round($subtotal, 2);
-        $tax      = round($tax, 2);
-        $total    = round($subtotal + $tax, 2);
+        $tax = round($tax, 2);
+        $total = round($subtotal + $tax, 2);
+
         return [$subtotal, $tax, $total];
     }
 
@@ -329,7 +330,7 @@ class TaxInvoiceService
      */
     private function resolveVatTreatment(?Contract $contract): string
     {
-        if (!$contract || empty($contract->terms)) {
+        if (! $contract || empty($contract->terms)) {
             return TaxInvoice::VAT_STANDARD;
         }
 
@@ -338,13 +339,14 @@ class TaxInvoiceService
             : (array) $contract->terms;
 
         $case = $envelope['vat_case'] ?? null;
+
         return match ($case) {
-            'reverse_charge'           => TaxInvoice::VAT_REVERSE_CHARGE,
+            'reverse_charge' => TaxInvoice::VAT_REVERSE_CHARGE,
             'designated_zone_internal' => TaxInvoice::VAT_DESIGNATED_ZONE_INTERNAL,
-            'exempt'                   => TaxInvoice::VAT_EXEMPT,
-            'zero_rated'               => TaxInvoice::VAT_ZERO_RATED,
-            'out_of_scope'             => TaxInvoice::VAT_OUT_OF_SCOPE,
-            default                    => TaxInvoice::VAT_STANDARD,
+            'exempt' => TaxInvoice::VAT_EXEMPT,
+            'zero_rated' => TaxInvoice::VAT_ZERO_RATED,
+            'out_of_scope' => TaxInvoice::VAT_OUT_OF_SCOPE,
+            default => TaxInvoice::VAT_STANDARD,
         };
     }
 
@@ -359,23 +361,23 @@ class TaxInvoiceService
         // Phase 7 (UAE Compliance Roadmap) — Corporate Tax annotation.
         // Pull the supplier's CT status so the PDF can show "QFZP"
         // or "exempt" if applicable. Loaded from the snapshot company_id.
-        $supplierCompany = \App\Models\Company::find($invoice->supplier_company_id);
+        $supplierCompany = Company::find($invoice->supplier_company_id);
         $ctAnnotation = $supplierCompany?->ctAnnotation();
 
         $pdf = Pdf::loadView('dashboard.admin.tax-invoices.pdf', [
-            'invoice'      => $invoice,
-            'qrDataUri'    => $this->qrEncoder->renderDataUri($invoice),
+            'invoice' => $invoice,
+            'qrDataUri' => $this->qrEncoder->renderDataUri($invoice),
             'ctAnnotation' => $ctAnnotation,
         ])->setPaper('a4');
 
         $bytes = $pdf->output();
-        $sha   = hash('sha256', $bytes);
+        $sha = hash('sha256', $bytes);
 
         $path = sprintf('tax-invoices/%s.pdf', $invoice->invoice_number);
         Storage::disk('local')->put($path, $bytes);
 
         $invoice->update([
-            'pdf_path'   => $path,
+            'pdf_path' => $path,
             'pdf_sha256' => $sha,
         ]);
 
@@ -390,13 +392,13 @@ class TaxInvoiceService
             ->setPaper('a4');
 
         $bytes = $pdf->output();
-        $sha   = hash('sha256', $bytes);
+        $sha = hash('sha256', $bytes);
 
         $path = sprintf('tax-credit-notes/%s.pdf', $cn->credit_note_number);
         Storage::disk('local')->put($path, $bytes);
 
         $cn->update([
-            'pdf_path'   => $path,
+            'pdf_path' => $path,
             'pdf_sha256' => $sha,
         ]);
 

@@ -21,9 +21,9 @@ class WebhookManagementController extends Controller
 
         $stats = [
             'total_endpoints' => WebhookEndpoint::count(),
-            'active'          => WebhookEndpoint::where('is_active', true)->count(),
-            'total_deliveries'=> WebhookDelivery::count(),
-            'failed'          => WebhookDelivery::where('status', WebhookDelivery::STATUS_FAILED)->count(),
+            'active' => WebhookEndpoint::where('is_active', true)->count(),
+            'total_deliveries' => WebhookDelivery::count(),
+            'failed' => WebhookDelivery::where('status', WebhookDelivery::STATUS_FAILED)->count(),
         ];
 
         return view('dashboard.admin.webhooks.index', compact('endpoints', 'stats'));

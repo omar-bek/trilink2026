@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -57,14 +58,14 @@ class BeneficialOwner extends Model
             // — there's no native `encrypted:date`. We use plain
             // `encrypted` for date_of_birth and parse it in the
             // accessor below so reads still return a CarbonImmutable.
-            'date_of_birth'        => 'encrypted',
-            'id_number'            => 'encrypted',
-            'source_of_wealth'     => 'encrypted',
-            'id_expiry'            => 'date',
+            'date_of_birth' => 'encrypted',
+            'id_number' => 'encrypted',
+            'source_of_wealth' => 'encrypted',
+            'id_expiry' => 'date',
             'ownership_percentage' => 'decimal:2',
-            'is_pep'               => 'boolean',
-            'last_screened_at'     => 'datetime',
-            'verified_at'          => 'datetime',
+            'is_pep' => 'boolean',
+            'last_screened_at' => 'datetime',
+            'verified_at' => 'datetime',
         ];
     }
 
@@ -74,14 +75,14 @@ class BeneficialOwner extends Model
      * service) can keep using ->format() etc. as if it were a real
      * date column. Returns null when the column is unset.
      */
-    public function getDobAttribute(): ?\Carbon\CarbonImmutable
+    public function getDobAttribute(): ?CarbonImmutable
     {
         $raw = $this->date_of_birth;
-        if (!$raw) {
+        if (! $raw) {
             return null;
         }
         try {
-            return \Carbon\CarbonImmutable::parse($raw);
+            return CarbonImmutable::parse($raw);
         } catch (\Throwable) {
             return null;
         }

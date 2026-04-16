@@ -8,6 +8,7 @@ use App\Events\ShipmentLocationUpdated;
 use App\Models\Company;
 use App\Models\Shipment;
 use App\Models\TrackingEvent;
+use App\Models\User;
 use App\Notifications\ShipmentStatusNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
@@ -40,7 +41,9 @@ class ShipmentService
     public function update(int $id, array $data): ?Shipment
     {
         $shipment = Shipment::find($id);
-        if (!$shipment) return null;
+        if (! $shipment) {
+            return null;
+        }
 
         $oldStatus = $shipment->status?->value;
         $shipment->update($data);
@@ -60,7 +63,9 @@ class ShipmentService
     public function addTrackingEvent(int $shipmentId, array $data): ?TrackingEvent
     {
         $shipment = Shipment::find($shipmentId);
-        if (!$shipment) return null;
+        if (! $shipment) {
+            return null;
+        }
 
         $oldStatus = $shipment->status?->value;
 
@@ -113,7 +118,7 @@ class ShipmentService
     private function notifyContractParties(Shipment $shipment, string $newStatus): void
     {
         $contract = $shipment->contract;
-        if (!$contract) {
+        if (! $contract) {
             return;
         }
 
@@ -130,7 +135,7 @@ class ShipmentService
 
         // Notify every user in each party company (not just the primary
         // contact) so procurement + logistics teammates both see the update.
-        $users = \App\Models\User::whereIn('company_id', $partyIds)->active()->get();
+        $users = User::whereIn('company_id', $partyIds)->active()->get();
 
         if ($users->isNotEmpty()) {
             Notification::send($users, new ShipmentStatusNotification($shipment, $newStatus));

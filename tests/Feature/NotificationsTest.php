@@ -8,12 +8,12 @@ use App\Enums\CompanyType;
 use App\Enums\ContractStatus;
 use App\Enums\DisputeStatus;
 use App\Enums\DisputeType;
+use App\Enums\DocumentType;
 use App\Enums\PaymentStatus;
 use App\Enums\RfqStatus;
 use App\Enums\RfqType;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
-use App\Enums\DocumentType;
 use App\Models\Bid;
 use App\Models\Company;
 use App\Models\CompanyDocument;
@@ -22,7 +22,9 @@ use App\Models\Dispute;
 use App\Models\Payment;
 use App\Models\Rfq;
 use App\Models\User;
+use App\Notifications\DisputeNotification;
 use App\Notifications\NewBidNotification;
+use App\Notifications\PaymentStatusNotification;
 use App\Services\BidService;
 use App\Services\DisputeService;
 use App\Services\PaymentService;
@@ -53,17 +55,17 @@ class NotificationsTest extends TestCase
     {
         $type = match ($role) {
             UserRole::SUPPLIER => CompanyType::SUPPLIER,
-            default            => CompanyType::BUYER,
+            default => CompanyType::BUYER,
         };
 
         $company = Company::create([
-            'name'                => ucfirst($role->value) . ' Co ' . uniqid(),
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => $role->value . '@n.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => ucfirst($role->value).' Co '.uniqid(),
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => $role->value.'@n.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         // Sprint A.5 — every test company needs a valid trade license
@@ -73,21 +75,21 @@ class NotificationsTest extends TestCase
         // it); the test fixtures have to mirror that invariant.
         CompanyDocument::create([
             'company_id' => $company->id,
-            'type'       => DocumentType::TRADE_LICENSE,
-            'label'      => 'Trade License',
-            'file_path'  => 'test/trade-license.pdf',
-            'status'     => CompanyDocument::STATUS_VERIFIED,
-            'issued_at'  => now()->subYear(),
+            'type' => DocumentType::TRADE_LICENSE,
+            'label' => 'Trade License',
+            'file_path' => 'test/trade-license.pdf',
+            'status' => CompanyDocument::STATUS_VERIFIED,
+            'issued_at' => now()->subYear(),
             'expires_at' => now()->addYear(),
         ]);
 
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => $role->value . '-' . uniqid() . '@n.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => $role->value.'-'.uniqid().'@n.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -100,15 +102,21 @@ class NotificationsTest extends TestCase
     {
         $user = $this->makeUser();
 
-        $user->notify(new class extends \Illuminate\Notifications\Notification {
-            public function via($notifiable): array { return ['database']; }
-            public function toArray($notifiable): array {
+        $user->notify(new class extends \Illuminate\Notifications\Notification
+        {
+            public function via($notifiable): array
+            {
+                return ['database'];
+            }
+
+            public function toArray($notifiable): array
+            {
                 return [
-                    'type'        => 'success',
-                    'title'       => 'Bid accepted',
-                    'message'     => 'Congrats',
+                    'type' => 'success',
+                    'title' => 'Bid accepted',
+                    'message' => 'Congrats',
                     'entity_type' => 'bid',
-                    'entity_id'   => 999,
+                    'entity_id' => 999,
                 ];
             }
         });
@@ -132,15 +140,21 @@ class NotificationsTest extends TestCase
     {
         $user = $this->makeUser();
 
-        $user->notify(new class extends \Illuminate\Notifications\Notification {
-            public function via($notifiable): array { return ['database']; }
-            public function toArray($notifiable): array {
+        $user->notify(new class extends \Illuminate\Notifications\Notification
+        {
+            public function via($notifiable): array
+            {
+                return ['database'];
+            }
+
+            public function toArray($notifiable): array
+            {
                 return [
-                    'type'        => 'error',
-                    'title'       => 'Payment rejected',
-                    'message'     => '',
+                    'type' => 'error',
+                    'title' => 'Payment rejected',
+                    'message' => '',
                     'entity_type' => 'payment',
-                    'entity_id'   => 1,
+                    'entity_id' => 1,
                 ];
             }
         });
@@ -154,9 +168,15 @@ class NotificationsTest extends TestCase
     {
         $user = $this->makeUser();
 
-        $user->notify(new class extends \Illuminate\Notifications\Notification {
-            public function via($notifiable): array { return ['database']; }
-            public function toArray($notifiable): array {
+        $user->notify(new class extends \Illuminate\Notifications\Notification
+        {
+            public function via($notifiable): array
+            {
+                return ['database'];
+            }
+
+            public function toArray($notifiable): array
+            {
                 return ['title' => 'Welcome', 'message' => 'Hi', 'entity_type' => 'unknown_thing'];
             }
         });
@@ -172,33 +192,33 @@ class NotificationsTest extends TestCase
 
     public function test_bid_create_notifies_buyer_company_users(): void
     {
-        $buyerCompany = Company::create(['name' => 'Buy Co', 'registration_number' => 'B-' . uniqid(), 'type' => CompanyType::BUYER, 'status' => CompanyStatus::ACTIVE]);
-        $buyer = User::create(['first_name' => 'Buy', 'last_name' => 'B', 'email' => 'buy-' . uniqid() . '@t.test', 'password' => 'secret-pass', 'role' => UserRole::BUYER, 'status' => UserStatus::ACTIVE, 'company_id' => $buyerCompany->id]);
+        $buyerCompany = Company::create(['name' => 'Buy Co', 'registration_number' => 'B-'.uniqid(), 'type' => CompanyType::BUYER, 'status' => CompanyStatus::ACTIVE]);
+        $buyer = User::create(['first_name' => 'Buy', 'last_name' => 'B', 'email' => 'buy-'.uniqid().'@t.test', 'password' => 'secret-pass', 'role' => UserRole::BUYER, 'status' => UserStatus::ACTIVE, 'company_id' => $buyerCompany->id]);
 
         $supplier = $this->makeUser(UserRole::SUPPLIER);
 
         $rfq = Rfq::create([
-            'title'      => 'Steel',
+            'title' => 'Steel',
             'company_id' => $buyerCompany->id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'budget'     => 100000,
-            'currency'   => 'AED',
-            'items'      => [],
-            'deadline'   => now()->addDays(10),
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'budget' => 100000,
+            'currency' => 'AED',
+            'items' => [],
+            'deadline' => now()->addDays(10),
         ]);
 
         Notification::fake();
 
         app(BidService::class)->create([
-            'rfq_id'             => $rfq->id,
-            'company_id'         => $supplier->company_id,
-            'provider_id'        => $supplier->id,
-            'status'             => BidStatus::SUBMITTED,
-            'price'              => 95000,
-            'currency'           => 'AED',
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplier->company_id,
+            'provider_id' => $supplier->id,
+            'status' => BidStatus::SUBMITTED,
+            'price' => 95000,
+            'currency' => 'AED',
             'delivery_time_days' => 30,
-            'validity_date'      => now()->addDays(30),
+            'validity_date' => now()->addDays(30),
         ]);
 
         Notification::assertSentTo($buyer, NewBidNotification::class);
@@ -217,23 +237,23 @@ class NotificationsTest extends TestCase
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $buyer->company_id,
+            'contract_id' => $contract->id,
+            'company_id' => $buyer->company_id,
             'recipient_company_id' => $supplier->company_id,
-            'buyer_id'             => $buyer->id,
-            'status'               => PaymentStatus::PENDING_APPROVAL,
-            'amount'               => 5000,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
-            'milestone'            => 'Advance',
+            'buyer_id' => $buyer->id,
+            'status' => PaymentStatus::PENDING_APPROVAL,
+            'amount' => 5000,
+            'vat_rate' => 5,
+            'currency' => 'AED',
+            'milestone' => 'Advance',
         ]);
 
         Notification::fake();
 
         app(PaymentService::class)->approve($payment->id, $buyer->id);
 
-        Notification::assertSentTo($buyer, \App\Notifications\PaymentStatusNotification::class);
-        Notification::assertSentTo($supplier, \App\Notifications\PaymentStatusNotification::class);
+        Notification::assertSentTo($buyer, PaymentStatusNotification::class);
+        Notification::assertSentTo($supplier, PaymentStatusNotification::class);
     }
 
     public function test_dispute_escalate_notifies_both_companies(): void
@@ -249,22 +269,22 @@ class NotificationsTest extends TestCase
         ]);
 
         $dispute = Dispute::create([
-            'contract_id'        => $contract->id,
-            'company_id'         => $a->company_id,
-            'raised_by'          => $a->id,
+            'contract_id' => $contract->id,
+            'company_id' => $a->company_id,
+            'raised_by' => $a->id,
             'against_company_id' => $b->company_id,
-            'type'               => DisputeType::QUALITY,
-            'status'             => DisputeStatus::OPEN,
-            'title'              => 'Bad goods',
-            'description'        => 'Did not match spec',
+            'type' => DisputeType::QUALITY,
+            'status' => DisputeStatus::OPEN,
+            'title' => 'Bad goods',
+            'description' => 'Did not match spec',
         ]);
 
         Notification::fake();
 
         app(DisputeService::class)->escalate($dispute->id);
 
-        Notification::assertSentTo($a, \App\Notifications\DisputeNotification::class);
-        Notification::assertSentTo($b, \App\Notifications\DisputeNotification::class);
+        Notification::assertSentTo($a, DisputeNotification::class);
+        Notification::assertSentTo($b, DisputeNotification::class);
     }
 
     // ---------------------------------------------------------------------
@@ -273,10 +293,17 @@ class NotificationsTest extends TestCase
 
     private function seedOneNotification(User $user, string $title = 'Test alert', string $entityType = 'bid', int $entityId = 1): void
     {
-        $user->notify(new class($title, $entityType, $entityId) extends \Illuminate\Notifications\Notification {
+        $user->notify(new class($title, $entityType, $entityId) extends \Illuminate\Notifications\Notification
+        {
             public function __construct(public string $t, public string $et, public int $eid) {}
-            public function via($notifiable): array { return ['database']; }
-            public function toArray($notifiable): array {
+
+            public function via($notifiable): array
+            {
+                return ['database'];
+            }
+
+            public function toArray($notifiable): array
+            {
                 return ['type' => 'info', 'title' => $this->t, 'message' => 'detail', 'entity_type' => $this->et, 'entity_id' => $this->eid];
             }
         });

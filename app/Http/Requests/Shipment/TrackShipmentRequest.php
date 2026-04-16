@@ -14,11 +14,11 @@ class TrackShipmentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status'      => ['required', 'string', 'max:50'],
+            'status' => ['required', 'string', 'max:50'],
             'description' => ['nullable', 'string', 'max:500'],
-            'lat'         => ['nullable', 'numeric', 'between:-90,90'],
-            'lng'         => ['nullable', 'numeric', 'between:-180,180'],
-            'city'        => ['nullable', 'string', 'max:100'],
+            'lat' => ['nullable', 'numeric', 'between:-90,90'],
+            'lng' => ['nullable', 'numeric', 'between:-180,180'],
+            'city' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

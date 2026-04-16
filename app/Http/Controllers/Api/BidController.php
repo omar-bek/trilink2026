@@ -19,7 +19,7 @@ class BidController extends Controller
         $filters = $request->only(['rfq_id', 'status', 'per_page']);
         $user = auth()->user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             $filters['company_id'] = $user->company_id;
         }
 
@@ -29,7 +29,7 @@ class BidController extends Controller
     public function show(int $id): JsonResponse
     {
         $bid = $this->service->find($id);
-        if (!$bid) {
+        if (! $bid) {
             return $this->notFound();
         }
 
@@ -38,7 +38,7 @@ class BidController extends Controller
         // and (c) admins. Returning 404 instead of 403 prevents id
         // enumeration of the bid table.
         $user = auth()->user();
-        if (!$user->isAdmin()
+        if (! $user->isAdmin()
             && $user->company_id !== $bid->company_id
             && $user->company_id !== $bid->rfq?->company_id
         ) {
@@ -89,19 +89,20 @@ class BidController extends Controller
         ]);
 
         $bid = Bid::find($id);
-        if (!$bid) {
+        if (! $bid) {
             return $this->notFound();
         }
         $this->authorizeBidAuthorMutation($bid);
 
         $bid = $this->service->update($id, $data);
+
         return $bid ? $this->success($bid) : $this->notFound();
     }
 
     public function destroy(int $id): JsonResponse
     {
         $bid = Bid::find($id);
-        if (!$bid) {
+        if (! $bid) {
             return $this->notFound();
         }
         $this->authorizeBidAuthorMutation($bid);
@@ -123,7 +124,7 @@ class BidController extends Controller
         ]);
 
         $bid = Bid::with('rfq')->find($id);
-        if (!$bid) {
+        if (! $bid) {
             return $this->notFound();
         }
         // Evaluation is a buyer-side action — only the RFQ owner (or
@@ -131,13 +132,14 @@ class BidController extends Controller
         $this->authorizeBidBuyerMutation($bid);
 
         $bid = $this->service->evaluate($id, $data);
+
         return $bid ? $this->success($bid, 'Bid evaluated') : $this->notFound();
     }
 
     public function withdraw(int $id): JsonResponse
     {
         $bid = Bid::find($id);
-        if (!$bid) {
+        if (! $bid) {
             return $this->notFound();
         }
         // Withdraw is a supplier-side action — only the bid author may
@@ -145,29 +147,36 @@ class BidController extends Controller
         $this->authorizeBidAuthorMutation($bid);
 
         $bid = $this->service->withdraw($id);
+
         return $bid ? $this->success($bid, 'Bid withdrawn') : $this->error('Cannot withdraw this bid', 422);
     }
 
     public function enableAnonymity(int $id): JsonResponse
     {
         $bid = Bid::find($id);
-        if (!$bid) return $this->notFound();
+        if (! $bid) {
+            return $this->notFound();
+        }
         // Anonymity is a supplier-controlled flag on their own bid. Without
         // this guard any authenticated user could de-anonymise any bid in
         // the system, defeating the bid-blinding feature entirely.
         $this->authorizeBidAuthorMutation($bid);
 
         $bid->update(['is_anonymous' => true]);
+
         return $this->success($bid->fresh(), 'Anonymity enabled');
     }
 
     public function revealIdentity(int $id): JsonResponse
     {
         $bid = Bid::find($id);
-        if (!$bid) return $this->notFound();
+        if (! $bid) {
+            return $this->notFound();
+        }
         $this->authorizeBidAuthorMutation($bid);
 
         $bid->update(['is_anonymous' => false]);
+
         return $this->success($bid->fresh(), 'Identity revealed');
     }
 

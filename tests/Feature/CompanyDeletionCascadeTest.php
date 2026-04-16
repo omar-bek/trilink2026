@@ -59,117 +59,117 @@ class CompanyDeletionCascadeTest extends TestCase
     private function seedFullTenant(): array
     {
         $company = Company::create([
-            'name'                => 'Acme Industries',
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => CompanyType::BUYER,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => 'acme@test.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => 'Acme Industries',
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => CompanyType::BUYER,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => 'acme@test.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         $users = [];
         foreach (['Alice', 'Bob', 'Carol'] as $name) {
             $users[] = User::create([
                 'first_name' => $name,
-                'last_name'  => 'Acme',
-                'email'      => strtolower($name) . '-' . uniqid() . '@acme.test',
-                'password'   => 'secret-pass',
-                'role'       => UserRole::BUYER,
-                'status'     => UserStatus::ACTIVE,
+                'last_name' => 'Acme',
+                'email' => strtolower($name).'-'.uniqid().'@acme.test',
+                'password' => 'secret-pass',
+                'role' => UserRole::BUYER,
+                'status' => UserStatus::ACTIVE,
                 'company_id' => $company->id,
             ]);
         }
 
-        $category = Category::create(['name' => 'Electronics ' . uniqid(), 'is_active' => true]);
+        $category = Category::create(['name' => 'Electronics '.uniqid(), 'is_active' => true]);
         $company->categories()->attach($category->id);
 
         // Counter-party — needed so contracts/bids/payments have a "the other
         // side" record to verify ownership-by-history is preserved.
         $supplierCompany = Company::create([
-            'name'                => 'Widget Supply',
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => CompanyType::SUPPLIER,
-            'status'              => CompanyStatus::ACTIVE,
+            'name' => 'Widget Supply',
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => CompanyType::SUPPLIER,
+            'status' => CompanyStatus::ACTIVE,
         ]);
 
         $pr = PurchaseRequest::create([
-            'title'         => 'Office chairs',
-            'company_id'    => $company->id,
-            'buyer_id'      => $users[0]->id,
-            'status'        => PurchaseRequestStatus::APPROVED,
-            'budget'        => 50000,
-            'currency'      => 'AED',
-            'items'         => [],
+            'title' => 'Office chairs',
+            'company_id' => $company->id,
+            'buyer_id' => $users[0]->id,
+            'status' => PurchaseRequestStatus::APPROVED,
+            'budget' => 50000,
+            'currency' => 'AED',
+            'items' => [],
             'required_date' => now()->addDays(30),
         ]);
 
         $rfq = Rfq::create([
-            'title'      => 'Chair RFQ',
+            'title' => 'Chair RFQ',
             'company_id' => $company->id,
             'purchase_request_id' => $pr->id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'budget'     => 50000,
-            'currency'   => 'AED',
-            'items'      => [],
-            'deadline'   => now()->addDays(15),
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'budget' => 50000,
+            'currency' => 'AED',
+            'items' => [],
+            'deadline' => now()->addDays(15),
         ]);
 
         $bid = Bid::create([
-            'rfq_id'             => $rfq->id,
-            'company_id'         => $supplierCompany->id,
-            'provider_id'        => $users[0]->id,
-            'status'             => BidStatus::SUBMITTED,
-            'price'              => 48000,
-            'currency'           => 'AED',
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplierCompany->id,
+            'provider_id' => $users[0]->id,
+            'status' => BidStatus::SUBMITTED,
+            'price' => 48000,
+            'currency' => 'AED',
             'delivery_time_days' => 20,
-            'validity_date'      => now()->addDays(20),
+            'validity_date' => now()->addDays(20),
         ]);
 
         $contract = Contract::create([
-            'title'            => 'Acme ⇄ Widget Supply',
+            'title' => 'Acme ⇄ Widget Supply',
             'buyer_company_id' => $company->id,
-            'status'           => ContractStatus::ACTIVE,
-            'parties'          => [
+            'status' => ContractStatus::ACTIVE,
+            'parties' => [
                 ['company_id' => $company->id,         'role' => 'buyer'],
                 ['company_id' => $supplierCompany->id, 'role' => 'supplier'],
             ],
             'total_amount' => 48000,
-            'currency'     => 'AED',
-            'start_date'   => now(),
-            'end_date'     => now()->addMonths(3),
+            'currency' => 'AED',
+            'start_date' => now(),
+            'end_date' => now()->addMonths(3),
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $company->id,
+            'contract_id' => $contract->id,
+            'company_id' => $company->id,
             'recipient_company_id' => $supplierCompany->id,
-            'buyer_id'             => $users[0]->id,
-            'status'               => PaymentStatus::PENDING_APPROVAL,
-            'amount'               => 14400,
-            'vat_rate'             => 5,
-            'currency'             => 'AED',
-            'milestone'            => 'Advance',
+            'buyer_id' => $users[0]->id,
+            'status' => PaymentStatus::PENDING_APPROVAL,
+            'amount' => 14400,
+            'vat_rate' => 5,
+            'currency' => 'AED',
+            'milestone' => 'Advance',
         ]);
 
         $shipment = Shipment::create([
             'contract_id' => $contract->id,
-            'company_id'  => $company->id,
-            'status'      => ShipmentStatus::IN_TRANSIT,
-            'origin'      => ['city' => 'Dubai'],
+            'company_id' => $company->id,
+            'status' => ShipmentStatus::IN_TRANSIT,
+            'origin' => ['city' => 'Dubai'],
             'destination' => ['city' => 'Abu Dhabi'],
         ]);
 
         $dispute = Dispute::create([
-            'contract_id'        => $contract->id,
-            'company_id'         => $company->id,
-            'raised_by'          => $users[0]->id,
+            'contract_id' => $contract->id,
+            'company_id' => $company->id,
+            'raised_by' => $users[0]->id,
             'against_company_id' => $supplierCompany->id,
-            'type'               => DisputeType::QUALITY,
-            'status'             => DisputeStatus::OPEN,
-            'title'              => 'Late delivery',
-            'description'        => 'Goods came late',
+            'type' => DisputeType::QUALITY,
+            'status' => DisputeStatus::OPEN,
+            'title' => 'Late delivery',
+            'description' => 'Goods came late',
         ]);
 
         return compact('company', 'users', 'pr', 'rfq', 'bid', 'contract', 'payment', 'shipment', 'dispute', 'category');
@@ -201,12 +201,12 @@ class CompanyDeletionCascadeTest extends TestCase
 
         // Every transactional row STILL exists in its table.
         $this->assertDatabaseHas('purchase_requests', ['id' => $t['pr']->id]);
-        $this->assertDatabaseHas('rfqs',              ['id' => $t['rfq']->id]);
-        $this->assertDatabaseHas('bids',              ['id' => $t['bid']->id]);
-        $this->assertDatabaseHas('contracts',         ['id' => $t['contract']->id]);
-        $this->assertDatabaseHas('payments',          ['id' => $t['payment']->id]);
-        $this->assertDatabaseHas('shipments',         ['id' => $t['shipment']->id]);
-        $this->assertDatabaseHas('disputes',          ['id' => $t['dispute']->id]);
+        $this->assertDatabaseHas('rfqs', ['id' => $t['rfq']->id]);
+        $this->assertDatabaseHas('bids', ['id' => $t['bid']->id]);
+        $this->assertDatabaseHas('contracts', ['id' => $t['contract']->id]);
+        $this->assertDatabaseHas('payments', ['id' => $t['payment']->id]);
+        $this->assertDatabaseHas('shipments', ['id' => $t['shipment']->id]);
+        $this->assertDatabaseHas('disputes', ['id' => $t['dispute']->id]);
 
         // None are soft-deleted either.
         $this->assertNull($t['pr']->fresh()->deleted_at);
@@ -249,12 +249,12 @@ class CompanyDeletionCascadeTest extends TestCase
 
         // ALL transactional history survives — exactly the user's requirement.
         $this->assertDatabaseHas('contracts', ['id' => $t['contract']->id]);
-        $this->assertDatabaseHas('bids',      ['id' => $t['bid']->id]);
-        $this->assertDatabaseHas('payments',  ['id' => $t['payment']->id]);
-        $this->assertDatabaseHas('rfqs',      ['id' => $t['rfq']->id]);
+        $this->assertDatabaseHas('bids', ['id' => $t['bid']->id]);
+        $this->assertDatabaseHas('payments', ['id' => $t['payment']->id]);
+        $this->assertDatabaseHas('rfqs', ['id' => $t['rfq']->id]);
         $this->assertDatabaseHas('purchase_requests', ['id' => $t['pr']->id]);
         $this->assertDatabaseHas('shipments', ['id' => $t['shipment']->id]);
-        $this->assertDatabaseHas('disputes',  ['id' => $t['dispute']->id]);
+        $this->assertDatabaseHas('disputes', ['id' => $t['dispute']->id]);
     }
 
     public function test_admin_destroy_route_triggers_full_cascade(): void
@@ -264,17 +264,17 @@ class CompanyDeletionCascadeTest extends TestCase
         // Create an admin to call the destroy route.
         $adminCompany = Company::create([
             'name' => 'Platform',
-            'registration_number' => 'TRN-ADMIN-' . uniqid(),
+            'registration_number' => 'TRN-ADMIN-'.uniqid(),
             'type' => CompanyType::BUYER,
             'status' => CompanyStatus::ACTIVE,
         ]);
         $admin = User::create([
             'first_name' => 'Admin',
-            'last_name'  => 'Op',
-            'email'      => 'admin-' . uniqid() . '@p.test',
-            'password'   => 'secret-pass',
-            'role'       => UserRole::ADMIN,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'Op',
+            'email' => 'admin-'.uniqid().'@p.test',
+            'password' => 'secret-pass',
+            'role' => UserRole::ADMIN,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $adminCompany->id,
         ]);
 
@@ -288,8 +288,8 @@ class CompanyDeletionCascadeTest extends TestCase
         $this->assertSoftDeleted('companies', ['id' => $t['company']->id]);
         $this->assertEquals(0, User::whereIn('id', $userIds)->count());
         $this->assertDatabaseHas('contracts', ['id' => $t['contract']->id]);
-        $this->assertDatabaseHas('payments',  ['id' => $t['payment']->id]);
-        $this->assertDatabaseHas('bids',      ['id' => $t['bid']->id]);
+        $this->assertDatabaseHas('payments', ['id' => $t['payment']->id]);
+        $this->assertDatabaseHas('bids', ['id' => $t['bid']->id]);
     }
 
     public function test_counter_party_records_remain_for_the_other_side(): void

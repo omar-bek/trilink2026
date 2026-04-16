@@ -18,30 +18,28 @@ use Illuminate\Http\Request;
  */
 class NegotiationRoundController extends Controller
 {
-    public function __construct(private readonly NegotiationService $service)
-    {
-    }
+    public function __construct(private readonly NegotiationService $service) {}
 
     public function counter(Request $request, int $bidId): RedirectResponse
     {
         $user = $request->user();
-        $bid  = Bid::with('rfq')->findOrFail($bidId);
+        $bid = Bid::with('rfq')->findOrFail($bidId);
         $this->authorizeParty($user, $bid);
 
         $data = $request->validate([
-            'amount'         => ['required', 'numeric', 'min:0'],
-            'currency'       => ['nullable', 'string', 'size:3'],
-            'delivery_days'  => ['nullable', 'integer', 'min:1'],
-            'payment_terms'  => ['nullable', 'string', 'max:500'],
-            'reason'         => ['nullable', 'string', 'max:1000'],
+            'amount' => ['required', 'numeric', 'min:0'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'delivery_days' => ['nullable', 'integer', 'min:1'],
+            'payment_terms' => ['nullable', 'string', 'max:500'],
+            'reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $this->service->openCounterOffer(
             bid: $bid,
             sender: $user,
             offer: [
-                'amount'        => (float) $data['amount'],
-                'currency'      => $data['currency'] ?? $bid->currency ?? 'AED',
+                'amount' => (float) $data['amount'],
+                'currency' => $data['currency'] ?? $bid->currency ?? 'AED',
                 'delivery_days' => $data['delivery_days'] ?? null,
                 'payment_terms' => $data['payment_terms'] ?? null,
             ],
@@ -54,12 +52,12 @@ class NegotiationRoundController extends Controller
     public function accept(Request $request, int $bidId): RedirectResponse
     {
         $user = $request->user();
-        $bid  = Bid::with('rfq')->findOrFail($bidId);
+        $bid = Bid::with('rfq')->findOrFail($bidId);
         $this->authorizeParty($user, $bid);
 
         $msg = $this->service->acceptOffer($bid, $user);
 
-        if (!$msg) {
+        if (! $msg) {
             return back()->withErrors(['negotiation' => __('negotiation.no_open_round')]);
         }
 
@@ -69,13 +67,13 @@ class NegotiationRoundController extends Controller
     public function reject(Request $request, int $bidId): RedirectResponse
     {
         $user = $request->user();
-        $bid  = Bid::with('rfq')->findOrFail($bidId);
+        $bid = Bid::with('rfq')->findOrFail($bidId);
         $this->authorizeParty($user, $bid);
 
         $reason = (string) $request->input('reason', '');
         $msg = $this->service->rejectOffer($bid, $user, $reason !== '' ? $reason : null);
 
-        if (!$msg) {
+        if (! $msg) {
             return back()->withErrors(['negotiation' => __('negotiation.no_open_round')]);
         }
 

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Concerns\Searchable;
 use App\Enums\ContractStatus;
+use App\ValueObjects\ContractSignature;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Contract extends Model
 {
-    use HasFactory, SoftDeletes, Searchable;
+    use HasFactory, Searchable, SoftDeletes;
 
     protected $fillable = [
         'contract_number',
@@ -83,11 +84,11 @@ class Contract extends Model
     /**
      * Same idea for the `signatures` JSON column. Read-only typed view.
      *
-     * @return list<\App\ValueObjects\ContractSignature>
+     * @return list<ContractSignature>
      */
     public function signatureDetails(): array
     {
-        return \App\ValueObjects\ContractSignature::collection($this->signatures);
+        return ContractSignature::collection($this->signatures);
     }
 
     public function branch(): BelongsTo
@@ -168,8 +169,8 @@ class Contract extends Model
     protected static function booted(): void
     {
         static::creating(function (Contract $contract) {
-            if (!$contract->contract_number) {
-                $contract->contract_number = 'CTR-' . strtoupper(uniqid());
+            if (! $contract->contract_number) {
+                $contract->contract_number = 'CTR-'.strtoupper(uniqid());
             }
         });
     }
@@ -186,7 +187,7 @@ class Contract extends Model
         $signedCompanyIds = collect($signatures)->pluck('company_id')->toArray();
 
         foreach ($parties as $party) {
-            if (!in_array($party['company_id'] ?? null, $signedCompanyIds)) {
+            if (! in_array($party['company_id'] ?? null, $signedCompanyIds)) {
                 return false;
             }
         }
@@ -218,7 +219,7 @@ class Contract extends Model
         }
 
         $schedule = $this->payment_schedule ?? [];
-        if (!empty($schedule)) {
+        if (! empty($schedule)) {
             // Use the eager-loaded payments collection when callers (e.g.
             // ContractController::index) have already hydrated it; otherwise
             // fall back to a count() query. This eliminates the N+1 the
@@ -239,13 +240,14 @@ class Contract extends Model
         }
 
         $statusValue = $this->status instanceof \BackedEnum ? $this->status->value : (string) $this->status;
+
         return match ($statusValue) {
-            'draft'              => 0,
+            'draft' => 0,
             'pending_signatures' => 5,
-            'active', 'signed'   => 50,
-            'completed'          => 100,
+            'active', 'signed' => 50,
+            'completed' => 100,
             'cancelled', 'terminated' => 0,
-            default              => 0,
+            default => 0,
         };
     }
 }

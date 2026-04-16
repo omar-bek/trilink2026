@@ -24,7 +24,8 @@ use Illuminate\Console\Command;
  */
 class MapCategoriesToUnspsc extends Command
 {
-    protected $signature   = 'unspsc:map {--apply : Persist changes (omit for a dry run)}';
+    protected $signature = 'unspsc:map {--apply : Persist changes (omit for a dry run)}';
+
     protected $description = 'Best-effort mapping of existing categories to UNSPSC segments by keyword';
 
     public function handle(): int
@@ -38,6 +39,7 @@ class MapCategoriesToUnspsc extends Command
 
         if ($segments->isEmpty()) {
             $this->error('No UNSPSC segments found. Run `php artisan db:seed --class=UnspscSegmentsSeeder` first.');
+
             return self::FAILURE;
         }
 
@@ -45,11 +47,12 @@ class MapCategoriesToUnspsc extends Command
         // doesn't re-tokenise on every category.
         $segmentKeywords = $segments->mapWithKeys(function (Category $seg) {
             $keywords = $this->keywords($seg->name);
+
             // Drop very short / generic words ("and", "or") and dedupe.
             return [
                 $seg->id => [
                     'segment_code' => (int) $seg->unspsc_segment,
-                    'keywords'     => array_values(array_filter($keywords, fn ($k) => strlen($k) >= 4)),
+                    'keywords' => array_values(array_filter($keywords, fn ($k) => strlen($k) >= 4)),
                 ],
             ];
         })->all();
@@ -58,9 +61,9 @@ class MapCategoriesToUnspsc extends Command
             ->whereNull('unspsc_segment')
             ->get(['id', 'name', 'name_ar']);
 
-        $matched   = 0;
+        $matched = 0;
         $ambiguous = 0;
-        $missed    = 0;
+        $missed = 0;
 
         foreach ($unmapped as $cat) {
             $catKeywords = $this->keywords($cat->name);
@@ -79,7 +82,7 @@ class MapCategoriesToUnspsc extends Command
                 if ($apply) {
                     $cat->update([
                         'unspsc_segment' => $segCode,
-                        'unspsc_code'    => sprintf('%02d000000', $segCode),
+                        'unspsc_code' => sprintf('%02d000000', $segCode),
                     ]);
                 }
             } elseif (count($hits) > 1) {

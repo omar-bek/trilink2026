@@ -31,11 +31,11 @@ class NegotiationService
     public function postText(Bid $bid, User $sender, string $body): NegotiationMessage
     {
         return NegotiationMessage::create([
-            'bid_id'      => $bid->id,
-            'sender_id'   => $sender->id,
+            'bid_id' => $bid->id,
+            'sender_id' => $sender->id,
             'sender_side' => $this->resolveSide($bid, $sender),
-            'kind'        => NegotiationMessage::KIND_TEXT,
-            'body'        => $body,
+            'kind' => NegotiationMessage::KIND_TEXT,
+            'body' => $body,
             'round_status' => NegotiationMessage::ROUND_OPEN,
         ]);
     }
@@ -58,12 +58,12 @@ class NegotiationService
                 ->max('round_number') + 1;
 
             return NegotiationMessage::create([
-                'bid_id'       => $bid->id,
-                'sender_id'    => $sender->id,
-                'sender_side'  => $this->resolveSide($bid, $sender),
-                'kind'         => NegotiationMessage::KIND_COUNTER_OFFER,
-                'body'         => $reason,
-                'offer'        => $offer,
+                'bid_id' => $bid->id,
+                'sender_id' => $sender->id,
+                'sender_side' => $this->resolveSide($bid, $sender),
+                'kind' => NegotiationMessage::KIND_COUNTER_OFFER,
+                'body' => $reason,
+                'offer' => $offer,
                 'round_number' => $nextRound,
                 'round_status' => NegotiationMessage::ROUND_OPEN,
             ]);
@@ -78,7 +78,7 @@ class NegotiationService
     {
         return DB::transaction(function () use ($bid, $sender) {
             $latest = $this->latestOpenRound($bid);
-            if (!$latest) {
+            if (! $latest) {
                 return null;
             }
 
@@ -90,14 +90,14 @@ class NegotiationService
             // pipeline picks up the negotiated values, not the original.
             $offer = $latest->offer ?? [];
             $bid->update(array_filter([
-                'price'              => $offer['amount'] ?? null,
-                'currency'           => $offer['currency'] ?? null,
+                'price' => $offer['amount'] ?? null,
+                'currency' => $offer['currency'] ?? null,
                 'delivery_time_days' => $offer['delivery_days'] ?? null,
-                'payment_terms'      => $offer['payment_terms'] ?? null,
-                'status'             => BidStatus::UNDER_REVIEW,
+                'payment_terms' => $offer['payment_terms'] ?? null,
+                'status' => BidStatus::UNDER_REVIEW,
             ], fn ($v) => $v !== null));
 
-            $this->postText($bid, $sender, '✓ Offer accepted at round ' . $latest->round_number);
+            $this->postText($bid, $sender, '✓ Offer accepted at round '.$latest->round_number);
 
             return $latest->fresh();
         });
@@ -111,12 +111,12 @@ class NegotiationService
     public function rejectOffer(Bid $bid, User $sender, ?string $reason = null): ?NegotiationMessage
     {
         $latest = $this->latestOpenRound($bid);
-        if (!$latest) {
+        if (! $latest) {
             return null;
         }
 
         $latest->update(['round_status' => NegotiationMessage::ROUND_REJECTED]);
-        $this->postText($bid, $sender, '✗ Offer rejected at round ' . $latest->round_number . ($reason ? ': ' . $reason : ''));
+        $this->postText($bid, $sender, '✗ Offer rejected at round '.$latest->round_number.($reason ? ': '.$reason : ''));
 
         return $latest->fresh();
     }

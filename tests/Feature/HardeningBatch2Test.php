@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AuditAction;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
 use App\Enums\DocumentType;
@@ -13,7 +14,6 @@ use App\Models\CompanyDocument;
 use App\Models\Consent;
 use App\Models\IcvCertificate;
 use App\Models\PrivacyPolicyVersion;
-use App\Models\PrivacyRequest;
 use App\Models\User;
 use App\Notifications\IcvCertificateExpiringNotification;
 use App\Services\Privacy\ConsentLedger;
@@ -53,15 +53,15 @@ class HardeningBatch2Test extends TestCase
     private function makeCompany(string $name, CompanyType $type = CompanyType::BUYER): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => 'TRN-' . random_int(100000, 999999),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@t.test',
-            'address'             => '101 Sheikh Zayed Road',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => 'TRN-'.random_int(100000, 999999),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@t.test',
+            'address' => '101 Sheikh Zayed Road',
+            'city' => 'Dubai',
+            'country' => 'AE',
         ]);
     }
 
@@ -69,11 +69,11 @@ class HardeningBatch2Test extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => 'u-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'u-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -87,32 +87,32 @@ class HardeningBatch2Test extends TestCase
         Storage::fake('local');
 
         $company = $this->makeCompany('Files Co', CompanyType::SUPPLIER);
-        $user    = $this->makeUser($company, UserRole::COMPANY_MANAGER);
+        $user = $this->makeUser($company, UserRole::COMPANY_MANAGER);
 
         // Stage two uploaded files: a company document + an ICV cert
         Storage::disk('local')->put('company-documents/test/trade-license.pdf', 'TRADE-LICENSE-BYTES');
         Storage::disk('local')->put('icv-certificates/test/cert.pdf', 'ICV-BYTES');
 
         CompanyDocument::create([
-            'company_id'        => $company->id,
-            'type'              => DocumentType::TRADE_LICENSE,
-            'label'             => 'Trade License',
-            'file_path'         => 'company-documents/test/trade-license.pdf',
+            'company_id' => $company->id,
+            'type' => DocumentType::TRADE_LICENSE,
+            'label' => 'Trade License',
+            'file_path' => 'company-documents/test/trade-license.pdf',
             'original_filename' => 'license.pdf',
-            'status'            => CompanyDocument::STATUS_VERIFIED,
-            'expires_at'        => now()->addYear(),
+            'status' => CompanyDocument::STATUS_VERIFIED,
+            'expires_at' => now()->addYear(),
         ]);
 
         IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'M-DSAR-1',
-            'score'              => 50,
-            'issued_date'        => now()->subMonths(2),
-            'expires_date'       => now()->addMonths(10),
-            'file_path'          => 'icv-certificates/test/cert.pdf',
-            'original_filename'  => 'icv-cert.pdf',
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 50,
+            'issued_date' => now()->subMonths(2),
+            'expires_date' => now()->addMonths(10),
+            'file_path' => 'icv-certificates/test/cert.pdf',
+            'original_filename' => 'icv-cert.pdf',
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         $service = $this->app->make(DataExportService::class);
@@ -120,7 +120,7 @@ class HardeningBatch2Test extends TestCase
 
         Storage::disk('local')->assertExists($path);
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $this->assertTrue($zip->open(Storage::disk('local')->path($path)) === true);
 
         // Manifest exists
@@ -147,22 +147,22 @@ class HardeningBatch2Test extends TestCase
         Storage::fake('local');
 
         $company = $this->makeCompany('Missing Co');
-        $user    = $this->makeUser($company, UserRole::COMPANY_MANAGER);
+        $user = $this->makeUser($company, UserRole::COMPANY_MANAGER);
 
         // Reference a file that doesn't exist on disk
         CompanyDocument::create([
-            'company_id'        => $company->id,
-            'type'              => DocumentType::TRADE_LICENSE,
-            'label'             => 'Phantom',
-            'file_path'         => 'company-documents/test/missing.pdf',
-            'status'            => CompanyDocument::STATUS_VERIFIED,
-            'expires_at'        => now()->addYear(),
+            'company_id' => $company->id,
+            'type' => DocumentType::TRADE_LICENSE,
+            'label' => 'Phantom',
+            'file_path' => 'company-documents/test/missing.pdf',
+            'status' => CompanyDocument::STATUS_VERIFIED,
+            'expires_at' => now()->addYear(),
         ]);
 
         $service = $this->app->make(DataExportService::class);
         $path = $service->buildArchive($user);
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $this->assertTrue($zip->open(Storage::disk('local')->path($path)) === true);
         $manifest = json_decode($zip->getFromName('files/_manifest.json'), true);
 
@@ -177,21 +177,21 @@ class HardeningBatch2Test extends TestCase
     public function test_erasure_anonymizes_user_audit_logs(): void
     {
         $company = $this->makeCompany('Erasure Co');
-        $user    = $this->makeUser($company, UserRole::BUYER);
+        $user = $this->makeUser($company, UserRole::BUYER);
 
         // Author 3 audit log rows for this user
         for ($i = 0; $i < 3; $i++) {
             AuditLog::create([
-                'user_id'       => $user->id,
-                'company_id'    => $company->id,
-                'action'        => \App\Enums\AuditAction::CREATE,
+                'user_id' => $user->id,
+                'company_id' => $company->id,
+                'action' => AuditAction::CREATE,
                 'resource_type' => 'Test',
-                'resource_id'   => $i + 1,
-                'before'        => null,
-                'after'         => ['n' => $i],
-                'ip_address'    => '198.51.100.' . ($i + 10),
-                'user_agent'    => 'Mozilla/5.0 user-' . $user->id,
-                'status'        => 'success',
+                'resource_id' => $i + 1,
+                'before' => null,
+                'after' => ['n' => $i],
+                'ip_address' => '198.51.100.'.($i + 10),
+                'user_agent' => 'Mozilla/5.0 user-'.$user->id,
+                'status' => 'success',
             ]);
         }
 
@@ -224,16 +224,16 @@ class HardeningBatch2Test extends TestCase
     public function test_consent_links_to_published_policy_version_when_one_exists(): void
     {
         $company = $this->makeCompany('Policy Co');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         // Publish a policy version
         $version = PrivacyPolicyVersion::create([
-            'version'        => '2.0',
-            'body_en'        => 'English body of policy v2.0',
-            'body_ar'        => 'النص العربي للسياسة v2.0',
-            'sha256'         => PrivacyPolicyVersion::canonicalSha256('English body of policy v2.0', 'النص العربي للسياسة v2.0'),
+            'version' => '2.0',
+            'body_en' => 'English body of policy v2.0',
+            'body_ar' => 'النص العربي للسياسة v2.0',
+            'sha256' => PrivacyPolicyVersion::canonicalSha256('English body of policy v2.0', 'النص العربي للسياسة v2.0'),
             'effective_from' => now()->subDay(),
-            'changelog'      => 'Test version',
+            'changelog' => 'Test version',
         ]);
 
         $ledger = $this->app->make(ConsentLedger::class);
@@ -246,7 +246,7 @@ class HardeningBatch2Test extends TestCase
     public function test_consent_with_no_matching_policy_version_falls_back_to_null(): void
     {
         $company = $this->makeCompany('No Policy Co');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $ledger = $this->app->make(ConsentLedger::class);
         $consent = $ledger->grant($user, Consent::TYPE_PRIVACY_POLICY, '99.99');
@@ -260,13 +260,13 @@ class HardeningBatch2Test extends TestCase
         Storage::fake('local');
 
         $company = $this->makeCompany('Snapshot Co');
-        $user    = $this->makeUser($company);
+        $user = $this->makeUser($company);
 
         $version = PrivacyPolicyVersion::create([
-            'version'        => '3.0',
-            'body_en'        => 'POLICY-EN-V3-MARKER',
-            'body_ar'        => 'POLICY-AR-V3-MARKER',
-            'sha256'         => PrivacyPolicyVersion::canonicalSha256('POLICY-EN-V3-MARKER', 'POLICY-AR-V3-MARKER'),
+            'version' => '3.0',
+            'body_en' => 'POLICY-EN-V3-MARKER',
+            'body_ar' => 'POLICY-AR-V3-MARKER',
+            'sha256' => PrivacyPolicyVersion::canonicalSha256('POLICY-EN-V3-MARKER', 'POLICY-AR-V3-MARKER'),
             'effective_from' => now()->subDay(),
         ]);
 
@@ -276,7 +276,7 @@ class HardeningBatch2Test extends TestCase
         $service = $this->app->make(DataExportService::class);
         $path = $service->buildArchive($user);
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $this->assertTrue($zip->open(Storage::disk('local')->path($path)) === true);
         $consents = json_decode($zip->getFromName('consents.json'), true);
         $zip->close();
@@ -318,13 +318,13 @@ class HardeningBatch2Test extends TestCase
         // Cert expiring in 55 days — within the 60-day window, no
         // reminder sent yet
         $cert = IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'EXP-1',
-            'score'              => 50,
-            'issued_date'        => now()->subYear(),
-            'expires_date'       => now()->addDays(55),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 50,
+            'issued_date' => now()->subYear(),
+            'expires_date' => now()->addDays(55),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         $this->artisan('icv:notify-expiring')->assertSuccessful();
@@ -341,15 +341,15 @@ class HardeningBatch2Test extends TestCase
         $manager = $this->makeUser($company, UserRole::COMPANY_MANAGER);
 
         IcvCertificate::create([
-            'company_id'                       => $company->id,
-            'issuer'                           => IcvCertificate::ISSUER_MOIAT,
-            'certificate_number'               => 'NOPE-1',
-            'score'                            => 50,
-            'issued_date'                      => now()->subYear(),
-            'expires_date'                     => now()->addDays(45),
-            'status'                           => IcvCertificate::STATUS_VERIFIED,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
+            'certificate_number' => 'NOPE-1',
+            'score' => 50,
+            'issued_date' => now()->subYear(),
+            'expires_date' => now()->addDays(45),
+            'status' => IcvCertificate::STATUS_VERIFIED,
             // 60-day reminder already sent
-            'last_expiry_reminder_threshold'   => 60,
+            'last_expiry_reminder_threshold' => 60,
         ]);
 
         $this->artisan('icv:notify-expiring')->assertSuccessful();
@@ -365,14 +365,14 @@ class HardeningBatch2Test extends TestCase
 
         // Cert at 25 days (within 30 window), 60 already sent → 30 due
         $cert = IcvCertificate::create([
-            'company_id'                       => $company->id,
-            'issuer'                           => IcvCertificate::ISSUER_MOIAT,
-            'certificate_number'               => 'PROG-1',
-            'score'                            => 50,
-            'issued_date'                      => now()->subYear(),
-            'expires_date'                     => now()->addDays(25),
-            'status'                           => IcvCertificate::STATUS_VERIFIED,
-            'last_expiry_reminder_threshold'   => 60,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
+            'certificate_number' => 'PROG-1',
+            'score' => 50,
+            'issued_date' => now()->subYear(),
+            'expires_date' => now()->addDays(25),
+            'status' => IcvCertificate::STATUS_VERIFIED,
+            'last_expiry_reminder_threshold' => 60,
         ]);
 
         $this->artisan('icv:notify-expiring')->assertSuccessful();
@@ -387,13 +387,13 @@ class HardeningBatch2Test extends TestCase
         $this->makeUser($company, UserRole::COMPANY_MANAGER);
 
         $cert = IcvCertificate::create([
-            'company_id'         => $company->id,
-            'issuer'             => IcvCertificate::ISSUER_MOIAT,
+            'company_id' => $company->id,
+            'issuer' => IcvCertificate::ISSUER_MOIAT,
             'certificate_number' => 'DRY-1',
-            'score'              => 50,
-            'issued_date'        => now()->subYear(),
-            'expires_date'       => now()->addDays(50),
-            'status'             => IcvCertificate::STATUS_VERIFIED,
+            'score' => 50,
+            'issued_date' => now()->subYear(),
+            'expires_date' => now()->addDays(50),
+            'status' => IcvCertificate::STATUS_VERIFIED,
         ]);
 
         $this->artisan('icv:notify-expiring', ['--dry-run' => true])->assertSuccessful();

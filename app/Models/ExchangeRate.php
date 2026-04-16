@@ -31,7 +31,7 @@ class ExchangeRate extends Model
     protected function casts(): array
     {
         return [
-            'rate'  => 'decimal:8',
+            'rate' => 'decimal:8',
             'as_of' => 'date',
         ];
     }
@@ -48,7 +48,7 @@ class ExchangeRate extends Model
     public static function convert(float $amount, string $from, string $to, ?Carbon $asOf = null): float
     {
         $from = strtoupper($from);
-        $to   = strtoupper($to);
+        $to = strtoupper($to);
 
         if ($from === $to) {
             return $amount;
@@ -71,7 +71,7 @@ class ExchangeRate extends Model
     public static function lookupRate(string $from, string $to, ?Carbon $asOf = null): float
     {
         $asOf = ($asOf ?? Carbon::today())->toDateString();
-        $key  = "fx:{$from}:{$to}:{$asOf}";
+        $key = "fx:{$from}:{$to}:{$asOf}";
 
         return (float) Cache::remember($key, 300, function () use ($from, $to, $asOf) {
             // Direct.

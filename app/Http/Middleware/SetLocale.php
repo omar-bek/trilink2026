@@ -18,7 +18,7 @@ class SetLocale
         // detect changes from the language switcher.
         $cookieLocale = $request->cookie('locale', config('app.locale', 'en'));
 
-        if (!in_array($cookieLocale, ['en', 'ar'], true)) {
+        if (! in_array($cookieLocale, ['en', 'ar'], true)) {
             $cookieLocale = 'en';
         }
 

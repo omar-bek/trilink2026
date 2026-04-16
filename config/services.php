@@ -54,8 +54,8 @@ return [
     |
     */
     'paypal' => [
-        'client_id'      => env('PAYPAL_CLIENT_ID'),
-        'secret'         => env('PAYPAL_SECRET'),
+        'client_id' => env('PAYPAL_CLIENT_ID'),
+        'secret' => env('PAYPAL_SECRET'),
         'webhook_secret' => env('PAYPAL_WEBHOOK_SECRET'),
         // Per-bank webhook HMAC secrets for the escrow partner endpoints.
         // Mirrored under services.escrow.<partner>.webhook_secret so the
@@ -74,27 +74,27 @@ return [
     */
     'carriers' => [
         'aramex' => [
-            'username'       => env('ARAMEX_USERNAME'),
-            'password'       => env('ARAMEX_PASSWORD'),
+            'username' => env('ARAMEX_USERNAME'),
+            'password' => env('ARAMEX_PASSWORD'),
             'account_number' => env('ARAMEX_ACCOUNT_NUMBER'),
-            'account_pin'    => env('ARAMEX_ACCOUNT_PIN'),
+            'account_pin' => env('ARAMEX_ACCOUNT_PIN'),
             'account_entity' => env('ARAMEX_ACCOUNT_ENTITY', 'DXB'),
-            'account_country'=> env('ARAMEX_ACCOUNT_COUNTRY', 'AE'),
+            'account_country' => env('ARAMEX_ACCOUNT_COUNTRY', 'AE'),
         ],
         'dhl' => [
-            'api_key'    => env('DHL_API_KEY'),
+            'api_key' => env('DHL_API_KEY'),
             'api_secret' => env('DHL_API_SECRET'),
-            'account'    => env('DHL_ACCOUNT'),
+            'account' => env('DHL_ACCOUNT'),
         ],
         'fedex' => [
-            'client_id'     => env('FEDEX_CLIENT_ID'),
+            'client_id' => env('FEDEX_CLIENT_ID'),
             'client_secret' => env('FEDEX_CLIENT_SECRET'),
-            'account'       => env('FEDEX_ACCOUNT'),
+            'account' => env('FEDEX_ACCOUNT'),
         ],
         'ups' => [
-            'client_id'     => env('UPS_CLIENT_ID'),
+            'client_id' => env('UPS_CLIENT_ID'),
             'client_secret' => env('UPS_CLIENT_SECRET'),
-            'account'       => env('UPS_ACCOUNT'),
+            'account' => env('UPS_ACCOUNT'),
         ],
         'fetchr' => [
             'api_key' => env('FETCHR_API_KEY'),
@@ -113,7 +113,7 @@ return [
     */
     'anthropic' => [
         'api_key' => env('ANTHROPIC_API_KEY'),
-        'model'   => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001'),
     ],
 
     /*
@@ -132,18 +132,18 @@ return [
     'escrow' => [
         'default' => env('ESCROW_DEFAULT_PROVIDER', 'mock'),
         'mashreq' => [
-            'api_key'        => env('ESCROW_MASHREQ_API_KEY'),
-            'base_url'       => env('ESCROW_MASHREQ_BASE_URL'),
-            'timeout'        => env('ESCROW_MASHREQ_TIMEOUT', 12),
+            'api_key' => env('ESCROW_MASHREQ_API_KEY'),
+            'base_url' => env('ESCROW_MASHREQ_BASE_URL'),
+            'timeout' => env('ESCROW_MASHREQ_TIMEOUT', 12),
             // HMAC-SHA256 shared secret for the inbound webhook posted by
             // the bank when a wire clears. Required — the controller
             // refuses requests for any partner that has no secret.
             'webhook_secret' => env('ESCROW_MASHREQ_WEBHOOK_SECRET'),
         ],
         'enbd' => [
-            'api_key'        => env('ESCROW_ENBD_API_KEY'),
-            'base_url'       => env('ESCROW_ENBD_BASE_URL'),
-            'timeout'        => env('ESCROW_ENBD_TIMEOUT', 12),
+            'api_key' => env('ESCROW_ENBD_API_KEY'),
+            'base_url' => env('ESCROW_ENBD_BASE_URL'),
+            'timeout' => env('ESCROW_ENBD_TIMEOUT', 12),
             'webhook_secret' => env('ESCROW_ENBD_WEBHOOK_SECRET'),
         ],
         'mock' => [
@@ -165,9 +165,9 @@ return [
     |
     */
     'dubai_trade' => [
-        'api_key'  => env('DUBAI_TRADE_API_KEY'),
+        'api_key' => env('DUBAI_TRADE_API_KEY'),
         'base_url' => env('DUBAI_TRADE_BASE_URL', 'https://api.sandbox.dubaitrade.ae/customs/v1'),
-        'timeout'  => env('DUBAI_TRADE_TIMEOUT', 12),
+        'timeout' => env('DUBAI_TRADE_TIMEOUT', 12),
     ],
 
     /*
@@ -183,8 +183,8 @@ return [
     |
     */
     'openexchangerates' => [
-        'app_id'  => env('OPENEXCHANGERATES_APP_ID'),
-        'base'    => env('OPENEXCHANGERATES_BASE', 'USD'),
+        'app_id' => env('OPENEXCHANGERATES_APP_ID'),
+        'base' => env('OPENEXCHANGERATES_BASE', 'USD'),
         'timeout' => env('OPENEXCHANGERATES_TIMEOUT', 8),
     ],
 
@@ -206,9 +206,9 @@ return [
         ],
         // Phase 3: Refinitiv World-Check One for enterprise customers.
         'refinitiv' => [
-            'api_key'   => env('REFINITIV_API_KEY'),
-            'api_secret'=> env('REFINITIV_API_SECRET'),
-            'endpoint'  => env('REFINITIV_ENDPOINT', 'https://api.refinitiv.com/wco/v1'),
+            'api_key' => env('REFINITIV_API_KEY'),
+            'api_secret' => env('REFINITIV_API_SECRET'),
+            'endpoint' => env('REFINITIV_ENDPOINT', 'https://api.refinitiv.com/wco/v1'),
         ],
     ],
 

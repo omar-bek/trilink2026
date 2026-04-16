@@ -25,7 +25,8 @@ use Illuminate\Support\Facades\Schema;
  *   action is the only legitimate way to invalidate an invoice and it
  *   does NOT remove the row.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('tax_invoices', function (Blueprint $table) {

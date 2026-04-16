@@ -29,7 +29,7 @@ class HealthController extends Controller
     public function liveness(): JsonResponse
     {
         return response()->json([
-            'status'    => 'ok',
+            'status' => 'ok',
             'timestamp' => now()->toIso8601String(),
         ]);
     }
@@ -44,16 +44,16 @@ class HealthController extends Controller
     {
         $checks = [
             'database' => $this->probeDatabase(),
-            'cache'    => $this->probeCache(),
-            'queue'    => $this->probeQueue(),
+            'cache' => $this->probeCache(),
+            'queue' => $this->probeQueue(),
         ];
 
-        $ok = !in_array(false, array_column($checks, 'ok'), true);
+        $ok = ! in_array(false, array_column($checks, 'ok'), true);
 
         return response()->json([
-            'status'    => $ok ? 'ok' : 'degraded',
+            'status' => $ok ? 'ok' : 'degraded',
             'timestamp' => now()->toIso8601String(),
-            'checks'    => $checks,
+            'checks' => $checks,
         ], $ok ? 200 : 503);
     }
 
@@ -63,8 +63,9 @@ class HealthController extends Controller
             $start = microtime(true);
             DB::connection()->getPdo();
             DB::select('SELECT 1');
+
             return [
-                'ok'      => true,
+                'ok' => true,
                 'latency_ms' => (int) ((microtime(true) - $start) * 1000),
             ];
         } catch (Throwable $e) {
@@ -80,10 +81,11 @@ class HealthController extends Controller
             Cache::put($key, 'ok', 5);
             $value = Cache::get($key);
             Cache::forget($key);
+
             return [
-                'ok'         => $value === 'ok',
+                'ok' => $value === 'ok',
                 'latency_ms' => (int) ((microtime(true) - $start) * 1000),
-                'driver'     => config('cache.default'),
+                'driver' => config('cache.default'),
             ];
         } catch (Throwable $e) {
             return ['ok' => false, 'error' => $e->getMessage()];
@@ -100,9 +102,10 @@ class HealthController extends Controller
         try {
             $driver = config('queue.default');
             $connection = config("queue.connections.$driver");
-            if (!$connection) {
+            if (! $connection) {
                 return ['ok' => false, 'error' => "queue connection '$driver' not configured"];
             }
+
             return ['ok' => true, 'driver' => $driver];
         } catch (Throwable $e) {
             return ['ok' => false, 'error' => $e->getMessage()];

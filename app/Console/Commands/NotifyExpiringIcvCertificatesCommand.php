@@ -66,6 +66,7 @@ class NotifyExpiringIcvCertificatesCommand extends Command
 
         if ($candidates->isEmpty()) {
             $this->info('No ICV certificates within the 60-day reminder window.');
+
             return self::SUCCESS;
         }
 
@@ -94,6 +95,7 @@ class NotifyExpiringIcvCertificatesCommand extends Command
 
             if ($dueThreshold === null) {
                 $skipped++;
+
                 continue;
             }
 
@@ -111,6 +113,7 @@ class NotifyExpiringIcvCertificatesCommand extends Command
                     $cert->id,
                     $cert->company_id
                 ));
+
                 continue;
             }
 

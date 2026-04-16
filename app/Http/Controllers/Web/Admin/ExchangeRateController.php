@@ -33,10 +33,10 @@ class ExchangeRateController extends Controller
 
         $data = $request->validate([
             'from_currency' => ['required', 'string', 'size:3'],
-            'to_currency'   => ['required', 'string', 'size:3', 'different:from_currency'],
-            'rate'          => ['required', 'numeric', 'gt:0'],
-            'as_of'         => ['required', 'date'],
-            'source'        => ['nullable', 'string', 'max:100'],
+            'to_currency' => ['required', 'string', 'size:3', 'different:from_currency'],
+            'rate' => ['required', 'numeric', 'gt:0'],
+            'as_of' => ['required', 'date'],
+            'source' => ['nullable', 'string', 'max:100'],
         ]);
 
         ExchangeRate::create($data);

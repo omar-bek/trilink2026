@@ -10,23 +10,23 @@ namespace App\Enums;
  */
 enum DocumentType: string
 {
-    case TRADE_LICENSE        = 'trade_license';
-    case TAX_CERTIFICATE      = 'tax_certificate';
-    case COMPANY_PROFILE      = 'company_profile';
-    case ISO_9001             = 'iso_9001';
-    case ISO_14001            = 'iso_14001';
-    case ISO_45001            = 'iso_45001';
-    case AUDITED_FINANCIALS   = 'audited_financials';
-    case BANK_LETTER          = 'bank_letter';
+    case TRADE_LICENSE = 'trade_license';
+    case TAX_CERTIFICATE = 'tax_certificate';
+    case COMPANY_PROFILE = 'company_profile';
+    case ISO_9001 = 'iso_9001';
+    case ISO_14001 = 'iso_14001';
+    case ISO_45001 = 'iso_45001';
+    case AUDITED_FINANCIALS = 'audited_financials';
+    case BANK_LETTER = 'bank_letter';
     case INSURANCE_CERTIFICATE = 'insurance_certificate';
-    case HALAL_CERTIFICATE    = 'halal_certificate';
-    case CE_CERTIFICATE       = 'ce_certificate';
-    case FDA_REGISTRATION     = 'fda_registration';
-    case OTHER                = 'other';
+    case HALAL_CERTIFICATE = 'halal_certificate';
+    case CE_CERTIFICATE = 'ce_certificate';
+    case FDA_REGISTRATION = 'fda_registration';
+    case OTHER = 'other';
 
     public function label(): string
     {
-        return __('trust.doc_' . $this->value);
+        return __('trust.doc_'.$this->value);
     }
 
     /**
@@ -37,7 +37,7 @@ enum DocumentType: string
         return match ($level) {
             VerificationLevel::BRONZE => [self::TRADE_LICENSE],
             VerificationLevel::SILVER => [self::TRADE_LICENSE, self::TAX_CERTIFICATE],
-            VerificationLevel::GOLD   => [self::TRADE_LICENSE, self::TAX_CERTIFICATE, self::AUDITED_FINANCIALS, self::INSURANCE_CERTIFICATE],
+            VerificationLevel::GOLD => [self::TRADE_LICENSE, self::TAX_CERTIFICATE, self::AUDITED_FINANCIALS, self::INSURANCE_CERTIFICATE],
             default => [],
         };
     }

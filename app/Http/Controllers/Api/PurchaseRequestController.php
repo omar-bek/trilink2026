@@ -18,7 +18,7 @@ class PurchaseRequestController extends Controller
         $filters = $request->only(['status', 'category_id', 'per_page']);
         $user = auth()->user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             $filters['company_id'] = $user->company_id;
         }
 
@@ -28,6 +28,7 @@ class PurchaseRequestController extends Controller
     public function show(int $id): JsonResponse
     {
         $pr = $this->service->find($id);
+
         return $pr ? $this->success($pr) : $this->notFound();
     }
 
@@ -71,6 +72,7 @@ class PurchaseRequestController extends Controller
         ]);
 
         $pr = $this->service->update($id, $data);
+
         return $pr ? $this->success($pr) : $this->notFound();
     }
 
@@ -85,7 +87,7 @@ class PurchaseRequestController extends Controller
     {
         $pr = $this->service->approve($id, auth()->id());
 
-        if (!$pr) {
+        if (! $pr) {
             return $this->error('Cannot approve this purchase request', 422);
         }
 

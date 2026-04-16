@@ -10,7 +10,10 @@ use App\Models\Category;
 use App\Models\Company;
 use App\Models\Contract;
 use App\Models\Feedback;
+use App\Models\IcvCertificate;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 /**
@@ -44,13 +47,13 @@ class SupplierProfileController extends Controller
      */
     public function publicDirectory(Request $request): View
     {
-        $q             = trim((string) $request->query('q', ''));
-        $categoryId    = (int) $request->query('category', 0) ?: null;
-        $country       = trim((string) $request->query('country', ''));
+        $q = trim((string) $request->query('q', ''));
+        $categoryId = (int) $request->query('category', 0) ?: null;
+        $country = trim((string) $request->query('country', ''));
         // Phase 4 (UAE Compliance Roadmap) — minimum ICV filter. Lets
         // government-adjacent buyers narrow the directory to suppliers
         // with a usable in-country value score above a chosen threshold.
-        $icvMin        = (int) $request->query('icv_min', 0);
+        $icvMin = (int) $request->query('icv_min', 0);
 
         // Any active company that has registered at least one category is
         // surfaced as supply-capable — company.type is no longer the gate
@@ -85,29 +88,29 @@ class SupplierProfileController extends Controller
         // and ordering on the parent query stay simple.
         if ($icvMin > 0) {
             $base->whereHas('icvCertificates', function ($iq) use ($icvMin) {
-                $iq->where('status', \App\Models\IcvCertificate::STATUS_VERIFIED)
-                   ->where('expires_date', '>=', now()->toDateString())
-                   ->where('score', '>=', $icvMin);
+                $iq->where('status', IcvCertificate::STATUS_VERIFIED)
+                    ->where('expires_date', '>=', now()->toDateString())
+                    ->where('score', '>=', $icvMin);
             });
         }
 
         $companies = $base->with([
-                'categories:id,name',
-                // Eager-load the active ICV certificates so the blade can
-                // pick the highest score per company without N+1.
-                'icvCertificates' => function ($q) {
-                    $q->where('status', \App\Models\IcvCertificate::STATUS_VERIFIED)
-                      ->where('expires_date', '>=', now()->toDateString())
-                      ->orderByDesc('score');
-                },
-            ])
+            'categories:id,name',
+            // Eager-load the active ICV certificates so the blade can
+            // pick the highest score per company without N+1.
+            'icvCertificates' => function ($q) {
+                $q->where('status', IcvCertificate::STATUS_VERIFIED)
+                    ->where('expires_date', '>=', now()->toDateString())
+                    ->orderByDesc('score');
+            },
+        ])
             ->orderBy('verification_level', 'desc')
             ->orderBy('name')
             ->limit(24)
             ->get();
 
         $categories = Category::orderBy('name')->limit(50)->get(['id', 'name']);
-        $countries  = Company::query()
+        $countries = Company::query()
             ->whereNotNull('country')
             ->where('country', '!=', '')
             ->distinct()
@@ -115,15 +118,15 @@ class SupplierProfileController extends Controller
             ->pluck('country');
 
         return view('public.suppliers', [
-            'companies'  => $companies,
-            'total'      => $companies->count(),
+            'companies' => $companies,
+            'total' => $companies->count(),
             'categories' => $categories,
-            'countries'  => $countries,
-            'filters'    => [
-                'q'        => $q,
+            'countries' => $countries,
+            'filters' => [
+                'q' => $q,
                 'category' => $categoryId,
-                'country'  => $country,
-                'icv_min'  => $icvMin,
+                'country' => $country,
+                'icv_min' => $icvMin,
             ],
         ]);
     }
@@ -166,9 +169,9 @@ class SupplierProfileController extends Controller
         }
 
         return view('dashboard.categories.browse', [
-            'root'        => $rootCategory,
+            'root' => $rootCategory,
             'breadcrumbs' => $breadcrumbs,
-            'children'    => $children,
+            'children' => $children,
         ]);
     }
 
@@ -185,12 +188,12 @@ class SupplierProfileController extends Controller
 
         // Filter inputs (all optional). Validation is light-touch — invalid
         // values just degrade to the unfiltered list.
-        $q             = trim((string) $request->query('q', ''));
-        $categoryId    = (int) $request->query('category', 0) ?: null;
-        $country       = trim((string) $request->query('country', ''));
-        $verification  = trim((string) $request->query('verification', ''));
-        $minRating     = (float) $request->query('rating', 0);
-        $hasCerts      = $request->boolean('has_certs');
+        $q = trim((string) $request->query('q', ''));
+        $categoryId = (int) $request->query('category', 0) ?: null;
+        $country = trim((string) $request->query('country', ''));
+        $verification = trim((string) $request->query('verification', ''));
+        $minRating = (float) $request->query('rating', 0);
+        $hasCerts = $request->boolean('has_certs');
 
         // See publicDirectory() — any active company with at least one
         // assigned category is treated as supply-capable. Removing the
@@ -215,7 +218,7 @@ class SupplierProfileController extends Controller
         if ($hasCerts) {
             // JSON column — "has any cert" means "non-empty array"
             $base->whereNotNull('certifications')
-                 ->whereJsonLength('certifications', '>', 0);
+                ->whereJsonLength('certifications', '>', 0);
         }
 
         // Eager-load categories for the match score and to render the
@@ -229,7 +232,7 @@ class SupplierProfileController extends Controller
         // Aggregate ratings per company in one query so we can apply the
         // min-rating filter and surface star counts on each card.
         $ratings = [];
-        if (\Illuminate\Support\Facades\Schema::hasTable('feedback') && $companies->isNotEmpty()) {
+        if (Schema::hasTable('feedback') && $companies->isNotEmpty()) {
             $ratings = \DB::table('feedback')
                 ->whereIn('target_company_id', $companies->pluck('id'))
                 ->groupBy('target_company_id')
@@ -237,7 +240,7 @@ class SupplierProfileController extends Controller
                 ->get()
                 ->mapWithKeys(fn ($r) => [(int) $r->target_company_id => [
                     'rating' => round((float) $r->avg, 1),
-                    'count'  => (int) $r->cnt,
+                    'count' => (int) $r->cnt,
                 ]])
                 ->all();
         }
@@ -252,7 +255,7 @@ class SupplierProfileController extends Controller
         $cards = $companies
             ->map(function (Company $supplier) use ($ratings, $viewerCompany) {
                 $rating = $ratings[$supplier->id] ?? null;
-                $score  = null;
+                $score = null;
                 if ($viewerCompany) {
                     // Reuse the same matchScoreFor logic from Phase 0 but
                     // applied at company-level instead of per RFQ. We
@@ -262,19 +265,19 @@ class SupplierProfileController extends Controller
                 }
 
                 return [
-                    'id'            => $supplier->id,
-                    'name'          => $supplier->name,
-                    'name_ar'       => $supplier->name_ar,
-                    'country'       => $supplier->country,
-                    'description'   => $supplier->description,
-                    'verification'  => $supplier->verification_level?->value,
+                    'id' => $supplier->id,
+                    'name' => $supplier->name,
+                    'name_ar' => $supplier->name_ar,
+                    'country' => $supplier->country,
+                    'description' => $supplier->description,
+                    'verification' => $supplier->verification_level?->value,
                     'verification_label' => $supplier->verification_level?->label(),
-                    'categories'    => $supplier->categories->take(3)->pluck('name')->all(),
+                    'categories' => $supplier->categories->take(3)->pluck('name')->all(),
                     'category_count' => $supplier->categories->count(),
-                    'rating'        => $rating['rating'] ?? null,
-                    'review_count'  => $rating['count']  ?? 0,
-                    'has_certs'     => is_array($supplier->certifications) && count($supplier->certifications) > 0,
-                    'match_score'   => $score,
+                    'rating' => $rating['rating'] ?? null,
+                    'review_count' => $rating['count'] ?? 0,
+                    'has_certs' => is_array($supplier->certifications) && count($supplier->certifications) > 0,
+                    'match_score' => $score,
                 ];
             })
             ->when($minRating > 0, fn ($c) => $c->filter(fn ($row) => ($row['rating'] ?? 0) >= $minRating))
@@ -284,7 +287,7 @@ class SupplierProfileController extends Controller
 
         // Filter dropdown contents.
         $categories = Category::orderBy('name')->get(['id', 'name']);
-        $countries  = Company::query()
+        $countries = Company::query()
             ->whereNotNull('country')
             ->where('country', '!=', '')
             ->distinct()
@@ -292,18 +295,18 @@ class SupplierProfileController extends Controller
             ->pluck('country');
 
         return view('dashboard.suppliers.directory', [
-            'cards'         => $cards,
-            'total'         => count($cards),
-            'categories'    => $categories,
-            'countries'     => $countries,
+            'cards' => $cards,
+            'total' => count($cards),
+            'categories' => $categories,
+            'countries' => $countries,
             'verifications' => VerificationLevel::cases(),
-            'filters'       => [
-                'q'            => $q,
-                'category'     => $categoryId,
-                'country'      => $country,
+            'filters' => [
+                'q' => $q,
+                'category' => $categoryId,
+                'country' => $country,
                 'verification' => $verification,
-                'rating'       => $minRating,
-                'has_certs'    => $hasCerts,
+                'rating' => $minRating,
+                'has_certs' => $hasCerts,
             ],
         ]);
     }
@@ -351,7 +354,7 @@ class SupplierProfileController extends Controller
         return max(0, min(100, $score));
     }
 
-    public function show(int $id): View|\Illuminate\Http\RedirectResponse
+    public function show(int $id): View|RedirectResponse
     {
         abort_unless(auth()->check(), 403);
 
@@ -381,17 +384,17 @@ class SupplierProfileController extends Controller
         $reviewCount = 0;
         $breakdown = ['quality' => null, 'on_time' => null, 'communication' => null];
 
-        if (\Illuminate\Support\Facades\Schema::hasTable('feedback')) {
+        if (Schema::hasTable('feedback')) {
             $row = \DB::table('feedback')
                 ->where('target_company_id', $company->id)
                 ->selectRaw('AVG(rating) as avg, COUNT(*) as cnt, AVG(quality_score) as q, AVG(on_time_score) as o, AVG(communication_score) as c')
                 ->first();
             if ($row) {
-                $rating       = $row->avg ? round((float) $row->avg, 1) : null;
-                $reviewCount  = (int) ($row->cnt ?? 0);
-                $breakdown    = [
-                    'quality'       => $row->q ? round((float) $row->q, 1) : null,
-                    'on_time'       => $row->o ? round((float) $row->o, 1) : null,
+                $rating = $row->avg ? round((float) $row->avg, 1) : null;
+                $reviewCount = (int) ($row->cnt ?? 0);
+                $breakdown = [
+                    'quality' => $row->q ? round((float) $row->q, 1) : null,
+                    'on_time' => $row->o ? round((float) $row->o, 1) : null,
                     'communication' => $row->c ? round((float) $row->c, 1) : null,
                 ];
             }
@@ -400,7 +403,7 @@ class SupplierProfileController extends Controller
         // Star distribution: how many of each rating value (1..5) the company
         // received. Drives the histogram strip in the profile header.
         $distribution = [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
-        if (\Illuminate\Support\Facades\Schema::hasTable('feedback') && $reviewCount > 0) {
+        if (Schema::hasTable('feedback') && $reviewCount > 0) {
             $rows = \DB::table('feedback')
                 ->where('target_company_id', $company->id)
                 ->selectRaw('rating, COUNT(*) as cnt')
@@ -413,7 +416,7 @@ class SupplierProfileController extends Controller
 
         // Reviews feed — newest first, eager-load contract title + rater name.
         $reviews = [];
-        if (\Illuminate\Support\Facades\Schema::hasTable('feedback')) {
+        if (Schema::hasTable('feedback')) {
             $reviews = Feedback::with(['contract', 'raterCompany'])
                 ->where('target_company_id', $company->id)
                 ->latest()
@@ -421,11 +424,11 @@ class SupplierProfileController extends Controller
                 ->get()
                 ->map(function (Feedback $f) {
                     return [
-                        'rating'        => $f->rating,
-                        'comment'       => $f->comment,
+                        'rating' => $f->rating,
+                        'comment' => $f->comment,
                         'rater_company' => $f->raterCompany?->name ?? 'Anonymous',
-                        'contract'      => $f->contract?->title ?? '—',
-                        'when'          => $f->created_at?->diffForHumans() ?? '',
+                        'contract' => $f->contract?->title ?? '—',
+                        'when' => $f->created_at?->diffForHumans() ?? '',
                     ];
                 })
                 ->all();
@@ -447,9 +450,10 @@ class SupplierProfileController extends Controller
             if (is_string($c)) {
                 return ['name' => $c, 'issuer' => null, 'expires_at' => null];
             }
+
             return [
-                'name'       => $c['name'] ?? '—',
-                'issuer'     => $c['issuer'] ?? null,
+                'name' => $c['name'] ?? '—',
+                'issuer' => $c['issuer'] ?? null,
                 'expires_at' => $c['expires_at'] ?? null,
             ];
         })->all();
@@ -460,14 +464,14 @@ class SupplierProfileController extends Controller
         // manager and admin see, plus a reviews panel that's exclusive
         // to the cross-company viewing path.
         return view('dashboard.company.profile', array_merge($data, [
-            'rating'              => $rating,
-            'review_count'        => $reviewCount,
-            'breakdown'           => $breakdown,
-            'distribution'        => $distribution,
-            'reviews'             => $reviews,
+            'rating' => $rating,
+            'review_count' => $reviewCount,
+            'breakdown' => $breakdown,
+            'distribution' => $distribution,
+            'reviews' => $reviews,
             'completed_contracts' => $completedContracts,
-            'certifications'      => $certifications,
-            'years_active'        => $company->created_at ? max(1, (int) $company->created_at->diffInYears(now())) : 0,
+            'certifications' => $certifications,
+            'years_active' => $company->created_at ? max(1, (int) $company->created_at->diffInYears(now())) : 0,
         ]));
     }
 }

@@ -23,9 +23,7 @@ use Illuminate\View\View;
  */
 class AuctionController extends Controller
 {
-    public function __construct(private readonly AuctionService $service)
-    {
-    }
+    public function __construct(private readonly AuctionService $service) {}
 
     public function show(int $id): View
     {
@@ -73,7 +71,7 @@ class AuctionController extends Controller
         );
 
         if (is_string($result)) {
-            return back()->withErrors(['price' => __('auction.error_' . $result)]);
+            return back()->withErrors(['price' => __('auction.error_'.$result)]);
         }
 
         return back()->with('status', __('auction.bid_placed'));
@@ -86,7 +84,7 @@ class AuctionController extends Controller
      */
     public function createForm(int $id): View
     {
-        $rfq  = Rfq::with('company')->findOrFail($id);
+        $rfq = Rfq::with('company')->findOrFail($id);
         $user = auth()->user();
 
         abort_unless($user?->hasPermission('rfq.edit'), 403);
@@ -103,26 +101,26 @@ class AuctionController extends Controller
      */
     public function enable(Request $request, int $id): RedirectResponse
     {
-        $rfq  = Rfq::findOrFail($id);
+        $rfq = Rfq::findOrFail($id);
         $user = $request->user();
 
         abort_unless($user?->hasPermission('rfq.edit'), 403);
         abort_unless($user->company_id === $rfq->company_id, 403);
 
         $data = $request->validate([
-            'auction_starts_at'  => ['required', 'date'],
-            'auction_ends_at'    => ['required', 'date', 'after:auction_starts_at'],
-            'reserve_price'      => ['nullable', 'numeric', 'min:0'],
-            'bid_decrement'      => ['nullable', 'numeric', 'min:0'],
+            'auction_starts_at' => ['required', 'date'],
+            'auction_ends_at' => ['required', 'date', 'after:auction_starts_at'],
+            'reserve_price' => ['nullable', 'numeric', 'min:0'],
+            'bid_decrement' => ['nullable', 'numeric', 'min:0'],
             'anti_snipe_seconds' => ['required', 'integer', 'min:0', 'max:3600'],
         ]);
 
         $rfq->update([
-            'is_auction'         => true,
-            'auction_starts_at'  => $data['auction_starts_at'],
-            'auction_ends_at'    => $data['auction_ends_at'],
-            'reserve_price'      => $data['reserve_price'] ?? null,
-            'bid_decrement'      => $data['bid_decrement'] ?? null,
+            'is_auction' => true,
+            'auction_starts_at' => $data['auction_starts_at'],
+            'auction_ends_at' => $data['auction_ends_at'],
+            'reserve_price' => $data['reserve_price'] ?? null,
+            'bid_decrement' => $data['bid_decrement'] ?? null,
             'anti_snipe_seconds' => $data['anti_snipe_seconds'],
         ]);
 

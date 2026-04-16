@@ -30,9 +30,9 @@ class ModernSlaveryStatement extends Model
     {
         return [
             'reporting_year' => 'integer',
-            'controls'       => 'array',
+            'controls' => 'array',
             'board_approved' => 'boolean',
-            'approved_at'    => 'date',
+            'approved_at' => 'date',
         ];
     }
 

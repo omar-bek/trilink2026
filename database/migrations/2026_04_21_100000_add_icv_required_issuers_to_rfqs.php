@@ -23,7 +23,8 @@ use Illuminate\Support\Facades\Schema;
  * Backwards compatibility: every existing RFQ gets `null`, the
  * scoring service treats null as "no restriction".
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('rfqs', function (Blueprint $table) {

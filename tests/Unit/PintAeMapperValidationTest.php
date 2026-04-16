@@ -20,7 +20,7 @@ class PintAeMapperValidationTest extends TestCase
 {
     private function mapper(): PintAeMapper
     {
-        return new PintAeMapper();
+        return new PintAeMapper;
     }
 
     /**
@@ -30,7 +30,7 @@ class PintAeMapperValidationTest extends TestCase
      */
     private function validInvoiceXml(): string
     {
-        return <<<XML
+        return <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
          xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"

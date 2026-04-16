@@ -53,7 +53,7 @@ class TaxInvoiceQrEncoder
             // spec — values longer than 255 bytes need a different
             // encoding which we don't hit for invoice metadata.
             $bytes = (string) $value;
-            $tlv .= chr($tag) . chr(strlen($bytes)) . $bytes;
+            $tlv .= chr($tag).chr(strlen($bytes)).$bytes;
         }
 
         return base64_encode($tlv);
@@ -67,7 +67,7 @@ class TaxInvoiceQrEncoder
      */
     public function renderDataUri(TaxInvoice $invoice, int $sizePx = 180): ?string
     {
-        if (!extension_loaded('gd')) {
+        if (! extension_loaded('gd')) {
             return null;
         }
 
@@ -76,10 +76,10 @@ class TaxInvoiceQrEncoder
         // Margin = 1 keeps the quiet zone tight so the code reads cleanly
         // at the small print size used in the invoice header.
         $renderer = new GDLibRenderer(size: $sizePx, margin: 1, imageFormat: 'png');
-        $writer   = new Writer($renderer);
+        $writer = new Writer($renderer);
 
         $png = $writer->writeString($payload);
 
-        return 'data:image/png;base64,' . base64_encode($png);
+        return 'data:image/png;base64,'.base64_encode($png);
     }
 }

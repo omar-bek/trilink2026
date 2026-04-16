@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Notification;
 class SendContractExpiryRemindersCommand extends Command
 {
     protected $signature = 'contracts:expiry-reminders';
+
     protected $description = 'Notify both parties when an active contract is approaching its end date (30/7/1 days).';
 
     private const BUCKETS = [30, 7, 1];
@@ -66,10 +67,11 @@ class SendContractExpiryRemindersCommand extends Command
                 Cache::put($cacheKey, true, now()->addDays(60));
             }
 
-            $this->info("Bucket {$daysOut}d: processed " . $contracts->count() . " contract(s).");
+            $this->info("Bucket {$daysOut}d: processed ".$contracts->count().' contract(s).');
         }
 
         $this->info("Sent {$totalNotified} expiry reminder(s).");
+
         return self::SUCCESS;
     }
 }

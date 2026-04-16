@@ -22,15 +22,13 @@ class ReleaseEscrowOnSignature implements ShouldQueue
 {
     public string $queue = 'escrow';
 
-    public function __construct(private readonly EscrowService $escrowService)
-    {
-    }
+    public function __construct(private readonly EscrowService $escrowService) {}
 
     public function handle(ContractSigned $event): void
     {
         $contract = $event->contract->fresh(['escrowAccount', 'payments']);
 
-        if (!$contract || !$contract->escrowAccount || !$contract->escrowAccount->isActive()) {
+        if (! $contract || ! $contract->escrowAccount || ! $contract->escrowAccount->isActive()) {
             return;
         }
 
@@ -48,8 +46,8 @@ class ReleaseEscrowOnSignature implements ShouldQueue
             } catch (BankPartnerException $e) {
                 Log::warning('Auto-release on signature failed', [
                     'contract_id' => $contract->id,
-                    'payment_id'  => $payment->id,
-                    'error'       => $e->getMessage(),
+                    'payment_id' => $payment->id,
+                    'error' => $e->getMessage(),
                 ]);
             }
         }

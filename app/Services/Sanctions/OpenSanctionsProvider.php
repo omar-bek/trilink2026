@@ -3,6 +3,7 @@
 namespace App\Services\Sanctions;
 
 use App\Models\SanctionsScreening;
+use App\Services\SanctionsScreeningService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\Log;
  *
  * The provider only handles the HTTP I/O. Caching, persistence, and
  * downstream effects (company status flip, admin alerts) all live in
- * {@see \App\Services\SanctionsScreeningService} so swapping providers
+ * {@see SanctionsScreeningService} so swapping providers
  * doesn't change behaviour.
  */
 class OpenSanctionsProvider implements SanctionsProviderInterface
@@ -36,8 +37,7 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
     public function __construct(
         private readonly ?string $apiKey = null,
         private readonly int $timeout = 8,
-    ) {
-    }
+    ) {}
 
     public function code(): string
     {
@@ -57,6 +57,7 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
         // hammer the API and burn what's left of the quota.
         if (Cache::has(self::RATE_LIMIT_CACHE_KEY)) {
             $until = (int) Cache::get(self::RATE_LIMIT_CACHE_KEY, 0);
+
             return $this->rateLimited($until);
         }
 
@@ -64,9 +65,9 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
             $payload = [
                 'queries' => [
                     'q1' => [
-                        'schema'     => 'Company',
+                        'schema' => 'Company',
                         'properties' => [
-                            'name'    => [$name],
+                            'name' => [$name],
                             'country' => $country ? [strtolower($country)] : [],
                         ],
                     ],
@@ -98,41 +99,41 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
                 Cache::put(self::RATE_LIMIT_CACHE_KEY, $until, now()->addSeconds($retryAfter));
 
                 Log::warning('OpenSanctions rate limited', [
-                    'name'        => $name,
+                    'name' => $name,
                     'retry_after' => $retryAfter,
-                    'limit'       => $response->header('X-RateLimit-Limit'),
-                    'remaining'   => $response->header('X-RateLimit-Remaining'),
+                    'limit' => $response->header('X-RateLimit-Limit'),
+                    'remaining' => $response->header('X-RateLimit-Remaining'),
                 ]);
 
                 return $this->rateLimited($until);
             }
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return $this->error("HTTP {$response->status()}");
             }
 
-            $body    = $response->json();
+            $body = $response->json();
             $results = $body['responses']['q1']['results'] ?? [];
-            $count   = count($results);
+            $count = count($results);
 
             if ($count === 0) {
                 return [
-                    'result'           => SanctionsScreening::RESULT_CLEAN,
-                    'match_count'      => 0,
+                    'result' => SanctionsScreening::RESULT_CLEAN,
+                    'match_count' => 0,
                     'matched_entities' => null,
-                    'notes'            => null,
+                    'notes' => null,
                 ];
             }
 
             // Slim the matched entities so we don't bloat the audit table
             // with the full OpenSanctions payload (each row can be 100kb+).
             $entities = array_map(fn ($r) => [
-                'id'       => $r['id'] ?? null,
-                'caption'  => $r['caption'] ?? null,
-                'schema'   => $r['schema'] ?? null,
+                'id' => $r['id'] ?? null,
+                'caption' => $r['caption'] ?? null,
+                'schema' => $r['schema'] ?? null,
                 'datasets' => $r['datasets'] ?? [],
-                'topics'   => $r['properties']['topics'] ?? [],
-                'score'    => $r['score'] ?? null,
+                'topics' => $r['properties']['topics'] ?? [],
+                'score' => $r['score'] ?? null,
             ], array_slice($results, 0, 10));
 
             // High-confidence matches (score > 0.85) are auto-flagged as hit.
@@ -144,16 +145,17 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
                 : SanctionsScreening::RESULT_REVIEW;
 
             return [
-                'result'           => $verdict,
-                'match_count'      => $count,
+                'result' => $verdict,
+                'match_count' => $count,
                 'matched_entities' => $entities,
-                'notes'            => null,
+                'notes' => null,
             ];
         } catch (\Throwable $e) {
             Log::warning('OpenSanctions screen failed', [
-                'name'  => $name,
+                'name' => $name,
                 'error' => $e->getMessage(),
             ]);
+
             return $this->error($e->getMessage());
         }
     }
@@ -162,10 +164,10 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
     private function error(string $note): array
     {
         return [
-            'result'           => SanctionsScreening::RESULT_ERROR,
-            'match_count'      => 0,
+            'result' => SanctionsScreening::RESULT_ERROR,
+            'match_count' => 0,
             'matched_entities' => null,
-            'notes'            => $note,
+            'notes' => $note,
         ];
     }
 
@@ -179,10 +181,10 @@ class OpenSanctionsProvider implements SanctionsProviderInterface
     private function rateLimited(int $retryUnixTs): array
     {
         return [
-            'result'           => SanctionsScreening::RESULT_RATE_LIMITED,
-            'match_count'      => 0,
+            'result' => SanctionsScreening::RESULT_RATE_LIMITED,
+            'match_count' => 0,
             'matched_entities' => null,
-            'notes'            => 'Upstream rate limit hit; retry after ' . date('c', $retryUnixTs),
+            'notes' => 'Upstream rate limit hit; retry after '.date('c', $retryUnixTs),
         ];
     }
 }

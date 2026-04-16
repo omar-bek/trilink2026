@@ -34,15 +34,19 @@ class CompanyService
     public function update(int $id, array $data): ?Company
     {
         $company = Company::find($id);
-        if (!$company) return null;
+        if (! $company) {
+            return null;
+        }
 
         $company->update($data);
+
         return $company->fresh();
     }
 
     public function delete(int $id): bool
     {
         $company = Company::find($id);
+
         return $company ? $company->delete() : false;
     }
 

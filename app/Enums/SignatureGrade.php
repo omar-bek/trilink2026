@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use App\Services\Signing\SignatureGradeResolver;
+
 /**
  * Phase 6 (UAE Compliance Roadmap) — Federal Decree-Law 46/2021 on
  * Electronic Transactions and Trust Services categorises every
@@ -24,7 +26,7 @@ namespace App\Enums;
  *                  domestic UAE court would refuse a Simple signature.
  *
  * The grade required for a given contract is decided by
- * {@see \App\Services\Signing\SignatureGradeResolver} based on
+ * {@see SignatureGradeResolver} based on
  * counterparty type, contract value, and category.
  *
  * The grade ACHIEVED on each signature row is stamped at sign time
@@ -33,15 +35,15 @@ namespace App\Enums;
  */
 enum SignatureGrade: string
 {
-    case SIMPLE    = 'simple';
-    case ADVANCED  = 'advanced';
+    case SIMPLE = 'simple';
+    case ADVANCED = 'advanced';
     case QUALIFIED = 'qualified';
 
     public function label(): string
     {
         return match ($this) {
-            self::SIMPLE    => 'Simple Electronic Signature',
-            self::ADVANCED  => 'Advanced Electronic Signature',
+            self::SIMPLE => 'Simple Electronic Signature',
+            self::ADVANCED => 'Advanced Electronic Signature',
             self::QUALIFIED => 'Qualified Electronic Signature',
         };
     }
@@ -54,8 +56,8 @@ enum SignatureGrade: string
     public function legalReference(): string
     {
         return match ($this) {
-            self::SIMPLE    => 'Article 17 — Electronic Signature',
-            self::ADVANCED  => 'Article 18 — Advanced Electronic Signature',
+            self::SIMPLE => 'Article 17 — Electronic Signature',
+            self::ADVANCED => 'Article 18 — Advanced Electronic Signature',
             self::QUALIFIED => 'Article 19 — Qualified Electronic Signature',
         };
     }
@@ -67,8 +69,8 @@ enum SignatureGrade: string
     public function rank(): int
     {
         return match ($this) {
-            self::SIMPLE    => 1,
-            self::ADVANCED  => 2,
+            self::SIMPLE => 1,
+            self::ADVANCED => 2,
             self::QUALIFIED => 3,
         };
     }

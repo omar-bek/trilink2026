@@ -24,12 +24,12 @@ return new class extends Migration
             return;
         }
 
-        $this->safeAddFullText('rfqs',              ['title', 'rfq_number']);
-        $this->safeAddFullText('contracts',         ['title', 'contract_number']);
+        $this->safeAddFullText('rfqs', ['title', 'rfq_number']);
+        $this->safeAddFullText('contracts', ['title', 'contract_number']);
         $this->safeAddFullText('purchase_requests', ['title', 'pr_number']);
-        $this->safeAddFullText('companies',         ['name', 'name_ar', 'email', 'registration_number']);
-        $this->safeAddFullText('users',             ['first_name', 'last_name', 'email']);
-        $this->safeAddFullText('products',          ['name', 'description', 'sku']);
+        $this->safeAddFullText('companies', ['name', 'name_ar', 'email', 'registration_number']);
+        $this->safeAddFullText('users', ['first_name', 'last_name', 'email']);
+        $this->safeAddFullText('products', ['name', 'description', 'sku']);
     }
 
     public function down(): void
@@ -38,12 +38,12 @@ return new class extends Migration
             return;
         }
 
-        $this->safeDropIndex('rfqs',              'rfqs_search_ft');
-        $this->safeDropIndex('contracts',         'contracts_search_ft');
+        $this->safeDropIndex('rfqs', 'rfqs_search_ft');
+        $this->safeDropIndex('contracts', 'contracts_search_ft');
         $this->safeDropIndex('purchase_requests', 'purchase_requests_search_ft');
-        $this->safeDropIndex('companies',         'companies_search_ft');
-        $this->safeDropIndex('users',             'users_search_ft');
-        $this->safeDropIndex('products',          'products_search_ft');
+        $this->safeDropIndex('companies', 'companies_search_ft');
+        $this->safeDropIndex('users', 'users_search_ft');
+        $this->safeDropIndex('products', 'products_search_ft');
     }
 
     private function safeAddFullText(string $table, array $columns): void
@@ -63,13 +63,13 @@ return new class extends Migration
             return;
         }
 
-        $indexName = $table . '_search_ft';
+        $indexName = $table.'_search_ft';
 
         try {
             Schema::table($table, function ($t) use ($existing, $indexName) {
                 $t->fullText($existing, $indexName);
             });
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // Index already exists or unsupported engine — log and continue.
             report($e);
         }
@@ -85,7 +85,7 @@ return new class extends Migration
             Schema::table($table, function ($t) use ($indexName) {
                 $t->dropIndex($indexName);
             });
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             report($e);
         }
     }

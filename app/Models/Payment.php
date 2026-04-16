@@ -95,11 +95,11 @@ class Payment extends Model
             // If the caller did not specify a VAT rate at all, fall back to the
             // active platform-managed rate (admin/government UI). Explicit 0
             // (e.g. tax-exempt items) is respected and not overridden.
-            if (!$payment->isDirty('vat_rate') && $payment->vat_rate === null) {
+            if (! $payment->isDirty('vat_rate') && $payment->vat_rate === null) {
                 $payment->vat_rate = TaxRate::resolveFor();
             }
 
-            if (!$payment->vat_amount) {
+            if (! $payment->vat_amount) {
                 $payment->calculateVat();
             }
         });

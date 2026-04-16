@@ -20,11 +20,11 @@ class MockBankPartner implements BankPartnerInterface
     public function openAccount(Contract $contract): array
     {
         return [
-            'external_account_id' => 'MOCK-ESC-' . strtoupper(Str::random(10)),
-            'currency'            => $contract->currency ?? 'AED',
-            'metadata'            => [
-                'provider'    => 'mock',
-                'opened_at'   => now()->toIso8601String(),
+            'external_account_id' => 'MOCK-ESC-'.strtoupper(Str::random(10)),
+            'currency' => $contract->currency ?? 'AED',
+            'metadata' => [
+                'provider' => 'mock',
+                'opened_at' => now()->toIso8601String(),
                 'contract_id' => $contract->id,
             ],
         ];
@@ -35,11 +35,11 @@ class MockBankPartner implements BankPartnerInterface
         $this->guardCurrency($account, $currency);
 
         return [
-            'reference' => 'MOCK-DEP-' . strtoupper(Str::random(12)),
+            'reference' => 'MOCK-DEP-'.strtoupper(Str::random(12)),
             // The mock settles synchronously — no webhook round-trip required.
             // Real banks usually return 'pending' here and fire a webhook
             // a few seconds later, which the EscrowWebhookController handles.
-            'status'    => 'completed',
+            'status' => 'completed',
         ];
     }
 
@@ -57,8 +57,8 @@ class MockBankPartner implements BankPartnerInterface
         }
 
         return [
-            'reference' => 'MOCK-REL-' . strtoupper(Str::random(12)),
-            'status'    => 'completed',
+            'reference' => 'MOCK-REL-'.strtoupper(Str::random(12)),
+            'status' => 'completed',
         ];
     }
 
@@ -67,8 +67,8 @@ class MockBankPartner implements BankPartnerInterface
         $this->guardCurrency($account, $currency);
 
         return [
-            'reference' => 'MOCK-RFD-' . strtoupper(Str::random(12)),
-            'status'    => 'completed',
+            'reference' => 'MOCK-RFD-'.strtoupper(Str::random(12)),
+            'status' => 'completed',
         ];
     }
 

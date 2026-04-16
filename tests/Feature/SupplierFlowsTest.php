@@ -28,22 +28,22 @@ class SupplierFlowsTest extends TestCase
     private function makeSupplier(): User
     {
         $company = Company::create([
-            'name'                => 'Al-Noor Industries',
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => CompanyType::SUPPLIER,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => 'sup@noor.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => 'Al-Noor Industries',
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => CompanyType::SUPPLIER,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => 'sup@noor.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         return User::create([
             'first_name' => 'Mohammed',
-            'last_name'  => 'Salem',
-            'email'      => 'mohammed.salem@alnoor.test',
-            'password'   => 'secret-pass',
-            'role'       => UserRole::SUPPLIER,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'Salem',
+            'email' => 'mohammed.salem@alnoor.test',
+            'password' => 'secret-pass',
+            'role' => UserRole::SUPPLIER,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -181,9 +181,9 @@ class SupplierFlowsTest extends TestCase
 
         $this->actingAs($supplier)
             ->patch(route('settings.company.update'), [
-                'name'        => 'Al-Noor Renamed',
+                'name' => 'Al-Noor Renamed',
                 'description' => 'New description',
-                'city'        => 'Sharjah',
+                'city' => 'Sharjah',
             ])
             ->assertRedirect(route('settings.index', ['tab' => 'company']));
 
@@ -197,9 +197,9 @@ class SupplierFlowsTest extends TestCase
         $this->actingAs($supplier)
             ->patch(route('settings.personal.update'), [
                 'first_name' => 'Renamed',
-                'last_name'  => 'Salem',
-                'email'      => $supplier->email,
-                'phone'      => '+971500000099',
+                'last_name' => 'Salem',
+                'email' => $supplier->email,
+                'phone' => '+971500000099',
             ])
             ->assertRedirect(route('settings.index', ['tab' => 'personal']));
 
@@ -212,10 +212,10 @@ class SupplierFlowsTest extends TestCase
 
         $this->actingAs($supplier)
             ->patch(route('settings.notifications.update'), [
-                'rfq_matches'         => '1',
-                'bid_updates'         => '1',
+                'rfq_matches' => '1',
+                'bid_updates' => '1',
                 'contract_milestones' => '1',
-                'messages'            => '1',
+                'messages' => '1',
                 // marketing intentionally not sent → off
             ])
             ->assertRedirect(route('settings.index', ['tab' => 'notifications']));
@@ -231,8 +231,8 @@ class SupplierFlowsTest extends TestCase
 
         $this->actingAs($supplier)
             ->patch(route('settings.security.update'), [
-                'current_password'      => 'secret-pass',
-                'password'              => 'brand-new-pass',
+                'current_password' => 'secret-pass',
+                'password' => 'brand-new-pass',
                 'password_confirmation' => 'brand-new-pass',
             ])
             ->assertRedirect(route('settings.index', ['tab' => 'security']));

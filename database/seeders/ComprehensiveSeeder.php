@@ -29,8 +29,10 @@ use App\Models\CarbonFootprint;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Category;
+use App\Models\CertificateUpload;
 use App\Models\Company;
 use App\Models\CompanyBankDetail;
+use App\Models\CompanyCategoryRequest;
 use App\Models\CompanyDocument;
 use App\Models\CompanyInfoRequest;
 use App\Models\CompanyInsurance;
@@ -39,6 +41,8 @@ use App\Models\ConflictMineralsDeclaration;
 use App\Models\Consent;
 use App\Models\Contract;
 use App\Models\ContractAmendment;
+use App\Models\ContractApproval;
+use App\Models\ContractParty;
 use App\Models\ContractVersion;
 use App\Models\CreditScore;
 use App\Models\Dispute;
@@ -53,6 +57,7 @@ use App\Models\InvoiceNumberSequence;
 use App\Models\ModernSlaveryStatement;
 use App\Models\NegotiationMessage;
 use App\Models\Payment;
+use App\Models\PrivacyPolicyVersion;
 use App\Models\PrivacyRequest;
 use App\Models\Product;
 use App\Models\ProductVariant;
@@ -71,17 +76,13 @@ use App\Models\TrackingEvent;
 use App\Models\User;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
-use App\Models\ContractApproval;
-use App\Models\ContractParty;
-use App\Models\PrivacyPolicyVersion;
-use App\Models\CertificateUpload;
-use App\Models\CompanyCategoryRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
@@ -180,20 +181,20 @@ class ComprehensiveSeeder extends Seeder
         $this->seedEsg($buyer, $this->suppliers, $admin);
         $this->seedCompanySuppliers($buyer, $this->suppliers);
 
-        $products  = $this->seedProductsAndVariants($this->suppliers, $cats);
+        $products = $this->seedProductsAndVariants($this->suppliers, $cats);
         $this->seedCartsAndCartItems($buyer, $products);
 
-        $prs       = $this->seedPurchaseRequests($buyer, $branches, $cats);
-        $rfqs      = $this->seedRfqs($buyer, $branches, $prs, $logistics, $clearance, $serviceProvider, $cats);
+        $prs = $this->seedPurchaseRequests($buyer, $branches, $cats);
+        $rfqs = $this->seedRfqs($buyer, $branches, $prs, $logistics, $clearance, $serviceProvider, $cats);
         $this->seedIcvWeightingOnRfqs($rfqs);
-        $bids      = $this->seedBids($rfqs, $logistics, $clearance, $serviceProvider);
+        $bids = $this->seedBids($rfqs, $logistics, $clearance, $serviceProvider);
         $this->seedNegotiationMessages($bids);
 
         $contracts = $this->seedContracts($buyer, $logistics, $prs, $branches);
         $this->seedContractAmendmentsAndVersions($contracts);
 
-        $escrows   = $this->seedEscrowAccountsAndReleases($contracts);
-        $payments  = $this->seedPayments($contracts, $buyer, $escrows);
+        $escrows = $this->seedEscrowAccountsAndReleases($contracts);
+        $payments = $this->seedPayments($contracts, $buyer, $escrows);
 
         $shipments = $this->seedShipments($contracts, $buyer, $logistics);
         $this->seedCarbonFootprints($shipments);
@@ -278,11 +279,11 @@ class ComprehensiveSeeder extends Seeder
             $out[$key] = Category::updateOrCreate(
                 ['name' => $name],
                 [
-                    'name_ar'     => $nameAr,
+                    'name_ar' => $nameAr,
                     'description' => $desc,
-                    'level'       => 0,
-                    'path'        => $key,
-                    'is_active'   => true,
+                    'level' => 0,
+                    'path' => $key,
+                    'is_active' => true,
                 ],
             );
         }
@@ -298,7 +299,7 @@ class ComprehensiveSeeder extends Seeder
     {
         $rates = [
             ['UAE-VAT-5',       'UAE Standard VAT',   5.00, null,                'AE', true,  true,  'Standard 5% VAT applied to most goods and services in the UAE.'],
-            ['UAE-MED-EXEMPT',  'Medical Exempt',     0.00, $cats['medical']->id,'AE', true,  false, 'Zero-rated VAT for qualifying medical equipment.'],
+            ['UAE-MED-EXEMPT',  'Medical Exempt',     0.00, $cats['medical']->id, 'AE', true,  false, 'Zero-rated VAT for qualifying medical equipment.'],
             ['EXPORT-ZERO',     'Export Zero-Rated',  0.00, null,                null, true,  false, 'Zero-rated VAT for qualifying exports outside the GCC.'],
             ['KSA-VAT-15',      'KSA Standard VAT',  15.00, null,                'SA', true,  false, 'Standard 15% VAT applied to most goods and services in Saudi Arabia.'],
         ];
@@ -307,12 +308,12 @@ class ComprehensiveSeeder extends Seeder
             TaxRate::updateOrCreate(
                 ['code' => $code],
                 [
-                    'name'        => $name,
-                    'rate'        => $rate,
+                    'name' => $name,
+                    'rate' => $rate,
                     'category_id' => $catId,
-                    'country'     => $country,
-                    'is_active'   => $active,
-                    'is_default'  => $default,
+                    'country' => $country,
+                    'is_active' => $active,
+                    'is_default' => $default,
                     'description' => $desc,
                 ],
             );
@@ -349,7 +350,7 @@ class ComprehensiveSeeder extends Seeder
     // 4 + 6. Companies and users
     // ================================================================
     /**
-     * @param array<string,Category> $cats
+     * @param  array<string,Category>  $cats
      * @return array{0:Company,1:Company,2:Company,3:Company,4:Company,5:Company,6:User}
      */
     private function seedCompaniesAndUsers(array $cats): array
@@ -357,39 +358,39 @@ class ComprehensiveSeeder extends Seeder
         // ---- Buyers ----
         $buyer = $this->company([
             'registration_number' => 'BUY-AHRAM-001',
-            'name'                => 'Al-Ahram Group',
-            'name_ar'             => 'مجموعة الأهرام',
-            'tax_number'          => '100000000100003',
-            'type'                => CompanyType::BUYER,
-            'status'              => CompanyStatus::ACTIVE,
-            'verification_level'  => VerificationLevel::GOLD,
-            'sanctions_status'    => 'clean',
+            'name' => 'Al-Ahram Group',
+            'name_ar' => 'مجموعة الأهرام',
+            'tax_number' => '100000000100003',
+            'type' => CompanyType::BUYER,
+            'status' => CompanyStatus::ACTIVE,
+            'verification_level' => VerificationLevel::GOLD,
+            'sanctions_status' => 'clean',
             'sanctions_screened_at' => now()->subDays(15),
-            'email'               => 'info@al-ahram.test',
-            'phone'               => '+971 50 000 0010',
-            'website'             => 'https://al-ahram.test',
-            'address'             => 'Sheikh Zayed Road, Tower 12, Floor 18',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
-            'description'         => 'Multi-sector regional buyer headquartered in Dubai. Active across construction, IT and industrial procurement.',
+            'email' => 'info@al-ahram.test',
+            'phone' => '+971 50 000 0010',
+            'website' => 'https://al-ahram.test',
+            'address' => 'Sheikh Zayed Road, Tower 12, Floor 18',
+            'city' => 'Dubai',
+            'country' => 'UAE',
+            'description' => 'Multi-sector regional buyer headquartered in Dubai. Active across construction, IT and industrial procurement.',
         ], $cats, ['construction', 'it-hardware', 'industrial', 'office']);
 
         $buyerPending = $this->company([
             'registration_number' => 'BUY-FUTURE-002',
-            'name'                => 'Future Investments LLC',
-            'name_ar'             => 'الاستثمارات المستقبلية',
-            'tax_number'          => '100000000200003',
-            'type'                => CompanyType::BUYER,
-            'status'              => CompanyStatus::PENDING,
-            'verification_level'  => VerificationLevel::UNVERIFIED,
-            'sanctions_status'    => 'not_screened',
-            'email'               => 'register@future-inv.test',
-            'phone'               => '+971 50 000 0099',
-            'website'             => 'https://future-inv.test',
-            'address'             => 'Business Bay, Tower 9',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
-            'description'         => 'Newly registered buyer awaiting verification approval.',
+            'name' => 'Future Investments LLC',
+            'name_ar' => 'الاستثمارات المستقبلية',
+            'tax_number' => '100000000200003',
+            'type' => CompanyType::BUYER,
+            'status' => CompanyStatus::PENDING,
+            'verification_level' => VerificationLevel::UNVERIFIED,
+            'sanctions_status' => 'not_screened',
+            'email' => 'register@future-inv.test',
+            'phone' => '+971 50 000 0099',
+            'website' => 'https://future-inv.test',
+            'address' => 'Business Bay, Tower 9',
+            'city' => 'Dubai',
+            'country' => 'UAE',
+            'description' => 'Newly registered buyer awaiting verification approval.',
         ], $cats, []);
 
         // ---- Suppliers ----
@@ -403,22 +404,22 @@ class ComprehensiveSeeder extends Seeder
 
         $this->suppliers = collect($supplierSeed)->map(fn ($s) => $this->company([
             'registration_number' => $s[0],
-            'name'                => $s[1],
-            'name_ar'             => $s[2],
-            'tax_number'          => '100000' . str_pad((string) (crc32($s[0]) % 1000000), 6, '0', STR_PAD_LEFT) . '00003',
-            'type'                => CompanyType::SUPPLIER,
-            'status'              => CompanyStatus::ACTIVE,
-            'verification_level'  => $s[7],
-            'sanctions_status'    => 'clean',
+            'name' => $s[1],
+            'name_ar' => $s[2],
+            'tax_number' => '100000'.str_pad((string) (crc32($s[0]) % 1000000), 6, '0', STR_PAD_LEFT).'00003',
+            'type' => CompanyType::SUPPLIER,
+            'status' => CompanyStatus::ACTIVE,
+            'verification_level' => $s[7],
+            'sanctions_status' => 'clean',
             'sanctions_screened_at' => now()->subDays(20),
-            'email'               => $s[3],
-            'phone'               => $s[4],
-            'website'             => 'https://' . explode('@', $s[3])[1],
-            'address'             => $s[5],
-            'city'                => $s[6],
-            'country'             => 'UAE',
-            'description'         => 'Verified TriLink supplier delivering across the GCC.',
-            'certifications'      => [
+            'email' => $s[3],
+            'phone' => $s[4],
+            'website' => 'https://'.explode('@', $s[3])[1],
+            'address' => $s[5],
+            'city' => $s[6],
+            'country' => 'UAE',
+            'description' => 'Verified TriLink supplier delivering across the GCC.',
+            'certifications' => [
                 ['name' => 'ISO 9001:2015', 'issuer' => 'TÜV SÜD', 'expires_at' => now()->addYears(2)->toDateString()],
             ],
         ], $cats, $s[8]));
@@ -426,71 +427,71 @@ class ComprehensiveSeeder extends Seeder
         // ---- Service providers ----
         $logistics = $this->company([
             'registration_number' => 'LOG-FASTLINE-001',
-            'name'                => 'FastLine Logistics',
-            'name_ar'             => 'فاست لاين للخدمات اللوجستية',
-            'tax_number'          => '100000000300003',
-            'type'                => CompanyType::LOGISTICS,
-            'status'              => CompanyStatus::ACTIVE,
-            'verification_level'  => VerificationLevel::SILVER,
-            'sanctions_status'    => 'clean',
-            'email'               => 'dispatch@fastline.test',
-            'phone'               => '+971 50 000 0050',
-            'address'             => 'Jebel Ali Free Zone, Block C',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
-            'description'         => 'Sea, air, and road freight forwarder. GCC-wide coverage.',
+            'name' => 'FastLine Logistics',
+            'name_ar' => 'فاست لاين للخدمات اللوجستية',
+            'tax_number' => '100000000300003',
+            'type' => CompanyType::LOGISTICS,
+            'status' => CompanyStatus::ACTIVE,
+            'verification_level' => VerificationLevel::SILVER,
+            'sanctions_status' => 'clean',
+            'email' => 'dispatch@fastline.test',
+            'phone' => '+971 50 000 0050',
+            'address' => 'Jebel Ali Free Zone, Block C',
+            'city' => 'Dubai',
+            'country' => 'UAE',
+            'description' => 'Sea, air, and road freight forwarder. GCC-wide coverage.',
         ], $cats, ['logistics-svc']);
 
         $clearance = $this->company([
             'registration_number' => 'CLR-CARGOCHECK-001',
-            'name'                => 'CargoCheck Customs',
-            'name_ar'             => 'كارجوتشيك للتخليص الجمركي',
-            'tax_number'          => '100000000400003',
-            'type'                => CompanyType::CLEARANCE,
-            'status'              => CompanyStatus::ACTIVE,
-            'verification_level'  => VerificationLevel::GOLD,
-            'sanctions_status'    => 'clean',
-            'email'               => 'clearance@cargocheck.test',
-            'phone'               => '+971 50 000 0060',
-            'address'             => 'Port Rashid, Customs Centre',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
-            'description'         => 'Licensed customs brokerage and clearance specialists.',
+            'name' => 'CargoCheck Customs',
+            'name_ar' => 'كارجوتشيك للتخليص الجمركي',
+            'tax_number' => '100000000400003',
+            'type' => CompanyType::CLEARANCE,
+            'status' => CompanyStatus::ACTIVE,
+            'verification_level' => VerificationLevel::GOLD,
+            'sanctions_status' => 'clean',
+            'email' => 'clearance@cargocheck.test',
+            'phone' => '+971 50 000 0060',
+            'address' => 'Port Rashid, Customs Centre',
+            'city' => 'Dubai',
+            'country' => 'UAE',
+            'description' => 'Licensed customs brokerage and clearance specialists.',
         ], $cats, ['clearance-svc']);
 
         $serviceProvider = $this->company([
             'registration_number' => 'SRV-BUILDTECH-001',
-            'name'                => 'BuildTech Services',
-            'name_ar'             => 'بيلد تك للخدمات',
-            'tax_number'          => '100000000500003',
-            'type'                => CompanyType::SERVICE_PROVIDER,
-            'status'              => CompanyStatus::ACTIVE,
-            'verification_level'  => VerificationLevel::SILVER,
-            'sanctions_status'    => 'clean',
-            'email'               => 'sales@buildtech.test',
-            'phone'               => '+971 50 000 0070',
-            'address'             => 'Dubai Investment Park',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
-            'description'         => 'Installation, commissioning, and maintenance services.',
+            'name' => 'BuildTech Services',
+            'name_ar' => 'بيلد تك للخدمات',
+            'tax_number' => '100000000500003',
+            'type' => CompanyType::SERVICE_PROVIDER,
+            'status' => CompanyStatus::ACTIVE,
+            'verification_level' => VerificationLevel::SILVER,
+            'sanctions_status' => 'clean',
+            'email' => 'sales@buildtech.test',
+            'phone' => '+971 50 000 0070',
+            'address' => 'Dubai Investment Park',
+            'city' => 'Dubai',
+            'country' => 'UAE',
+            'description' => 'Installation, commissioning, and maintenance services.',
         ], $cats, ['construction', 'industrial']);
 
         $sanctioned = $this->company([
             'registration_number' => 'SUP-REDFLAG-999',
-            'name'                => 'RedFlag Trading FZE',
-            'name_ar'             => 'ريد فلاج للتجارة',
-            'tax_number'          => '100000000999003',
-            'type'                => CompanyType::SUPPLIER,
-            'status'              => CompanyStatus::INACTIVE,
-            'verification_level'  => VerificationLevel::UNVERIFIED,
-            'sanctions_status'    => 'hit',
+            'name' => 'RedFlag Trading FZE',
+            'name_ar' => 'ريد فلاج للتجارة',
+            'tax_number' => '100000000999003',
+            'type' => CompanyType::SUPPLIER,
+            'status' => CompanyStatus::INACTIVE,
+            'verification_level' => VerificationLevel::UNVERIFIED,
+            'sanctions_status' => 'hit',
             'sanctions_screened_at' => now()->subDays(2),
-            'email'               => 'contact@redflag.test',
-            'phone'               => '+971 50 000 9999',
-            'address'             => 'Free Zone Office',
-            'city'                => 'Ajman',
-            'country'             => 'UAE',
-            'description'         => 'Suspended after sanctions hit during routine screening.',
+            'email' => 'contact@redflag.test',
+            'phone' => '+971 50 000 9999',
+            'address' => 'Free Zone Office',
+            'city' => 'Ajman',
+            'country' => 'UAE',
+            'description' => 'Suspended after sanctions hit during routine screening.',
         ], $cats, []);
 
         // ---- Users ----
@@ -499,13 +500,13 @@ class ComprehensiveSeeder extends Seeder
         $this->user('gov@trilink.test', 'Salim', 'Al-Rashid', UserRole::GOVERNMENT, null, 'Government Liaison');
 
         // Buyer team — covers every internal role
-        $this->user('manager@al-ahram.test',     'Khalid',  'Hassan',     UserRole::COMPANY_MANAGER, $buyer->id, 'Procurement Director');
-        $this->user('buyer@al-ahram.test',       'Ahmed',   'Al-Mansoori',UserRole::BUYER,           $buyer->id, 'Senior Buyer');
-        $this->user('branch.dubai@al-ahram.test','Hessa',   'Al-Falasi',  UserRole::BRANCH_MANAGER,  $buyer->id, 'Dubai Branch Manager');
-        $this->user('finance@al-ahram.test',     'Noura',   'Al-Khoori',  UserRole::FINANCE,         $buyer->id, 'AP Specialist');
-        $this->user('finance.mgr@al-ahram.test', 'Yasser',  'Al-Marri',   UserRole::FINANCE_MANAGER, $buyer->id, 'Finance Manager');
-        $this->user('sales@al-ahram.test',       'Maryam',  'Al-Suwaidi', UserRole::SALES,           $buyer->id, 'Sales Executive');
-        $this->user('sales.mgr@al-ahram.test',   'Fahad',   'Al-Hosani',  UserRole::SALES_MANAGER,   $buyer->id, 'Sales Manager');
+        $this->user('manager@al-ahram.test', 'Khalid', 'Hassan', UserRole::COMPANY_MANAGER, $buyer->id, 'Procurement Director');
+        $this->user('buyer@al-ahram.test', 'Ahmed', 'Al-Mansoori', UserRole::BUYER, $buyer->id, 'Senior Buyer');
+        $this->user('branch.dubai@al-ahram.test', 'Hessa', 'Al-Falasi', UserRole::BRANCH_MANAGER, $buyer->id, 'Dubai Branch Manager');
+        $this->user('finance@al-ahram.test', 'Noura', 'Al-Khoori', UserRole::FINANCE, $buyer->id, 'AP Specialist');
+        $this->user('finance.mgr@al-ahram.test', 'Yasser', 'Al-Marri', UserRole::FINANCE_MANAGER, $buyer->id, 'Finance Manager');
+        $this->user('sales@al-ahram.test', 'Maryam', 'Al-Suwaidi', UserRole::SALES, $buyer->id, 'Sales Executive');
+        $this->user('sales.mgr@al-ahram.test', 'Fahad', 'Al-Hosani', UserRole::SALES_MANAGER, $buyer->id, 'Sales Manager');
 
         $this->user('owner@future-inv.test', 'Tariq', 'Al-Owais', UserRole::COMPANY_MANAGER, $buyerPending->id, 'Founder');
 
@@ -518,13 +519,13 @@ class ComprehensiveSeeder extends Seeder
             ['omar@medco.test',            'Omar',     'Al-Sharif',  4],
         ];
         foreach ($supplierContactSeed as $sc) {
-            $this->user('manager.' . $sc[0], $sc[1] . ' (Mgr)', $sc[2], UserRole::COMPANY_MANAGER, $this->suppliers[$sc[3]]->id, 'Company Manager');
-            $this->user($sc[0],               $sc[1],            $sc[2], UserRole::SUPPLIER,        $this->suppliers[$sc[3]]->id, 'Supplier Contact');
+            $this->user('manager.'.$sc[0], $sc[1].' (Mgr)', $sc[2], UserRole::COMPANY_MANAGER, $this->suppliers[$sc[3]]->id, 'Company Manager');
+            $this->user($sc[0], $sc[1], $sc[2], UserRole::SUPPLIER, $this->suppliers[$sc[3]]->id, 'Supplier Contact');
         }
 
-        $this->user('driver@fastline.test',    'Yousef', 'Al-Bedouin', UserRole::LOGISTICS,        $logistics->id,       'Operations');
-        $this->user('agent@cargocheck.test',   'Hamad',  'Al-Nuaimi',  UserRole::CLEARANCE,        $clearance->id,       'Customs Agent');
-        $this->user('engineer@buildtech.test', 'Saeed',  'Al-Dhaheri', UserRole::SERVICE_PROVIDER, $serviceProvider->id, 'Project Engineer');
+        $this->user('driver@fastline.test', 'Yousef', 'Al-Bedouin', UserRole::LOGISTICS, $logistics->id, 'Operations');
+        $this->user('agent@cargocheck.test', 'Hamad', 'Al-Nuaimi', UserRole::CLEARANCE, $clearance->id, 'Customs Agent');
+        $this->user('engineer@buildtech.test', 'Saeed', 'Al-Dhaheri', UserRole::SERVICE_PROVIDER, $serviceProvider->id, 'Project Engineer');
 
         // A user attached to the sanctioned company so the suspended-account
         // path can be exercised end-to-end.
@@ -534,9 +535,9 @@ class ComprehensiveSeeder extends Seeder
     }
 
     /**
-     * @param array<string,mixed>     $attrs
-     * @param array<string,Category>  $cats
-     * @param list<string>            $catKeys
+     * @param  array<string,mixed>  $attrs
+     * @param  array<string,Category>  $cats
+     * @param  list<string>  $catKeys
      */
     private function company(array $attrs, array $cats, array $catKeys): Company
     {
@@ -568,14 +569,14 @@ class ComprehensiveSeeder extends Seeder
         return User::updateOrCreate(
             ['email' => $email],
             [
-                'first_name'     => $first,
-                'last_name'      => $last,
-                'phone'          => '+971 55 ' . str_pad((string) (crc32($email) % 10000000), 7, '0', STR_PAD_LEFT),
-                'password'       => Hash::make('password'),
-                'role'           => $role->value,
+                'first_name' => $first,
+                'last_name' => $last,
+                'phone' => '+971 55 '.str_pad((string) (crc32($email) % 10000000), 7, '0', STR_PAD_LEFT),
+                'password' => Hash::make('password'),
+                'role' => $role->value,
                 'position_title' => $title,
-                'status'         => UserStatus::ACTIVE->value,
-                'company_id'     => $companyId,
+                'status' => UserStatus::ACTIVE->value,
+                'company_id' => $companyId,
             ],
         );
     }
@@ -584,14 +585,14 @@ class ComprehensiveSeeder extends Seeder
     // 5. Branches
     // ================================================================
     /**
-     * @param array<string,Category> $cats
+     * @param  array<string,Category>  $cats
      * @return Collection<int,Branch>
      */
     private function seedBranches(Company $buyer, array $cats): Collection
     {
         $defs = [
             ['Dubai HQ',                'مقر دبي',              'it-hardware',  'Sheikh Zayed Road, Tower 12', 'Dubai',     'AE'],
-            ['Abu Dhabi Logistics',     'فرع أبوظبي اللوجستي', 'logistics-svc','Mussafah Industrial Area',     'Abu Dhabi', 'AE'],
+            ['Abu Dhabi Logistics',     'فرع أبوظبي اللوجستي', 'logistics-svc', 'Mussafah Industrial Area',     'Abu Dhabi', 'AE'],
             ['Sharjah Industrial',      'فرع الشارقة الصناعي',  'industrial',   'Sharjah Industrial Area 13',  'Sharjah',   'AE'],
             ['Jeddah Trading Office',   'مكتب جدة التجاري',     'construction', 'King Abdullah Road, Jeddah',  'Jeddah',    'SA'],
         ];
@@ -599,12 +600,12 @@ class ComprehensiveSeeder extends Seeder
         return collect($defs)->map(fn ($d) => Branch::updateOrCreate(
             ['company_id' => $buyer->id, 'name' => $d[0]],
             [
-                'name_ar'     => $d[1],
+                'name_ar' => $d[1],
                 'category_id' => $cats[$d[2]]->id,
-                'address'     => $d[3],
-                'city'        => $d[4],
-                'country'     => $d[5],
-                'is_active'   => true,
+                'address' => $d[3],
+                'city' => $d[4],
+                'country' => $d[5],
+                'is_active' => true,
             ],
         ));
     }
@@ -629,12 +630,12 @@ class ComprehensiveSeeder extends Seeder
     {
         $rows = [
             [$buyer,    'Al-Ahram Group',          'Emirates NBD',       'Sheikh Zayed Br.', 'AE070331234567890123456', 'EBILAEAD'],
-            [$logistics,'FastLine Logistics',      'Mashreq Bank',       'Jebel Ali Br.',    'AE470330000000098765432', 'BOMLAEAD'],
-            [$clearance,'CargoCheck Customs',      'Abu Dhabi Comm Bank','Port Rashid Br.',  'AE140332222333344445555', 'ADCBAEAA'],
-            [$service,  'BuildTech Services',     'First Abu Dhabi Bank','DIP Br.',          'AE980331111222233334444', 'NBADAEAA'],
+            [$logistics, 'FastLine Logistics',      'Mashreq Bank',       'Jebel Ali Br.',    'AE470330000000098765432', 'BOMLAEAD'],
+            [$clearance, 'CargoCheck Customs',      'Abu Dhabi Comm Bank', 'Port Rashid Br.',  'AE140332222333344445555', 'ADCBAEAA'],
+            [$service,  'BuildTech Services',     'First Abu Dhabi Bank', 'DIP Br.',          'AE980331111222233334444', 'NBADAEAA'],
         ];
         foreach ($suppliers as $i => $sup) {
-            $rows[] = [$sup, $sup->name, 'Emirates NBD', 'Branch ' . ($i + 1), sprintf('AE0703%020d', 1000000000 + $i * 11), 'EBILAEAD'];
+            $rows[] = [$sup, $sup->name, 'Emirates NBD', 'Branch '.($i + 1), sprintf('AE0703%020d', 1000000000 + $i * 11), 'EBILAEAD'];
         }
 
         foreach ($rows as [$company, $holder, $bank, $branch, $iban, $swift]) {
@@ -642,12 +643,12 @@ class ComprehensiveSeeder extends Seeder
                 ['company_id' => $company->id],
                 [
                     'holder_name' => $holder,
-                    'bank_name'   => $bank,
-                    'branch'      => $branch,
-                    'iban'        => $iban,
-                    'swift'       => $swift,
-                    'currency'    => 'AED',
-                    'notes'       => 'Verified during onboarding.',
+                    'bank_name' => $bank,
+                    'branch' => $branch,
+                    'iban' => $iban,
+                    'swift' => $swift,
+                    'currency' => 'AED',
+                    'notes' => 'Verified during onboarding.',
                 ],
             );
         }
@@ -661,8 +662,8 @@ class ComprehensiveSeeder extends Seeder
         CompanyInfoRequest::updateOrCreate(
             ['company_id' => $buyerPending->id],
             [
-                'items'        => ['tax_number', 'trade_license_file', 'beneficial_owners'],
-                'note'         => 'Please upload your trade license and add at least one beneficial owner before we can complete verification.',
+                'items' => ['tax_number', 'trade_license_file', 'beneficial_owners'],
+                'note' => 'Please upload your trade license and add at least one beneficial owner before we can complete verification.',
                 'requested_at' => now()->subDays(3),
                 'requested_by' => $admin->id,
             ],
@@ -684,18 +685,18 @@ class ComprehensiveSeeder extends Seeder
             BeneficialOwner::updateOrCreate(
                 ['company_id' => $buyer->id, 'full_name' => $o[0]],
                 [
-                    'nationality'          => $o[1],
-                    'date_of_birth'        => $o[2],
-                    'id_type'              => $o[3],
-                    'id_number'            => $o[4],
-                    'id_expiry'            => now()->addYears(3)->toDateString(),
+                    'nationality' => $o[1],
+                    'date_of_birth' => $o[2],
+                    'id_type' => $o[3],
+                    'id_number' => $o[4],
+                    'id_expiry' => now()->addYears(3)->toDateString(),
                     'ownership_percentage' => $o[5],
-                    'role'                 => $o[6],
-                    'is_pep'               => $o[7],
-                    'source_of_wealth'     => $o[8],
-                    'last_screened_at'     => now()->subDays(15),
-                    'screening_result'     => 'clean',
-                    'verified_at'          => now()->subDays(15),
+                    'role' => $o[6],
+                    'is_pep' => $o[7],
+                    'source_of_wealth' => $o[8],
+                    'last_screened_at' => now()->subDays(15),
+                    'screening_result' => 'clean',
+                    'verified_at' => now()->subDays(15),
                 ],
             );
         }
@@ -705,18 +706,18 @@ class ComprehensiveSeeder extends Seeder
             BeneficialOwner::updateOrCreate(
                 ['company_id' => $sup->id, 'full_name' => "Founder of {$sup->name}"],
                 [
-                    'nationality'          => 'AE',
-                    'date_of_birth'        => '1975-01-' . str_pad((string) ($i + 1), 2, '0', STR_PAD_LEFT),
-                    'id_type'              => 'emirates_id',
-                    'id_number'            => '784-1975-' . str_pad((string) (1000000 + $i), 7, '0', STR_PAD_LEFT) . '-' . ($i + 1),
-                    'id_expiry'            => now()->addYears(2)->toDateString(),
+                    'nationality' => 'AE',
+                    'date_of_birth' => '1975-01-'.str_pad((string) ($i + 1), 2, '0', STR_PAD_LEFT),
+                    'id_type' => 'emirates_id',
+                    'id_number' => '784-1975-'.str_pad((string) (1000000 + $i), 7, '0', STR_PAD_LEFT).'-'.($i + 1),
+                    'id_expiry' => now()->addYears(2)->toDateString(),
                     'ownership_percentage' => 100.00,
-                    'role'                 => 'ubo',
-                    'is_pep'               => false,
-                    'source_of_wealth'     => 'Long-term operator and founder of the company.',
-                    'last_screened_at'     => now()->subDays(20),
-                    'screening_result'     => 'clean',
-                    'verified_at'          => now()->subDays(20),
+                    'role' => 'ubo',
+                    'is_pep' => false,
+                    'source_of_wealth' => 'Long-term operator and founder of the company.',
+                    'last_screened_at' => now()->subDays(20),
+                    'screening_result' => 'clean',
+                    'verified_at' => now()->subDays(20),
                 ],
             );
         }
@@ -732,8 +733,8 @@ class ComprehensiveSeeder extends Seeder
             // [type, status, expires_in_days, label]
             [DocumentType::TRADE_LICENSE,        CompanyDocument::STATUS_VERIFIED,   365, 'Trade License'],
             [DocumentType::TAX_CERTIFICATE,      CompanyDocument::STATUS_VERIFIED,   730, 'Tax Registration Certificate'],
-            [DocumentType::INSURANCE_CERTIFICATE,CompanyDocument::STATUS_PENDING,    180, 'Insurance Certificate'],
-            [DocumentType::AUDITED_FINANCIALS,   CompanyDocument::STATUS_REJECTED,   null,'2025 Audited Financials'],
+            [DocumentType::INSURANCE_CERTIFICATE, CompanyDocument::STATUS_PENDING,    180, 'Insurance Certificate'],
+            [DocumentType::AUDITED_FINANCIALS,   CompanyDocument::STATUS_REJECTED,   null, '2025 Audited Financials'],
             [DocumentType::ISO_9001,             CompanyDocument::STATUS_EXPIRED,    -10, 'ISO 9001:2015 Certificate'],
         ];
 
@@ -748,20 +749,20 @@ class ComprehensiveSeeder extends Seeder
                 CompanyDocument::updateOrCreate(
                     ['company_id' => $company->id, 'type' => $type->value],
                     [
-                        'label'             => $label,
-                        'file_path'         => "demo/{$company->id}/{$type->value}.pdf",
-                        'original_filename' => $type->value . '.pdf',
-                        'file_size'         => 184_320 + $i * 1024,
-                        'mime_type'         => 'application/pdf',
-                        'status'            => $status,
-                        'issued_at'         => now()->subDays(180)->toDateString(),
-                        'expires_at'        => $expiryOffset !== null ? now()->addDays($expiryOffset)->toDateString() : null,
-                        'rejection_reason'  => $status === CompanyDocument::STATUS_REJECTED
+                        'label' => $label,
+                        'file_path' => "demo/{$company->id}/{$type->value}.pdf",
+                        'original_filename' => $type->value.'.pdf',
+                        'file_size' => 184_320 + $i * 1024,
+                        'mime_type' => 'application/pdf',
+                        'status' => $status,
+                        'issued_at' => now()->subDays(180)->toDateString(),
+                        'expires_at' => $expiryOffset !== null ? now()->addDays($expiryOffset)->toDateString() : null,
+                        'rejection_reason' => $status === CompanyDocument::STATUS_REJECTED
                             ? 'Document quality is too low to read company stamps. Please re-upload a clearer scan.'
                             : null,
-                        'uploaded_by'       => $uploader->id,
-                        'verified_by'       => in_array($status, [CompanyDocument::STATUS_VERIFIED, CompanyDocument::STATUS_REJECTED, CompanyDocument::STATUS_EXPIRED], true) ? $admin->id : null,
-                        'verified_at'       => in_array($status, [CompanyDocument::STATUS_VERIFIED, CompanyDocument::STATUS_REJECTED, CompanyDocument::STATUS_EXPIRED], true) ? now()->subDays(7) : null,
+                        'uploaded_by' => $uploader->id,
+                        'verified_by' => in_array($status, [CompanyDocument::STATUS_VERIFIED, CompanyDocument::STATUS_REJECTED, CompanyDocument::STATUS_EXPIRED], true) ? $admin->id : null,
+                        'verified_at' => in_array($status, [CompanyDocument::STATUS_VERIFIED, CompanyDocument::STATUS_REJECTED, CompanyDocument::STATUS_EXPIRED], true) ? now()->subDays(7) : null,
                     ],
                 );
             }
@@ -786,24 +787,24 @@ class ComprehensiveSeeder extends Seeder
         }
 
         foreach ($defs as $i => [$company, $type, $insurer, $coverage, $status, $expiresIn]) {
-            $policyNumber = strtoupper(substr($company->registration_number, 0, 6)) . '-' . strtoupper($type) . '-' . str_pad((string) ($i + 1), 4, '0', STR_PAD_LEFT);
+            $policyNumber = strtoupper(substr($company->registration_number, 0, 6)).'-'.strtoupper($type).'-'.str_pad((string) ($i + 1), 4, '0', STR_PAD_LEFT);
 
             CompanyInsurance::updateOrCreate(
                 ['company_id' => $company->id, 'policy_number' => $policyNumber],
                 [
-                    'type'              => $type,
-                    'insurer'           => $insurer,
-                    'coverage_amount'   => $coverage,
-                    'currency'          => 'AED',
-                    'starts_at'         => now()->subDays(30)->toDateString(),
-                    'expires_at'        => now()->addDays($expiresIn)->toDateString(),
-                    'file_path'         => "insurances/{$company->id}/{$type}.pdf",
+                    'type' => $type,
+                    'insurer' => $insurer,
+                    'coverage_amount' => $coverage,
+                    'currency' => 'AED',
+                    'starts_at' => now()->subDays(30)->toDateString(),
+                    'expires_at' => now()->addDays($expiresIn)->toDateString(),
+                    'file_path' => "insurances/{$company->id}/{$type}.pdf",
                     'original_filename' => "{$type}_policy.pdf",
-                    'file_size'         => 145_300,
-                    'mime_type'         => 'application/pdf',
-                    'status'            => $status,
-                    'verified_by'       => $status === 'verified' ? $admin->id : null,
-                    'verified_at'       => $status === 'verified' ? now()->subDays(5) : null,
+                    'file_size' => 145_300,
+                    'mime_type' => 'application/pdf',
+                    'status' => $status,
+                    'verified_by' => $status === 'verified' ? $admin->id : null,
+                    'verified_at' => $status === 'verified' ? now()->subDays(5) : null,
                 ],
             );
         }
@@ -825,34 +826,34 @@ class ComprehensiveSeeder extends Seeder
             // Two clean periodic checks per active company.
             for ($i = 0; $i < 2; $i++) {
                 SanctionsScreening::create([
-                    'company_id'       => $company->id,
-                    'provider'         => 'opensanctions',
-                    'query'            => $company->name,
-                    'result'           => SanctionsScreening::RESULT_CLEAN,
-                    'match_count'      => 0,
+                    'company_id' => $company->id,
+                    'provider' => 'opensanctions',
+                    'query' => $company->name,
+                    'result' => SanctionsScreening::RESULT_CLEAN,
+                    'match_count' => 0,
                     'matched_entities' => [],
-                    'triggered_by'     => $admin->id,
-                    'notes'            => 'Routine periodic screen — no matches.',
-                    'created_at'       => now()->subDays(30 - $i * 14)->startOfDay(),
-                    'updated_at'       => now()->subDays(30 - $i * 14)->startOfDay(),
+                    'triggered_by' => $admin->id,
+                    'notes' => 'Routine periodic screen — no matches.',
+                    'created_at' => now()->subDays(30 - $i * 14)->startOfDay(),
+                    'updated_at' => now()->subDays(30 - $i * 14)->startOfDay(),
                 ]);
             }
         }
 
         // The sanctioned supplier — one direct hit row.
         SanctionsScreening::create([
-            'company_id'       => $sanctioned->id,
-            'provider'         => 'opensanctions',
-            'query'            => $sanctioned->name,
-            'result'           => SanctionsScreening::RESULT_HIT,
-            'match_count'      => 1,
+            'company_id' => $sanctioned->id,
+            'provider' => 'opensanctions',
+            'query' => $sanctioned->name,
+            'result' => SanctionsScreening::RESULT_HIT,
+            'match_count' => 1,
             'matched_entities' => [
                 ['name' => 'RedFlag Trading FZE', 'list' => 'OFAC SDN', 'score' => 0.92],
             ],
-            'triggered_by'     => $admin->id,
-            'notes'            => 'Direct hit on OFAC SDN list. Company suspended.',
-            'created_at'       => now()->subDays(2)->startOfDay(),
-            'updated_at'       => now()->subDays(2)->startOfDay(),
+            'triggered_by' => $admin->id,
+            'notes' => 'Direct hit on OFAC SDN list. Company suspended.',
+            'created_at' => now()->subDays(2)->startOfDay(),
+            'updated_at' => now()->subDays(2)->startOfDay(),
         ]);
     }
 
@@ -871,28 +872,28 @@ class ComprehensiveSeeder extends Seeder
         ];
         foreach ($suppliers as $i => $sup) {
             $score = 720 - $i * 35;          // 720, 685, 650, 615, 580
-            $band  = match (true) {
+            $band = match (true) {
                 $score >= 750 => 'excellent',
                 $score >= 700 => 'good',
                 $score >= 650 => 'fair',
-                default       => 'poor',
+                default => 'poor',
             };
             $rows[] = [$sup, $score, $band, 'Trading history reviewed by AECB.'];
         }
 
         foreach ($rows as $i => [$company, $score, $band, $reason]) {
             CreditScore::create([
-                'company_id'  => $company->id,
-                'provider'    => 'aecb',
-                'score'       => $score,
-                'band'        => $band,
-                'reasons'     => [$reason],
+                'company_id' => $company->id,
+                'provider' => 'aecb',
+                'score' => $score,
+                'band' => $band,
+                'reasons' => [$reason],
                 'reported_at' => now()->subDays(15 - $i)->startOfDay(),
             ]);
 
             $company->forceFill([
                 'latest_credit_score' => $score,
-                'latest_credit_band'  => $band,
+                'latest_credit_band' => $band,
             ])->save();
         }
     }
@@ -904,38 +905,38 @@ class ComprehensiveSeeder extends Seeder
     private function seedEsg(Company $buyer, Collection $suppliers, User $admin): void
     {
         $companies = collect([$buyer])->merge($suppliers);
-        $year      = (int) now()->format('Y');
+        $year = (int) now()->format('Y');
 
         foreach ($companies as $i => $company) {
             $env = 70 + ($i * 4) % 25;
             $soc = 65 + ($i * 6) % 30;
             $gov = 75 + ($i * 5) % 20;
             $overall = (int) round(($env + $soc + $gov) / 3);
-            $grade   = match (true) {
+            $grade = match (true) {
                 $overall >= 85 => 'A',
                 $overall >= 75 => 'B',
                 $overall >= 65 => 'C',
                 $overall >= 55 => 'D',
-                default        => 'F',
+                default => 'F',
             };
 
             EsgQuestionnaire::updateOrCreate(
                 ['company_id' => $company->id],
                 [
                     'environmental_score' => $env,
-                    'social_score'        => $soc,
-                    'governance_score'    => $gov,
-                    'overall_score'       => $overall,
-                    'grade'               => $grade,
+                    'social_score' => $soc,
+                    'governance_score' => $gov,
+                    'overall_score' => $overall,
+                    'grade' => $grade,
                     'answers' => [
-                        'env_energy_mix'     => 'majority_renewable',
+                        'env_energy_mix' => 'majority_renewable',
                         'env_emissions_tracked' => 'reduction_target',
-                        'env_iso14001'       => 'certified',
-                        'soc_living_wage'    => 'all_employees',
-                        'soc_health_safety'  => 'iso45001',
-                        'soc_grievance'      => 'published_metrics',
-                        'gov_anti_corruption'=> 'training_and_audit',
-                        'gov_data_privacy'   => 'gdpr_compliant',
+                        'env_iso14001' => 'certified',
+                        'soc_living_wage' => 'all_employees',
+                        'soc_health_safety' => 'iso45001',
+                        'soc_grievance' => 'published_metrics',
+                        'gov_anti_corruption' => 'training_and_audit',
+                        'gov_data_privacy' => 'gdpr_compliant',
                         'gov_audited_financials' => 'big_four',
                     ],
                     'submitted_by' => $admin->id,
@@ -946,11 +947,11 @@ class ComprehensiveSeeder extends Seeder
             ModernSlaveryStatement::updateOrCreate(
                 ['company_id' => $company->id, 'reporting_year' => $year],
                 [
-                    'statement'       => "{$company->name} prohibits any form of forced labour, child labour, and human trafficking across its operations and supply chain. We audit our tier-1 suppliers annually and require attestations from new partners.",
-                    'controls'        => ['supplier_audits', 'whistleblower_channel', 'training_program'],
-                    'board_approved'  => true,
-                    'approved_at'     => now()->subDays(60)->toDateString(),
-                    'signed_by_name'  => 'Khalid Hassan',
+                    'statement' => "{$company->name} prohibits any form of forced labour, child labour, and human trafficking across its operations and supply chain. We audit our tier-1 suppliers annually and require attestations from new partners.",
+                    'controls' => ['supplier_audits', 'whistleblower_channel', 'training_program'],
+                    'board_approved' => true,
+                    'approved_at' => now()->subDays(60)->toDateString(),
+                    'signed_by_name' => 'Khalid Hassan',
                     'signed_by_title' => 'Group CEO',
                 ],
             );
@@ -958,13 +959,13 @@ class ComprehensiveSeeder extends Seeder
             ConflictMineralsDeclaration::updateOrCreate(
                 ['company_id' => $company->id, 'reporting_year' => $year],
                 [
-                    'tin_status'      => 'conflict_free',
+                    'tin_status' => 'conflict_free',
                     'tungsten_status' => 'conflict_free',
                     'tantalum_status' => 'in_progress',
-                    'gold_status'     => 'conflict_free',
-                    'smelters'        => [
+                    'gold_status' => 'conflict_free',
+                    'smelters' => [
                         ['name' => 'Malaysia Smelting Corp', 'mineral' => 'tin',  'cid' => 'CID000292', 'country' => 'MY'],
-                        ['name' => 'Wolfram Bergbau',         'mineral' => 'tungsten','cid' => 'CID002624','country' => 'AT'],
+                        ['name' => 'Wolfram Bergbau',         'mineral' => 'tungsten', 'cid' => 'CID002624', 'country' => 'AT'],
                     ],
                     'policy_url' => 'https://example.com/conflict-minerals-policy',
                 ],
@@ -974,15 +975,15 @@ class ComprehensiveSeeder extends Seeder
             CarbonFootprint::firstOrCreate(
                 [
                     'entity_type' => 'company',
-                    'entity_id'   => $company->id,
-                    'period_start'=> now()->startOfYear()->toDateString(),
-                    'scope'       => 3,
+                    'entity_id' => $company->id,
+                    'period_start' => now()->startOfYear()->toDateString(),
+                    'scope' => 3,
                 ],
                 [
-                    'co2e_kg'     => 18_500 + $i * 4_200,
-                    'period_end'  => now()->toDateString(),
-                    'source'      => 'manual_entry',
-                    'metadata'    => ['notes' => 'Annual roll-up imported from spreadsheet.'],
+                    'co2e_kg' => 18_500 + $i * 4_200,
+                    'period_end' => now()->toDateString(),
+                    'source' => 'manual_entry',
+                    'metadata' => ['notes' => 'Annual roll-up imported from spreadsheet.'],
                 ],
             );
         }
@@ -1000,8 +1001,8 @@ class ComprehensiveSeeder extends Seeder
         CompanySupplier::updateOrCreate(
             ['company_id' => $buyer->id, 'supplier_company_id' => $suppliers[0]->id],
             [
-                'status'   => 'active',
-                'notes'    => 'Captive supplier — internal use only.',
+                'status' => 'active',
+                'notes' => 'Captive supplier — internal use only.',
                 'added_by' => $manager?->id,
             ],
         );
@@ -1011,8 +1012,8 @@ class ComprehensiveSeeder extends Seeder
     // 22 + 23. Products and variants
     // ================================================================
     /**
-     * @param Collection<int,Company> $suppliers
-     * @param array<string,Category>  $cats
+     * @param  Collection<int,Company>  $suppliers
+     * @param  array<string,Category>  $cats
      * @return Collection<int,Product>
      */
     private function seedProductsAndVariants(Collection $suppliers, array $cats): Collection
@@ -1028,13 +1029,13 @@ class ComprehensiveSeeder extends Seeder
 
             [2, 'DBT-LAP-XPS',    'Dell XPS 15 Laptop',         'لاب توب ديل XPS 15',     'it-hardware', 6500.00, 'AED', 'pcs',    1,   30, 10, '8471.30'],
             [2, 'DBT-MON-27',     'Dell UltraSharp 27" 4K',     'شاشة ديل 27 بوصة 4K',   'it-hardware', 3100.00, 'AED', 'pcs',    1,   50,  8, '8528.52'],
-            [2, 'DBT-SRV-R750',   'Dell PowerEdge R750 Server', 'سيرفر ديل R750',         'it-hardware',28500.00, 'AED', 'units',  1,    6, 20, '8471.50'],
+            [2, 'DBT-SRV-R750',   'Dell PowerEdge R750 Server', 'سيرفر ديل R750',         'it-hardware', 28500.00, 'AED', 'units',  1,    6, 20, '8471.50'],
 
             [3, 'GLF-DESK-EU',    'Ergonomic Sit-Stand Desk',   'مكتب إيرغونومي',         'office',     1750.00, 'AED', 'sets',   1,   60,  5, '9403.30'],
             [3, 'GLF-CHAIR-MESH', 'Mesh Office Chair',          'كرسي مكتب شبكي',         'office',      680.00, 'AED', 'pcs',    1,  200,  4, '9401.30'],
 
             [4, 'MED-MON-VITAL',  'Patient Vital Monitor',      'جهاز مراقبة حيوية',      'medical',   12500.00, 'AED', 'units',  1,   20, 14, '9018.19'],
-            [4, 'MED-PPE-N95',    'N95 Respirator Mask',        'كمامة N95',              'medical',       6.50, 'AED', 'pcs',  100,12000,  5, '6307.90'],
+            [4, 'MED-PPE-N95',    'N95 Respirator Mask',        'كمامة N95',              'medical',       6.50, 'AED', 'pcs',  100, 12000,  5, '6307.90'],
         ];
 
         $out = collect();
@@ -1044,23 +1045,23 @@ class ComprehensiveSeeder extends Seeder
             $product = Product::updateOrCreate(
                 ['company_id' => $suppliers[$supIdx]->id, 'sku' => $sku],
                 [
-                    'category_id'    => $cats[$catKey]->id,
-                    'hs_code'        => $hs,
-                    'name'           => $name,
-                    'name_ar'        => $nameAr,
-                    'description'    => 'Catalog product available for direct purchase via Buy-Now or via RFQ.',
-                    'base_price'     => $price,
-                    'currency'       => $cur,
-                    'unit'           => $unit,
-                    'min_order_qty'  => $moq,
-                    'stock_qty'      => $stock,
+                    'category_id' => $cats[$catKey]->id,
+                    'hs_code' => $hs,
+                    'name' => $name,
+                    'name_ar' => $nameAr,
+                    'description' => 'Catalog product available for direct purchase via Buy-Now or via RFQ.',
+                    'base_price' => $price,
+                    'currency' => $cur,
+                    'unit' => $unit,
+                    'min_order_qty' => $moq,
+                    'stock_qty' => $stock,
                     'lead_time_days' => $lead,
-                    'images'         => [],
-                    'specs'          => [
+                    'images' => [],
+                    'specs' => [
                         ['key' => 'origin',   'value' => 'UAE'],
                         ['key' => 'warranty', 'value' => '1 year'],
                     ],
-                    'is_active'      => true,
+                    'is_active' => true,
                 ],
             );
             $out->push($product);
@@ -1078,11 +1079,11 @@ class ComprehensiveSeeder extends Seeder
                 ProductVariant::updateOrCreate(
                     ['product_id' => $laptop->id, 'sku' => $sku],
                     [
-                        'name'           => $name,
-                        'attributes'     => $attrs,
+                        'name' => $name,
+                        'attributes' => $attrs,
                         'price_modifier' => $modifier,
-                        'stock_qty'      => $stock,
-                        'is_active'      => true,
+                        'stock_qty' => $stock,
+                        'is_active' => true,
                     ],
                 );
             }
@@ -1095,11 +1096,11 @@ class ComprehensiveSeeder extends Seeder
                 ProductVariant::updateOrCreate(
                     ['product_id' => $chair->id, 'sku' => "GLF-CHAIR-MESH-{$code}"],
                     [
-                        'name'           => "{$color} Mesh",
-                        'attributes'     => ['color' => strtolower($color)],
+                        'name' => "{$color} Mesh",
+                        'attributes' => ['color' => strtolower($color)],
                         'price_modifier' => $mod,
-                        'stock_qty'      => $stock,
-                        'is_active'      => true,
+                        'stock_qty' => $stock,
+                        'is_active' => true,
                     ],
                 );
             }
@@ -1115,7 +1116,7 @@ class ComprehensiveSeeder extends Seeder
     private function seedCartsAndCartItems(Company $buyer, Collection $products): void
     {
         $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
-        if (!$ahmed) {
+        if (! $ahmed) {
             return;
         }
 
@@ -1136,18 +1137,18 @@ class ComprehensiveSeeder extends Seeder
         ];
         foreach ($picks as [$sku, $qty]) {
             $product = $products->firstWhere('sku', $sku);
-            if (!$product) {
+            if (! $product) {
                 continue;
             }
             CartItem::create([
-                'cart_id'             => $cart->id,
-                'product_id'          => $product->id,
-                'product_variant_id'  => null,
+                'cart_id' => $cart->id,
+                'product_id' => $product->id,
+                'product_variant_id' => null,
                 'supplier_company_id' => $product->company_id,
-                'quantity'            => $qty,
-                'unit_price'          => $product->base_price,
-                'currency'            => $product->currency,
-                'name_snapshot'       => $product->name,
+                'quantity' => $qty,
+                'unit_price' => $product->base_price,
+                'currency' => $product->currency,
+                'name_snapshot' => $product->name,
                 'attributes_snapshot' => null,
             ]);
         }
@@ -1157,21 +1158,21 @@ class ComprehensiveSeeder extends Seeder
     // 26. Purchase requests — every status
     // ================================================================
     /**
-     * @param Collection<int,Branch> $branches
-     * @param array<string,Category> $cats
+     * @param  Collection<int,Branch>  $branches
+     * @param  array<string,Category>  $cats
      * @return Collection<int,PurchaseRequest>
      */
     private function seedPurchaseRequests(Company $buyer, Collection $branches, array $cats): Collection
     {
-        $ahmed   = User::where('email', 'buyer@al-ahram.test')->first();
+        $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
         $manager = User::where('email', 'manager@al-ahram.test')->first();
 
         $defs = [
-            ['Hydraulic Pumps for Plant A', PurchaseRequestStatus::DRAFT,            $cats['industrial'],   125000, '10 hydraulic pumps for the Plant A maintenance cycle.',                           [['name'=>'Hydraulic Pump','qty'=>10,'unit'=>'pcs','price'=>11650,'spec'=>'45 L/min']],            14],
-            ['Office Workstations Q2',      PurchaseRequestStatus::SUBMITTED,        $cats['office'],       340000, 'Modular workstations + ergonomic chairs for Dubai HQ floor 18.',                  [['name'=>'Workstation','qty'=>200,'unit'=>'sets','price'=>1700,'spec'=>'Sit/stand']],              21],
-            ['HVAC Retrofit',               PurchaseRequestStatus::PENDING_APPROVAL, $cats['construction'], 320000, 'Industrial HVAC retrofit — 5 rooftop units, ducting and installation.',          [['name'=>'Rooftop HVAC','qty'=>5,'unit'=>'units','price'=>55000,'spec'=>'20-ton, R-32']],          45],
-            ['Copper Wire 16mm',            PurchaseRequestStatus::APPROVED,         $cats['electronics'],   95000, 'Copper wire 16mm for the electrical fit-out.',                                    [['name'=>'Copper Wire 16mm','qty'=>10,'unit'=>'tons','price'=>8500,'spec'=>'IEC 60228']],          28],
-            ['Vehicle Fleet Spares',        PurchaseRequestStatus::REJECTED,         $cats['industrial'],    72000, 'Spare parts and lubricants for the company fleet.',                              [['name'=>'Brake Pad Set','qty'=>60,'unit'=>'sets','price'=>280,'spec'=>'OEM equiv.']],            10],
+            ['Hydraulic Pumps for Plant A', PurchaseRequestStatus::DRAFT,            $cats['industrial'],   125000, '10 hydraulic pumps for the Plant A maintenance cycle.',                           [['name' => 'Hydraulic Pump', 'qty' => 10, 'unit' => 'pcs', 'price' => 11650, 'spec' => '45 L/min']],            14],
+            ['Office Workstations Q2',      PurchaseRequestStatus::SUBMITTED,        $cats['office'],       340000, 'Modular workstations + ergonomic chairs for Dubai HQ floor 18.',                  [['name' => 'Workstation', 'qty' => 200, 'unit' => 'sets', 'price' => 1700, 'spec' => 'Sit/stand']],              21],
+            ['HVAC Retrofit',               PurchaseRequestStatus::PENDING_APPROVAL, $cats['construction'], 320000, 'Industrial HVAC retrofit — 5 rooftop units, ducting and installation.',          [['name' => 'Rooftop HVAC', 'qty' => 5, 'unit' => 'units', 'price' => 55000, 'spec' => '20-ton, R-32']],          45],
+            ['Copper Wire 16mm',            PurchaseRequestStatus::APPROVED,         $cats['electronics'],   95000, 'Copper wire 16mm for the electrical fit-out.',                                    [['name' => 'Copper Wire 16mm', 'qty' => 10, 'unit' => 'tons', 'price' => 8500, 'spec' => 'IEC 60228']],          28],
+            ['Vehicle Fleet Spares',        PurchaseRequestStatus::REJECTED,         $cats['industrial'],    72000, 'Spare parts and lubricants for the company fleet.',                              [['name' => 'Brake Pad Set', 'qty' => 60, 'unit' => 'sets', 'price' => 280, 'spec' => 'OEM equiv.']],            10],
         ];
 
         $prs = collect();
@@ -1193,23 +1194,23 @@ class ComprehensiveSeeder extends Seeder
             $pr = PurchaseRequest::updateOrCreate(
                 ['title' => $title],
                 [
-                    'description'      => $desc,
-                    'company_id'       => $buyer->id,
-                    'branch_id'        => $branches[$i % 2]->id,
-                    'buyer_id'         => $ahmed?->id,
-                    'category_id'      => $cat->id,
-                    'status'           => $status->value,
-                    'items'            => $items,
-                    'budget'           => $budget,
-                    'currency'         => 'AED',
-                    'delivery_location'=> [
+                    'description' => $desc,
+                    'company_id' => $buyer->id,
+                    'branch_id' => $branches[$i % 2]->id,
+                    'buyer_id' => $ahmed?->id,
+                    'category_id' => $cat->id,
+                    'status' => $status->value,
+                    'items' => $items,
+                    'budget' => $budget,
+                    'currency' => 'AED',
+                    'delivery_location' => [
                         'address' => 'Dubai Silicon Oasis, Building 12',
-                        'city'    => 'Dubai',
+                        'city' => 'Dubai',
                         'country' => 'UAE',
                     ],
-                    'required_date'    => now()->addDays($daysAhead)->toDateString(),
+                    'required_date' => now()->addDays($daysAhead)->toDateString(),
                     'approval_history' => $approvalHistory,
-                    'rfq_generated'    => $status === PurchaseRequestStatus::APPROVED,
+                    'rfq_generated' => $status === PurchaseRequestStatus::APPROVED,
                 ],
             );
             $pr->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt->copy()->addHours(8)])->saveQuietly();
@@ -1223,9 +1224,9 @@ class ComprehensiveSeeder extends Seeder
     // 27. RFQs (with auction)
     // ================================================================
     /**
-     * @param Collection<int,Branch>          $branches
-     * @param Collection<int,PurchaseRequest> $prs
-     * @param array<string,Category>          $cats
+     * @param  Collection<int,Branch>  $branches
+     * @param  Collection<int,PurchaseRequest>  $prs
+     * @param  array<string,Category>  $cats
      * @return Collection<int,Rfq>
      */
     private function seedRfqs(Company $buyer, Collection $branches, Collection $prs, Company $logistics, Company $clearance, Company $service, array $cats): Collection
@@ -1235,31 +1236,31 @@ class ComprehensiveSeeder extends Seeder
         $defs = [
             // [title, type, status, target_role, target_ids, cat, budget, deadline_days, prIdx, items]
             ['Copper Wire 16mm — Electrical', RfqType::SUPPLIER, RfqStatus::OPEN,      UserRole::SUPPLIER, $supplierIds, $cats['electronics'],  95000, 15, 3,
-                [['name'=>'Copper Wire 16mm','qty'=>10,'unit'=>'tons','specs'=>['IEC 60228 compliant','99.9% purity','500m spools']]]],
+                [['name' => 'Copper Wire 16mm', 'qty' => 10, 'unit' => 'tons', 'specs' => ['IEC 60228 compliant', '99.9% purity', '500m spools']]]],
 
             ['Office Workstations Bulk Order', RfqType::SUPPLIER, RfqStatus::OPEN,     UserRole::SUPPLIER, $supplierIds, $cats['office'],       340000, 18, 1,
-                [['name'=>'Modular Workstation','qty'=>200,'unit'=>'sets','specs'=>['Sit/stand desk','Mesh chair','5-yr warranty']]]],
+                [['name' => 'Modular Workstation', 'qty' => 200, 'unit' => 'sets', 'specs' => ['Sit/stand desk', 'Mesh chair', '5-yr warranty']]]],
 
             ['HVAC Retrofit — Closed', RfqType::SUPPLIER, RfqStatus::CLOSED,           UserRole::SUPPLIER, $supplierIds, $cats['construction'], 320000, -3, 2,
-                [['name'=>'Rooftop HVAC','qty'=>5,'unit'=>'units','specs'=>['20-ton','R-32 refrigerant','BACnet']]]],
+                [['name' => 'Rooftop HVAC', 'qty' => 5, 'unit' => 'units', 'specs' => ['20-ton', 'R-32 refrigerant', 'BACnet']]]],
 
             ['Industrial Pumps — Draft RFQ', RfqType::SUPPLIER, RfqStatus::DRAFT,      UserRole::SUPPLIER, $supplierIds, $cats['industrial'],   125000, 30, 0,
-                [['name'=>'Hydraulic Pump','qty'=>10,'unit'=>'pcs','specs'=>['45 L/min','Continuous duty']]]],
+                [['name' => 'Hydraulic Pump', 'qty' => 10, 'unit' => 'pcs', 'specs' => ['45 L/min', 'Continuous duty']]]],
 
             ['Cancelled Steel RFQ', RfqType::SUPPLIER, RfqStatus::CANCELLED,           UserRole::SUPPLIER, $supplierIds, $cats['construction'], 220000, 5, 4,
-                [['name'=>'Steel Rebar 16mm','qty'=>200,'unit'=>'tons','specs'=>['B500B','Mill cert']]]],
+                [['name' => 'Steel Rebar 16mm', 'qty' => 200, 'unit' => 'tons', 'specs' => ['B500B', 'Mill cert']]]],
 
             ['Logistics — Sea Freight Dubai→Jeddah', RfqType::LOGISTICS, RfqStatus::OPEN, UserRole::LOGISTICS, [$logistics->id], $cats['logistics-svc'], 18000, 10, 1,
-                [['name'=>'40ft container','qty'=>3,'unit'=>'containers','specs'=>['Door-to-door','Marine insurance']]]],
+                [['name' => '40ft container', 'qty' => 3, 'unit' => 'containers', 'specs' => ['Door-to-door', 'Marine insurance']]]],
 
             ['Customs — JAFZA Import Clearance', RfqType::CLEARANCE, RfqStatus::OPEN, UserRole::CLEARANCE, [$clearance->id], $cats['clearance-svc'], 4500, 7, 1,
-                [['name'=>'Clearance batch','qty'=>1,'unit'=>'job','specs'=>['HS classification','Duty calculation','Inspection support']]]],
+                [['name' => 'Clearance batch', 'qty' => 1, 'unit' => 'job', 'specs' => ['HS classification', 'Duty calculation', 'Inspection support']]]],
 
             ['Service — HVAC Installation', RfqType::SERVICE_PROVIDER, RfqStatus::OPEN, UserRole::SERVICE_PROVIDER, [$service->id], $cats['construction'], 65000, 14, 2,
-                [['name'=>'Installation service','qty'=>1,'unit'=>'job','specs'=>['Licensed crew','Commissioning included']]]],
+                [['name' => 'Installation service', 'qty' => 1, 'unit' => 'job', 'specs' => ['Licensed crew', 'Commissioning included']]]],
 
             ['Sales Offer — Excess Office Stock', RfqType::SALES_OFFER, RfqStatus::OPEN, UserRole::BUYER, [], $cats['office'], 50000, 21, 1,
-                [['name'=>'Office chairs','qty'=>120,'unit'=>'pcs','specs'=>['New, in box','Black mesh']]]],
+                [['name' => 'Office chairs', 'qty' => 120, 'unit' => 'pcs', 'specs' => ['New, in box', 'Black mesh']]]],
         ];
 
         $rfqs = collect();
@@ -1269,23 +1270,23 @@ class ComprehensiveSeeder extends Seeder
             $rfq = Rfq::updateOrCreate(
                 ['title' => $title],
                 [
-                    'rfq_number'         => sprintf('RFQ-%s-%04d', date('Y'), 1001 + $i),
-                    'description'        => 'Demo RFQ — ' . $title,
-                    'company_id'         => $buyer->id,
-                    'branch_id'          => $branches[$i % 2]->id,
-                    'purchase_request_id'=> $prs[$prIdx]->id,
-                    'type'               => $type->value,
-                    'target_role'        => $targetRole->value,
+                    'rfq_number' => sprintf('RFQ-%s-%04d', date('Y'), 1001 + $i),
+                    'description' => 'Demo RFQ — '.$title,
+                    'company_id' => $buyer->id,
+                    'branch_id' => $branches[$i % 2]->id,
+                    'purchase_request_id' => $prs[$prIdx]->id,
+                    'type' => $type->value,
+                    'target_role' => $targetRole->value,
                     'target_company_ids' => $targetIds,
-                    'status'             => $status->value,
-                    'items'              => $items,
-                    'budget'             => $budget,
-                    'currency'           => 'AED',
-                    'deadline'           => now()->addDays($deadlineDays),
-                    'delivery_location'  => 'Dubai Silicon Oasis, Building 12, UAE',
-                    'is_anonymous'       => false,
-                    'category_id'        => $cat->id,
-                    'is_auction'         => false,
+                    'status' => $status->value,
+                    'items' => $items,
+                    'budget' => $budget,
+                    'currency' => 'AED',
+                    'deadline' => now()->addDays($deadlineDays),
+                    'delivery_location' => 'Dubai Silicon Oasis, Building 12, UAE',
+                    'is_anonymous' => false,
+                    'category_id' => $cat->id,
+                    'is_auction' => false,
                 ],
             );
             $rfqs->push($rfq);
@@ -1295,30 +1296,30 @@ class ComprehensiveSeeder extends Seeder
         $auction = Rfq::updateOrCreate(
             ['title' => 'Live Auction — IT Hardware Refresh'],
             [
-                'rfq_number'         => sprintf('RFQ-%s-%04d', date('Y'), 9001),
-                'description'        => '50 laptops + 50 monitors. Live reverse auction — lowest bid wins.',
-                'company_id'         => $buyer->id,
-                'branch_id'          => $branches[0]->id,
-                'purchase_request_id'=> $prs[1]->id,
-                'type'               => RfqType::SUPPLIER->value,
-                'target_role'        => UserRole::SUPPLIER->value,
+                'rfq_number' => sprintf('RFQ-%s-%04d', date('Y'), 9001),
+                'description' => '50 laptops + 50 monitors. Live reverse auction — lowest bid wins.',
+                'company_id' => $buyer->id,
+                'branch_id' => $branches[0]->id,
+                'purchase_request_id' => $prs[1]->id,
+                'type' => RfqType::SUPPLIER->value,
+                'target_role' => UserRole::SUPPLIER->value,
                 'target_company_ids' => $supplierIds,
-                'status'             => RfqStatus::OPEN->value,
-                'items'              => [
-                    ['name' => 'Dell XPS 15 Laptop',          'qty' => 50, 'unit' => 'pcs', 'specs' => ['i7','32GB RAM','1TB SSD','3-yr warranty']],
-                    ['name' => 'Dell UltraSharp 27" Monitor', 'qty' => 50, 'unit' => 'pcs', 'specs' => ['4K IPS','USB-C','Height-adjustable']],
+                'status' => RfqStatus::OPEN->value,
+                'items' => [
+                    ['name' => 'Dell XPS 15 Laptop',          'qty' => 50, 'unit' => 'pcs', 'specs' => ['i7', '32GB RAM', '1TB SSD', '3-yr warranty']],
+                    ['name' => 'Dell UltraSharp 27" Monitor', 'qty' => 50, 'unit' => 'pcs', 'specs' => ['4K IPS', 'USB-C', 'Height-adjustable']],
                 ],
-                'budget'             => 450000,
-                'currency'           => 'AED',
-                'deadline'           => now()->addDays(3),
-                'delivery_location'  => 'Dubai Silicon Oasis, Building 12, UAE',
-                'is_anonymous'       => false,
-                'category_id'        => $cats['it-hardware']->id,
-                'is_auction'         => true,
-                'auction_starts_at'  => now()->subHours(2),
-                'auction_ends_at'    => now()->addHours(48),
-                'reserve_price'      => 380000,
-                'bid_decrement'      => 1000,
+                'budget' => 450000,
+                'currency' => 'AED',
+                'deadline' => now()->addDays(3),
+                'delivery_location' => 'Dubai Silicon Oasis, Building 12, UAE',
+                'is_anonymous' => false,
+                'category_id' => $cats['it-hardware']->id,
+                'is_auction' => true,
+                'auction_starts_at' => now()->subHours(2),
+                'auction_ends_at' => now()->addHours(48),
+                'reserve_price' => 380000,
+                'bid_decrement' => 1000,
                 'anti_snipe_seconds' => 120,
             ],
         );
@@ -1331,7 +1332,7 @@ class ComprehensiveSeeder extends Seeder
     // 28. Bids — every status across the open RFQs
     // ================================================================
     /**
-     * @param Collection<int,Rfq> $rfqs
+     * @param  Collection<int,Rfq>  $rfqs
      * @return Collection<int,Bid>
      */
     private function seedBids(Collection $rfqs, Company $logistics, Company $clearance, Company $service): Collection
@@ -1366,37 +1367,37 @@ class ComprehensiveSeeder extends Seeder
         foreach ($bidPlans as $rfqIdx => $plans) {
             $rfq = $rfqs[$rfqIdx];
             foreach ($plans as [$supIdx, $status, $factor]) {
-                $sup     = $this->suppliers[$supIdx];
+                $sup = $this->suppliers[$supIdx];
                 $contact = $supplierContacts[$supIdx];
-                $price   = round((float) $rfq->budget * $factor, 2);
+                $price = round((float) $rfq->budget * $factor, 2);
 
                 $bid = Bid::updateOrCreate(
                     ['rfq_id' => $rfq->id, 'company_id' => $sup->id],
                     [
-                        'provider_id'        => $contact?->id,
-                        'status'             => $status->value,
-                        'price'              => $price,
-                        'currency'           => 'AED',
+                        'provider_id' => $contact?->id,
+                        'status' => $status->value,
+                        'price' => $price,
+                        'currency' => 'AED',
                         'delivery_time_days' => 12 + $supIdx * 3,
-                        'payment_terms'      => '30% advance, 50% on production, 20% on delivery',
-                        'payment_schedule'   => [
+                        'payment_terms' => '30% advance, 50% on production, 20% on delivery',
+                        'payment_schedule' => [
                             ['milestone' => 'advance',    'percentage' => 30],
                             ['milestone' => 'production', 'percentage' => 50],
                             ['milestone' => 'delivery',   'percentage' => 20],
                         ],
                         'items' => collect($rfq->items)->map(fn ($it) => [
-                            'name'       => $it['name'] ?? 'Item',
-                            'qty'        => $it['qty'] ?? 1,
+                            'name' => $it['name'] ?? 'Item',
+                            'qty' => $it['qty'] ?? 1,
                             'unit_price' => round($price / max(count($rfq->items), 1) / max((int) ($it['qty'] ?? 1), 1), 2),
                         ])->toArray(),
                         'validity_date' => now()->addDays(30),
-                        'is_anonymous'  => false,
-                        'attachments'   => [],
-                        'ai_score'      => [
-                            'overall'    => 80 + $supIdx * 3,
+                        'is_anonymous' => false,
+                        'attachments' => [],
+                        'ai_score' => [
+                            'overall' => 80 + $supIdx * 3,
                             'compliance' => 88 + $supIdx,
-                            'rating'     => round(4.4 + (mt_rand(0, 5) / 10), 1),
-                            'notes'      => 'Strong delivery record and competitive payment terms.',
+                            'rating' => round(4.4 + (mt_rand(0, 5) / 10), 1),
+                            'notes' => 'Strong delivery record and competitive payment terms.',
                         ],
                         'notes' => 'Includes installation support and 1-year warranty.',
                     ],
@@ -1412,21 +1413,21 @@ class ComprehensiveSeeder extends Seeder
             $out->push(Bid::updateOrCreate(
                 ['rfq_id' => $logisticsRfq->id, 'company_id' => $logistics->id],
                 [
-                    'provider_id'        => $contact?->id,
-                    'status'             => BidStatus::SUBMITTED->value,
-                    'price'              => 16500,
-                    'currency'           => 'AED',
+                    'provider_id' => $contact?->id,
+                    'status' => BidStatus::SUBMITTED->value,
+                    'price' => 16500,
+                    'currency' => 'AED',
                     'delivery_time_days' => 10,
-                    'payment_terms'      => '50% on booking, 50% on delivery',
-                    'payment_schedule'   => [
+                    'payment_terms' => '50% on booking, 50% on delivery',
+                    'payment_schedule' => [
                         ['milestone' => 'booking',  'percentage' => 50],
                         ['milestone' => 'delivery', 'percentage' => 50],
                     ],
                     'items' => [['name' => '40ft container', 'qty' => 3, 'unit_price' => 5500]],
                     'validity_date' => now()->addDays(14),
-                    'is_anonymous'  => false,
-                    'ai_score'      => ['overall' => 86, 'compliance' => 90, 'rating' => 4.6],
-                    'notes'         => 'Door-to-door including marine insurance.',
+                    'is_anonymous' => false,
+                    'ai_score' => ['overall' => 86, 'compliance' => 90, 'rating' => 4.6],
+                    'notes' => 'Door-to-door including marine insurance.',
                 ],
             ));
         }
@@ -1438,17 +1439,17 @@ class ComprehensiveSeeder extends Seeder
             $out->push(Bid::updateOrCreate(
                 ['rfq_id' => $clearanceRfq->id, 'company_id' => $clearance->id],
                 [
-                    'provider_id'        => $contact?->id,
-                    'status'             => BidStatus::ACCEPTED->value,
-                    'price'              => 4200,
-                    'currency'           => 'AED',
+                    'provider_id' => $contact?->id,
+                    'status' => BidStatus::ACCEPTED->value,
+                    'price' => 4200,
+                    'currency' => 'AED',
                     'delivery_time_days' => 5,
-                    'payment_terms'      => '100% on completion',
-                    'payment_schedule'   => [['milestone' => 'completion', 'percentage' => 100]],
-                    'items'              => [['name' => 'Clearance batch', 'qty' => 1, 'unit_price' => 4200]],
-                    'validity_date'      => now()->addDays(14),
-                    'ai_score'           => ['overall' => 92, 'compliance' => 95, 'rating' => 4.8],
-                    'notes'              => 'Includes HS classification and duty calculation.',
+                    'payment_terms' => '100% on completion',
+                    'payment_schedule' => [['milestone' => 'completion', 'percentage' => 100]],
+                    'items' => [['name' => 'Clearance batch', 'qty' => 1, 'unit_price' => 4200]],
+                    'validity_date' => now()->addDays(14),
+                    'ai_score' => ['overall' => 92, 'compliance' => 95, 'rating' => 4.8],
+                    'notes' => 'Includes HS classification and duty calculation.',
                 ],
             ));
         }
@@ -1460,20 +1461,20 @@ class ComprehensiveSeeder extends Seeder
             $out->push(Bid::updateOrCreate(
                 ['rfq_id' => $serviceRfq->id, 'company_id' => $service->id],
                 [
-                    'provider_id'        => $contact?->id,
-                    'status'             => BidStatus::UNDER_REVIEW->value,
-                    'price'              => 62000,
-                    'currency'           => 'AED',
+                    'provider_id' => $contact?->id,
+                    'status' => BidStatus::UNDER_REVIEW->value,
+                    'price' => 62000,
+                    'currency' => 'AED',
                     'delivery_time_days' => 14,
-                    'payment_terms'      => '40% advance, 60% on commissioning',
-                    'payment_schedule'   => [
+                    'payment_terms' => '40% advance, 60% on commissioning',
+                    'payment_schedule' => [
                         ['milestone' => 'advance',       'percentage' => 40],
                         ['milestone' => 'commissioning', 'percentage' => 60],
                     ],
-                    'items'         => [['name' => 'Installation service', 'qty' => 1, 'unit_price' => 62000]],
+                    'items' => [['name' => 'Installation service', 'qty' => 1, 'unit_price' => 62000]],
                     'validity_date' => now()->addDays(21),
-                    'ai_score'      => ['overall' => 84, 'compliance' => 88, 'rating' => 4.5],
-                    'notes'         => 'Licensed crew, full commissioning report.',
+                    'ai_score' => ['overall' => 84, 'compliance' => 88, 'rating' => 4.5],
+                    'notes' => 'Licensed crew, full commissioning report.',
                 ],
             ));
         }
@@ -1484,32 +1485,32 @@ class ComprehensiveSeeder extends Seeder
             $out->push(Bid::updateOrCreate(
                 ['rfq_id' => $auctionRfq->id, 'company_id' => $this->suppliers[2]->id],
                 [
-                    'provider_id'        => $supplierContacts[2]?->id,
-                    'status'             => BidStatus::SUBMITTED->value,
-                    'price'              => 432000,
-                    'currency'           => 'AED',
+                    'provider_id' => $supplierContacts[2]?->id,
+                    'status' => BidStatus::SUBMITTED->value,
+                    'price' => 432000,
+                    'currency' => 'AED',
                     'delivery_time_days' => 10,
-                    'payment_terms'      => '100% on delivery',
-                    'payment_schedule'   => [['milestone' => 'delivery', 'percentage' => 100]],
-                    'items'              => [
+                    'payment_terms' => '100% on delivery',
+                    'payment_schedule' => [['milestone' => 'delivery', 'percentage' => 100]],
+                    'items' => [
                         ['name' => 'Dell XPS 15 Laptop',          'qty' => 50, 'unit_price' => 5500],
                         ['name' => 'Dell UltraSharp 27" Monitor', 'qty' => 50, 'unit_price' => 3140],
                     ],
                     'validity_date' => now()->addDays(7),
-                    'ai_score'      => ['overall' => 88, 'compliance' => 92, 'rating' => 4.7],
-                    'notes'         => 'Auction bid — round 1.',
+                    'ai_score' => ['overall' => 88, 'compliance' => 92, 'rating' => 4.7],
+                    'notes' => 'Auction bid — round 1.',
                 ],
             ));
             $out->push(Bid::updateOrCreate(
                 ['rfq_id' => $auctionRfq->id, 'company_id' => $this->suppliers[3]->id],
                 [
-                    'provider_id'        => $supplierContacts[3]?->id,
-                    'status'             => BidStatus::SUBMITTED->value,
-                    'price'              => 425000,
-                    'currency'           => 'AED',
+                    'provider_id' => $supplierContacts[3]?->id,
+                    'status' => BidStatus::SUBMITTED->value,
+                    'price' => 425000,
+                    'currency' => 'AED',
                     'delivery_time_days' => 12,
-                    'payment_terms'      => '50% advance, 50% on delivery',
-                    'payment_schedule'   => [
+                    'payment_terms' => '50% advance, 50% on delivery',
+                    'payment_schedule' => [
                         ['milestone' => 'advance',  'percentage' => 50],
                         ['milestone' => 'delivery', 'percentage' => 50],
                     ],
@@ -1518,8 +1519,8 @@ class ComprehensiveSeeder extends Seeder
                         ['name' => 'Dell UltraSharp 27" Monitor', 'qty' => 50, 'unit_price' => 3100],
                     ],
                     'validity_date' => now()->addDays(7),
-                    'ai_score'      => ['overall' => 90, 'compliance' => 93, 'rating' => 4.8],
-                    'notes'         => 'Auction bid — undercut round 1.',
+                    'ai_score' => ['overall' => 90, 'compliance' => 93, 'rating' => 4.8],
+                    'notes' => 'Auction bid — undercut round 1.',
                 ],
             ));
         }
@@ -1534,12 +1535,12 @@ class ComprehensiveSeeder extends Seeder
     private function seedNegotiationMessages(Collection $bids): void
     {
         $target = $bids->first(fn (Bid $b) => $b->status === BidStatus::UNDER_REVIEW);
-        if (!$target) {
+        if (! $target) {
             return;
         }
         $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
         $supplierContact = User::where('company_id', $target->company_id)->where('role', UserRole::SUPPLIER->value)->first();
-        if (!$ahmed || !$supplierContact) {
+        if (! $ahmed || ! $supplierContact) {
             return;
         }
 
@@ -1550,14 +1551,14 @@ class ComprehensiveSeeder extends Seeder
         NegotiationMessage::firstOrCreate(
             ['bid_id' => $target->id, 'sender_id' => $supplierContact->id, 'kind' => NegotiationMessage::KIND_COUNTER_OFFER, 'round_number' => 1],
             [
-                'sender_side'  => 'supplier',
-                'body'         => 'Counter offer round 1',
-                'offer'        => [
-                    'amount'        => (float) $target->price * 0.96,
-                    'currency'      => 'AED',
+                'sender_side' => 'supplier',
+                'body' => 'Counter offer round 1',
+                'offer' => [
+                    'amount' => (float) $target->price * 0.96,
+                    'currency' => 'AED',
                     'delivery_days' => 11,
                     'payment_terms' => '30% advance, 50% production, 20% delivery',
-                    'reason'        => 'Reduced margin to stay within budget',
+                    'reason' => 'Reduced margin to stay within budget',
                 ],
                 'round_status' => NegotiationMessage::ROUND_COUNTERED,
             ],
@@ -1565,14 +1566,14 @@ class ComprehensiveSeeder extends Seeder
         NegotiationMessage::firstOrCreate(
             ['bid_id' => $target->id, 'sender_id' => $ahmed->id, 'kind' => NegotiationMessage::KIND_COUNTER_OFFER, 'round_number' => 2],
             [
-                'sender_side'  => 'buyer',
-                'body'         => 'Counter offer round 2',
-                'offer'        => [
-                    'amount'        => (float) $target->price * 0.93,
-                    'currency'      => 'AED',
+                'sender_side' => 'buyer',
+                'body' => 'Counter offer round 2',
+                'offer' => [
+                    'amount' => (float) $target->price * 0.93,
+                    'currency' => 'AED',
                     'delivery_days' => 10,
                     'payment_terms' => '20% advance, 60% production, 20% delivery',
-                    'reason'        => 'Need a slightly better price to approve internally',
+                    'reason' => 'Need a slightly better price to approve internally',
                 ],
                 'round_status' => NegotiationMessage::ROUND_OPEN,
             ],
@@ -1587,8 +1588,8 @@ class ComprehensiveSeeder extends Seeder
     // 31. Contracts — every status, with structured terms + signatures
     // ================================================================
     /**
-     * @param Collection<int,PurchaseRequest> $prs
-     * @param Collection<int,Branch>          $branches
+     * @param  Collection<int,PurchaseRequest>  $prs
+     * @param  Collection<int,Branch>  $branches
      * @return Collection<int,Contract>
      */
     private function seedContracts(Company $buyer, Company $logistics, Collection $prs, Collection $branches): Collection
@@ -1623,13 +1624,13 @@ class ComprehensiveSeeder extends Seeder
             }
 
             $progress = match ($status) {
-                ContractStatus::DRAFT              => null,
+                ContractStatus::DRAFT => null,
                 ContractStatus::PENDING_SIGNATURES => 0,
-                ContractStatus::SIGNED             => 5,
-                ContractStatus::ACTIVE             => 55,
-                ContractStatus::COMPLETED          => 100,
-                ContractStatus::TERMINATED         => 40,
-                ContractStatus::CANCELLED          => 0,
+                ContractStatus::SIGNED => 5,
+                ContractStatus::ACTIVE => 55,
+                ContractStatus::COMPLETED => 100,
+                ContractStatus::TERMINATED => 40,
+                ContractStatus::CANCELLED => 0,
             };
 
             $progressUpdates = $status === ContractStatus::ACTIVE ? [
@@ -1645,36 +1646,36 @@ class ComprehensiveSeeder extends Seeder
             $contract = Contract::updateOrCreate(
                 ['contract_number' => $number],
                 [
-                    'title'               => $title,
-                    'description'         => 'Procurement contract for ' . $title,
+                    'title' => $title,
+                    'description' => 'Procurement contract for '.$title,
                     'purchase_request_id' => $prs[$i % $prs->count()]->id,
-                    'buyer_company_id'    => $buyer->id,
-                    'branch_id'           => $branches[$i % 2]->id,
-                    'status'              => $status->value,
-                    'parties'             => [
+                    'buyer_company_id' => $buyer->id,
+                    'branch_id' => $branches[$i % 2]->id,
+                    'status' => $status->value,
+                    'parties' => [
                         ['company_id' => $buyer->id,    'name' => $buyer->name,    'role' => 'buyer'],
                         ['company_id' => $supplier->id, 'name' => $supplier->name, 'role' => 'supplier'],
                     ],
                     'amounts' => [
                         'subtotal' => $total,
-                        'vat'      => $total * 0.05,
-                        'total'    => $total * 1.05,
+                        'vat' => $total * 0.05,
+                        'total' => $total * 1.05,
                     ],
-                    'total_amount'        => $total,
-                    'currency'            => 'AED',
-                    'payment_schedule'    => [
+                    'total_amount' => $total,
+                    'currency' => 'AED',
+                    'payment_schedule' => [
                         ['milestone' => 'advance',    'percentage' => 30, 'amount' => $total * 0.30],
                         ['milestone' => 'production', 'percentage' => 50, 'amount' => $total * 0.50],
                         ['milestone' => 'delivery',   'percentage' => 20, 'amount' => $total * 0.20],
                     ],
-                    'signatures'          => $signatures,
-                    'terms'               => json_encode($this->buildContractTerms($total), JSON_UNESCAPED_UNICODE),
-                    'start_date'          => now()->addDays($startOffset)->toDateString(),
-                    'end_date'            => now()->addDays($endOffset)->toDateString(),
-                    'version'             => 1,
+                    'signatures' => $signatures,
+                    'terms' => json_encode($this->buildContractTerms($total), JSON_UNESCAPED_UNICODE),
+                    'start_date' => now()->addDays($startOffset)->toDateString(),
+                    'end_date' => now()->addDays($endOffset)->toDateString(),
+                    'version' => 1,
                     'progress_percentage' => $progress,
-                    'progress_updates'    => $progressUpdates,
-                    'supplier_documents'  => $supplierDocs,
+                    'progress_updates' => $progressUpdates,
+                    'supplier_documents' => $supplierDocs,
                 ],
             );
             $contracts->push($contract);
@@ -1706,7 +1707,7 @@ class ComprehensiveSeeder extends Seeder
                 '30% advance payment upon contract signing',
                 '50% upon production completion verification',
                 '20% upon successful delivery and inspection',
-                'Total contract value: AED ' . number_format($total),
+                'Total contract value: AED '.number_format($total),
             ]],
             ['title' => 'Dispute Resolution', 'items' => [
                 'Governed by UAE Commercial Law',
@@ -1723,24 +1724,24 @@ class ComprehensiveSeeder extends Seeder
     private function seedContractAmendmentsAndVersions(Collection $contracts): void
     {
         $active = $contracts->first(fn (Contract $c) => $c->status === ContractStatus::ACTIVE);
-        if (!$active) {
+        if (! $active) {
             return;
         }
-        $ahmed   = User::where('email', 'buyer@al-ahram.test')->first();
+        $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
         $manager = User::where('email', 'manager@al-ahram.test')->first();
 
         ContractAmendment::firstOrCreate(
             ['contract_id' => $active->id, 'reason' => 'Delivery delay due to upstream material availability.'],
             [
                 'from_version' => 1,
-                'changes'      => [
+                'changes' => [
                     ['field' => 'end_date', 'from' => $active->end_date->toDateString(), 'to' => $active->end_date->copy()->addDays(14)->toDateString()],
                 ],
-                'status'           => AmendmentStatus::PENDING_APPROVAL->value,
+                'status' => AmendmentStatus::PENDING_APPROVAL->value,
                 'approval_history' => [
                     ['action' => 'submitted', 'by' => $ahmed?->full_name, 'at' => now()->subDay()->toDateTimeString()],
                 ],
-                'requested_by'     => $ahmed?->id,
+                'requested_by' => $ahmed?->id,
             ],
         );
 
@@ -1748,15 +1749,15 @@ class ComprehensiveSeeder extends Seeder
             ['contract_id' => $active->id, 'reason' => 'Price uplift agreed for additional inspection scope.'],
             [
                 'from_version' => 1,
-                'changes'      => [
+                'changes' => [
                     ['field' => 'total_amount', 'from' => (float) $active->total_amount, 'to' => (float) $active->total_amount + 5000],
                 ],
-                'status'           => AmendmentStatus::APPROVED->value,
+                'status' => AmendmentStatus::APPROVED->value,
                 'approval_history' => [
                     ['action' => 'submitted', 'by' => $ahmed?->full_name,   'at' => now()->subDays(3)->toDateTimeString()],
                     ['action' => 'approved',  'by' => $manager?->full_name, 'at' => now()->subDays(2)->toDateTimeString()],
                 ],
-                'requested_by'     => $ahmed?->id,
+                'requested_by' => $ahmed?->id,
             ],
         );
 
@@ -1764,10 +1765,10 @@ class ComprehensiveSeeder extends Seeder
             ['contract_id' => $active->id, 'version' => 1],
             [
                 'snapshot' => [
-                    'title'        => $active->title,
+                    'title' => $active->title,
                     'total_amount' => (float) $active->total_amount,
-                    'end_date'     => $active->end_date->toDateString(),
-                    'terms'        => $active->terms,
+                    'end_date' => $active->end_date->toDateString(),
+                    'terms' => $active->terms,
                 ],
                 'created_by' => $ahmed?->id,
             ],
@@ -1778,7 +1779,7 @@ class ComprehensiveSeeder extends Seeder
     // 33 + 34. Escrow accounts and releases
     // ================================================================
     /**
-     * @param Collection<int,Contract> $contracts
+     * @param  Collection<int,Contract>  $contracts
      * @return Collection<int,EscrowAccount>
      */
     private function seedEscrowAccountsAndReleases(Collection $contracts): Collection
@@ -1791,25 +1792,25 @@ class ComprehensiveSeeder extends Seeder
 
         $accounts = collect();
         foreach ($eligible as $contract) {
-            $total      = (float) $contract->total_amount;
+            $total = (float) $contract->total_amount;
             $isComplete = $contract->status === ContractStatus::COMPLETED;
-            $isActive   = $contract->status === ContractStatus::ACTIVE;
+            $isActive = $contract->status === ContractStatus::ACTIVE;
 
             $deposited = $isComplete ? $total : ($isActive ? $total * 0.80 : $total * 0.30);
-            $released  = $isComplete ? $total : ($isActive ? $total * 0.30 : 0);
+            $released = $isComplete ? $total : ($isActive ? $total * 0.30 : 0);
 
             $account = EscrowAccount::updateOrCreate(
                 ['contract_id' => $contract->id],
                 [
-                    'bank_partner'        => 'mashreq_neobiz',
-                    'external_account_id' => 'ESC-' . $contract->contract_number,
-                    'currency'            => 'AED',
-                    'total_deposited'     => $deposited,
-                    'total_released'      => $released,
-                    'status'              => $isComplete ? 'closed' : 'active',
-                    'activated_at'        => now()->subDays(20),
-                    'closed_at'           => $isComplete ? now()->subDays(5) : null,
-                    'metadata'            => ['retention_days' => 30],
+                    'bank_partner' => 'mashreq_neobiz',
+                    'external_account_id' => 'ESC-'.$contract->contract_number,
+                    'currency' => 'AED',
+                    'total_deposited' => $deposited,
+                    'total_released' => $released,
+                    'status' => $isComplete ? 'closed' : 'active',
+                    'activated_at' => now()->subDays(20),
+                    'closed_at' => $isComplete ? now()->subDays(5) : null,
+                    'metadata' => ['retention_days' => 30],
                 ],
             );
             $contract->forceFill(['escrow_account_id' => $account->id])->save();
@@ -1818,12 +1819,12 @@ class ComprehensiveSeeder extends Seeder
             EscrowRelease::firstOrCreate(
                 ['escrow_account_id' => $account->id, 'type' => 'deposit', 'milestone' => 'initial'],
                 [
-                    'amount'         => $deposited,
-                    'currency'       => 'AED',
-                    'triggered_by'   => 'manual',
-                    'bank_reference' => 'DEP-' . $contract->contract_number,
-                    'notes'          => 'Initial deposit by buyer.',
-                    'recorded_at'    => now()->subDays(20),
+                    'amount' => $deposited,
+                    'currency' => 'AED',
+                    'triggered_by' => 'manual',
+                    'bank_reference' => 'DEP-'.$contract->contract_number,
+                    'notes' => 'Initial deposit by buyer.',
+                    'recorded_at' => now()->subDays(20),
                 ],
             );
 
@@ -1831,12 +1832,12 @@ class ComprehensiveSeeder extends Seeder
                 EscrowRelease::firstOrCreate(
                     ['escrow_account_id' => $account->id, 'type' => 'release', 'milestone' => 'advance'],
                     [
-                        'amount'         => $released,
-                        'currency'       => 'AED',
-                        'triggered_by'   => 'auto_signature',
-                        'bank_reference' => 'REL-' . $contract->contract_number . '-1',
-                        'notes'          => 'Auto-released on contract signature.',
-                        'recorded_at'    => now()->subDays(15),
+                        'amount' => $released,
+                        'currency' => 'AED',
+                        'triggered_by' => 'auto_signature',
+                        'bank_reference' => 'REL-'.$contract->contract_number.'-1',
+                        'notes' => 'Auto-released on contract signature.',
+                        'recorded_at' => now()->subDays(15),
                     ],
                 );
             }
@@ -1851,24 +1852,25 @@ class ComprehensiveSeeder extends Seeder
     // 35. Payments — every PaymentStatus value
     // ================================================================
     /**
-     * @param Collection<int,Contract>      $contracts
-     * @param Collection<int,EscrowAccount> $escrows
+     * @param  Collection<int,Contract>  $contracts
+     * @param  Collection<int,EscrowAccount>  $escrows
      * @return Collection<int,Payment>
      */
     private function seedPayments(Collection $contracts, Company $buyer, Collection $escrows): Collection
     {
-        $ahmed   = User::where('email', 'buyer@al-ahram.test')->first();
+        $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
         $manager = User::where('email', 'manager@al-ahram.test')->first();
 
         $supplierFor = function (Contract $c): ?Company {
-            $partyIds   = collect($c->parties)->pluck('company_id')->filter()->all();
+            $partyIds = collect($c->parties)->pluck('company_id')->filter()->all();
             $supplierId = collect($partyIds)->first(fn ($id) => $this->suppliers->pluck('id')->contains($id));
+
             return $this->suppliers->firstWhere('id', $supplierId) ?? $this->suppliers->first();
         };
 
-        $active     = $contracts->first(fn (Contract $c) => $c->status === ContractStatus::ACTIVE);
-        $signed     = $contracts->first(fn (Contract $c) => $c->status === ContractStatus::SIGNED);
-        $completed  = $contracts->first(fn (Contract $c) => $c->status === ContractStatus::COMPLETED);
+        $active = $contracts->first(fn (Contract $c) => $c->status === ContractStatus::ACTIVE);
+        $signed = $contracts->first(fn (Contract $c) => $c->status === ContractStatus::SIGNED);
+        $completed = $contracts->first(fn (Contract $c) => $c->status === ContractStatus::COMPLETED);
         $terminated = $contracts->first(fn (Contract $c) => $c->status === ContractStatus::TERMINATED);
 
         $rows = [];
@@ -1891,7 +1893,7 @@ class ComprehensiveSeeder extends Seeder
         }
         if ($terminated) {
             $sup = $supplierFor($terminated);
-            $rows[] = [$terminated, $sup, PaymentStatus::FAILED,       66000, 'Advance Payment — gateway failure',-45];
+            $rows[] = [$terminated, $sup, PaymentStatus::FAILED,       66000, 'Advance Payment — gateway failure', -45];
             $rows[] = [$terminated, $sup, PaymentStatus::CANCELLED,    44000, 'Production Payment — cancelled',  -20];
         }
 
@@ -1902,21 +1904,21 @@ class ComprehensiveSeeder extends Seeder
             $payment = Payment::updateOrCreate(
                 ['contract_id' => $contract->id, 'milestone' => $milestone],
                 [
-                    'company_id'           => $buyer->id,
+                    'company_id' => $buyer->id,
                     'recipient_company_id' => $sup->id,
-                    'buyer_id'             => $ahmed?->id,
-                    'status'               => $status->value,
-                    'amount'               => $amount,
-                    'vat_rate'             => 5.00,
-                    'vat_amount'           => $amount * 0.05,
-                    'total_amount'         => $amount * 1.05,
-                    'currency'             => 'AED',
-                    'milestone'            => $milestone,
-                    'approved_at'          => in_array($status, [PaymentStatus::COMPLETED, PaymentStatus::APPROVED, PaymentStatus::PROCESSING], true)
+                    'buyer_id' => $ahmed?->id,
+                    'status' => $status->value,
+                    'amount' => $amount,
+                    'vat_rate' => 5.00,
+                    'vat_amount' => $amount * 0.05,
+                    'total_amount' => $amount * 1.05,
+                    'currency' => 'AED',
+                    'milestone' => $milestone,
+                    'approved_at' => in_array($status, [PaymentStatus::COMPLETED, PaymentStatus::APPROVED, PaymentStatus::PROCESSING], true)
                         ? now()->addDays($offset) : null,
-                    'approved_by'          => in_array($status, [PaymentStatus::COMPLETED, PaymentStatus::APPROVED, PaymentStatus::PROCESSING], true)
+                    'approved_by' => in_array($status, [PaymentStatus::COMPLETED, PaymentStatus::APPROVED, PaymentStatus::PROCESSING], true)
                         ? $manager?->id : null,
-                    'rejection_reason'     => $status === PaymentStatus::REJECTED ? 'Supplier did not meet milestone evidence requirement.' : null,
+                    'rejection_reason' => $status === PaymentStatus::REJECTED ? 'Supplier did not meet milestone evidence requirement.' : null,
                 ],
             );
             $payment->forceFill(['created_at' => now()->addDays($offset)])->saveQuietly();
@@ -1930,7 +1932,7 @@ class ComprehensiveSeeder extends Seeder
     // 36 + 37. Shipments + tracking events
     // ================================================================
     /**
-     * @param Collection<int,Contract> $contracts
+     * @param  Collection<int,Contract>  $contracts
      * @return Collection<int,Shipment>
      */
     private function seedShipments(Collection $contracts, Company $buyer, Company $logistics): Collection
@@ -1962,19 +1964,19 @@ class ComprehensiveSeeder extends Seeder
             $shipment = Shipment::updateOrCreate(
                 ['tracking_number' => sprintf('SHP-%s-%04d', date('Y'), 1001 + $i)],
                 [
-                    'contract_id'            => $contract->id,
-                    'company_id'             => $buyer->id,
-                    'logistics_company_id'   => $logistics->id,
-                    'status'                 => $status->value,
-                    'origin'                 => ['city' => $originCity, 'country' => 'UAE', 'address' => $originCity],
-                    'destination'            => ['city' => $destCity,   'country' => 'UAE', 'address' => $destCity],
-                    'current_location'       => ['city' => $originCity, 'country' => 'UAE'],
-                    'inspection_status'      => $status === ShipmentStatus::DELIVERED ? 'passed' : null,
-                    'customs_clearance_status'=> in_array($status, [ShipmentStatus::IN_CLEARANCE, ShipmentStatus::DELIVERED], true) ? 'cleared' : null,
-                    'customs_documents'      => [],
-                    'estimated_delivery'     => now()->addDays($etaOffset),
-                    'actual_delivery'        => $status === ShipmentStatus::DELIVERED ? now()->addDays($etaOffset) : null,
-                    'notes'                  => 'Carrier: FastLine Logistics. Real-time GPS enabled.',
+                    'contract_id' => $contract->id,
+                    'company_id' => $buyer->id,
+                    'logistics_company_id' => $logistics->id,
+                    'status' => $status->value,
+                    'origin' => ['city' => $originCity, 'country' => 'UAE', 'address' => $originCity],
+                    'destination' => ['city' => $destCity,   'country' => 'UAE', 'address' => $destCity],
+                    'current_location' => ['city' => $originCity, 'country' => 'UAE'],
+                    'inspection_status' => $status === ShipmentStatus::DELIVERED ? 'passed' : null,
+                    'customs_clearance_status' => in_array($status, [ShipmentStatus::IN_CLEARANCE, ShipmentStatus::DELIVERED], true) ? 'cleared' : null,
+                    'customs_documents' => [],
+                    'estimated_delivery' => now()->addDays($etaOffset),
+                    'actual_delivery' => $status === ShipmentStatus::DELIVERED ? now()->addDays($etaOffset) : null,
+                    'notes' => 'Carrier: FastLine Logistics. Real-time GPS enabled.',
                 ],
             );
 
@@ -1990,25 +1992,25 @@ class ComprehensiveSeeder extends Seeder
     private function seedTrackingEvents(Shipment $shipment, ShipmentStatus $finalStatus, string $originCity, string $destCity): void
     {
         $progression = [
-            ShipmentStatus::IN_PRODUCTION->value    => ['Goods being prepared at supplier facility',  $originCity,                  -10],
+            ShipmentStatus::IN_PRODUCTION->value => ['Goods being prepared at supplier facility',  $originCity,                  -10],
             ShipmentStatus::READY_FOR_PICKUP->value => ['Goods ready, logistics provider notified',   $originCity,                   -7],
-            ShipmentStatus::IN_TRANSIT->value       => ['Shipment picked up and en route',            'Highway en route',            -3],
-            ShipmentStatus::IN_CLEARANCE->value     => ['Customs clearance in progress',              $destCity . ' Customs Port',   -1],
-            ShipmentStatus::DELIVERED->value        => ['Shipment delivered successfully',            $destCity,                      0],
+            ShipmentStatus::IN_TRANSIT->value => ['Shipment picked up and en route',            'Highway en route',            -3],
+            ShipmentStatus::IN_CLEARANCE->value => ['Customs clearance in progress',              $destCity.' Customs Port',   -1],
+            ShipmentStatus::DELIVERED->value => ['Shipment delivered successfully',            $destCity,                      0],
         ];
 
         $stop = $finalStatus->value;
         $emit = true;
         foreach ($progression as $status => [$desc, $loc, $offset]) {
-            if (!$emit) {
+            if (! $emit) {
                 break;
             }
             TrackingEvent::create([
                 'shipment_id' => $shipment->id,
-                'status'      => $status,
+                'status' => $status,
                 'description' => $desc,
-                'location'    => ['city' => $loc, 'country' => 'UAE', 'address' => $loc],
-                'event_at'    => now()->addDays($offset),
+                'location' => ['city' => $loc, 'country' => 'UAE', 'address' => $loc],
+                'event_at' => now()->addDays($offset),
             ]);
             if ($status === $stop) {
                 $emit = false;
@@ -2018,10 +2020,10 @@ class ComprehensiveSeeder extends Seeder
         if ($finalStatus === ShipmentStatus::CANCELLED) {
             TrackingEvent::create([
                 'shipment_id' => $shipment->id,
-                'status'      => ShipmentStatus::CANCELLED->value,
+                'status' => ShipmentStatus::CANCELLED->value,
                 'description' => 'Shipment cancelled by buyer.',
-                'location'    => ['city' => $originCity, 'country' => 'UAE'],
-                'event_at'    => now()->subDay(),
+                'location' => ['city' => $originCity, 'country' => 'UAE'],
+                'event_at' => now()->subDay(),
             ]);
         }
     }
@@ -2036,15 +2038,15 @@ class ComprehensiveSeeder extends Seeder
             CarbonFootprint::firstOrCreate(
                 [
                     'entity_type' => 'shipment',
-                    'entity_id'   => $shipment->id,
+                    'entity_id' => $shipment->id,
                 ],
                 [
-                    'scope'        => 3,
-                    'co2e_kg'      => 1200 + ($shipment->id * 37) % 1500,
+                    'scope' => 3,
+                    'co2e_kg' => 1200 + ($shipment->id * 37) % 1500,
                     'period_start' => now()->subDays(15)->toDateString(),
-                    'period_end'   => now()->toDateString(),
-                    'source'       => 'shipment_calculation',
-                    'metadata'     => ['mode' => 'road', 'distance_km' => 380 + ($shipment->id * 11) % 200],
+                    'period_end' => now()->toDateString(),
+                    'source' => 'shipment_calculation',
+                    'metadata' => ['mode' => 'road', 'distance_km' => 380 + ($shipment->id * 11) % 200],
                 ],
             );
         }
@@ -2067,7 +2069,7 @@ class ComprehensiveSeeder extends Seeder
         }
 
         $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
-        $gov   = User::where('email', 'gov@trilink.test')->first();
+        $gov = User::where('email', 'gov@trilink.test')->first();
 
         $defs = [
             [DisputeType::QUALITY,         DisputeStatus::OPEN,         'Non-compliant product specifications',     'Received copper wire does not meet IEC 60228 standards as specified.'],
@@ -2081,26 +2083,26 @@ class ComprehensiveSeeder extends Seeder
             [$type, $status, $title, $desc] = $d;
             $contract = $eligible[$i % $eligible->count()];
 
-            $partyIds   = collect($contract->parties)->pluck('company_id')->filter()->all();
+            $partyIds = collect($contract->parties)->pluck('company_id')->filter()->all();
             $supplierId = collect($partyIds)->first(fn ($id) => $this->suppliers->pluck('id')->contains($id));
-            $against    = $this->suppliers->firstWhere('id', $supplierId) ?? $this->suppliers->first();
+            $against = $this->suppliers->firstWhere('id', $supplierId) ?? $this->suppliers->first();
 
             Dispute::updateOrCreate(
                 ['title' => $title, 'contract_id' => $contract->id],
                 [
-                    'company_id'              => $buyer->id,
-                    'raised_by'               => $ahmed?->id,
-                    'against_company_id'      => $against->id,
-                    'assigned_to'             => in_array($status, [DisputeStatus::UNDER_REVIEW, DisputeStatus::ESCALATED], true) ? $gov?->id : null,
-                    'type'                    => $type->value,
-                    'status'                  => $status->value,
-                    'description'             => $desc,
-                    'sla_due_date'            => now()->addDays(7 - $i),
+                    'company_id' => $buyer->id,
+                    'raised_by' => $ahmed?->id,
+                    'against_company_id' => $against->id,
+                    'assigned_to' => in_array($status, [DisputeStatus::UNDER_REVIEW, DisputeStatus::ESCALATED], true) ? $gov?->id : null,
+                    'type' => $type->value,
+                    'status' => $status->value,
+                    'description' => $desc,
+                    'sla_due_date' => now()->addDays(7 - $i),
                     'escalated_to_government' => $status === DisputeStatus::ESCALATED,
-                    'resolution'              => $status === DisputeStatus::RESOLVED
+                    'resolution' => $status === DisputeStatus::RESOLVED
                         ? 'Mutual write-off agreed. Supplier credited buyer for the disputed extras and the matter is closed.'
                         : null,
-                    'resolved_at'             => $status === DisputeStatus::RESOLVED ? now()->subDays(5) : null,
+                    'resolved_at' => $status === DisputeStatus::RESOLVED ? now()->subDays(5) : null,
                 ],
             );
         }
@@ -2113,24 +2115,24 @@ class ComprehensiveSeeder extends Seeder
     private function seedFeedback(Collection $contracts, Company $buyer): void
     {
         $completed = $contracts->filter(fn (Contract $c) => $c->status === ContractStatus::COMPLETED);
-        $ahmed     = User::where('email', 'buyer@al-ahram.test')->first();
+        $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
 
         foreach ($completed as $contract) {
-            $partyIds   = collect($contract->parties)->pluck('company_id')->filter()->all();
+            $partyIds = collect($contract->parties)->pluck('company_id')->filter()->all();
             $supplierId = collect($partyIds)->first(fn ($id) => $this->suppliers->pluck('id')->contains($id));
-            if (!$supplierId) {
+            if (! $supplierId) {
                 continue;
             }
 
             Feedback::updateOrCreate(
                 ['contract_id' => $contract->id, 'rater_company_id' => $buyer->id],
                 [
-                    'target_company_id'   => $supplierId,
-                    'rater_user_id'       => $ahmed?->id,
-                    'rating'              => 5,
-                    'comment'             => 'Excellent execution — on time, on spec, and easy to communicate with.',
-                    'quality_score'       => 5,
-                    'on_time_score'       => 5,
+                    'target_company_id' => $supplierId,
+                    'rater_user_id' => $ahmed?->id,
+                    'rating' => 5,
+                    'comment' => 'Excellent execution — on time, on spec, and easy to communicate with.',
+                    'quality_score' => 5,
+                    'on_time_score' => 5,
                     'communication_score' => 4,
                 ],
             );
@@ -2143,7 +2145,7 @@ class ComprehensiveSeeder extends Seeder
     private function seedSavedSearchesAndHistory(Company $buyer): void
     {
         $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
-        if (!$ahmed) {
+        if (! $ahmed) {
             return;
         }
 
@@ -2156,9 +2158,9 @@ class ComprehensiveSeeder extends Seeder
             SavedSearch::updateOrCreate(
                 ['user_id' => $ahmed->id, 'label' => $label],
                 [
-                    'resource_type'    => $resource,
-                    'filters'          => $filters,
-                    'is_active'        => true,
+                    'resource_type' => $resource,
+                    'filters' => $filters,
+                    'is_active' => true,
                     'last_notified_at' => now()->subDays(2),
                 ],
             );
@@ -2187,12 +2189,12 @@ class ComprehensiveSeeder extends Seeder
             $endpoint = WebhookEndpoint::updateOrCreate(
                 ['company_id' => $buyer->id, 'label' => $label],
                 [
-                    'url'               => $url,
-                    'events'            => $events,
-                    'secret'            => Str::random(48),
-                    'is_active'         => true,
+                    'url' => $url,
+                    'events' => $events,
+                    'secret' => Str::random(48),
+                    'is_active' => true,
                     'last_delivered_at' => now()->subHours(3),
-                    'failure_count'     => 0,
+                    'failure_count' => 0,
                 ],
             );
 
@@ -2207,14 +2209,14 @@ class ComprehensiveSeeder extends Seeder
             foreach ($deliveryDefs as $i => [$event, $status, $deliveryStatus, $body]) {
                 WebhookDelivery::create([
                     'webhook_endpoint_id' => $endpoint->id,
-                    'event'               => $event,
-                    'payload'             => ['event' => $event, 'demo' => true],
-                    'response_status'     => $status,
-                    'response_body'       => $body,
-                    'attempt'             => 1,
-                    'status'              => $deliveryStatus,
-                    'created_at'          => now()->subHours($i + 1),
-                    'updated_at'          => now()->subHours($i + 1),
+                    'event' => $event,
+                    'payload' => ['event' => $event, 'demo' => true],
+                    'response_status' => $status,
+                    'response_body' => $body,
+                    'attempt' => 1,
+                    'status' => $deliveryStatus,
+                    'created_at' => now()->subHours($i + 1),
+                    'updated_at' => now()->subHours($i + 1),
                 ]);
             }
         }
@@ -2233,12 +2235,12 @@ class ComprehensiveSeeder extends Seeder
             ErpConnector::updateOrCreate(
                 ['company_id' => $buyer->id, 'label' => $label],
                 [
-                    'type'                  => $type,
-                    'base_url'              => $baseUrl,
+                    'type' => $type,
+                    'base_url' => $baseUrl,
                     'credentials_encrypted' => encrypt(['api_key' => 'demo-key', 'secret' => 'demo-secret']),
-                    'is_active'             => true,
-                    'last_sync_at'          => now()->subHours(6),
-                    'metadata'              => ['version' => '17.0', 'environment' => 'production'],
+                    'is_active' => true,
+                    'last_sync_at' => now()->subHours(6),
+                    'metadata' => ['version' => '17.0', 'environment' => 'production'],
                 ],
             );
         }
@@ -2252,20 +2254,20 @@ class ComprehensiveSeeder extends Seeder
         $emails = ['buyer@al-ahram.test', 'manager@al-ahram.test', 'finance@al-ahram.test'];
         foreach ($emails as $i => $email) {
             $user = User::where('email', $email)->first();
-            if (!$user) {
+            if (! $user) {
                 continue;
             }
             ScimUser::updateOrCreate(
-                ['external_id' => 'okta-' . $user->id],
+                ['external_id' => 'okta-'.$user->id],
                 [
-                    'user_id'      => $user->id,
-                    'is_active'    => true,
+                    'user_id' => $user->id,
+                    'is_active' => true,
                     'scim_payload' => [
-                        'schemas'     => ['urn:ietf:params:scim:schemas:core:2.0:User'],
-                        'externalId'  => 'okta-' . $user->id,
-                        'userName'    => $email,
-                        'name'        => ['givenName' => $user->first_name, 'familyName' => $user->last_name],
-                        'emails'      => [['value' => $email, 'primary' => true]],
+                        'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:User'],
+                        'externalId' => 'okta-'.$user->id,
+                        'userName' => $email,
+                        'name' => ['givenName' => $user->first_name, 'familyName' => $user->last_name],
+                        'emails' => [['value' => $email, 'primary' => true]],
                     ],
                 ],
             );
@@ -2277,13 +2279,13 @@ class ComprehensiveSeeder extends Seeder
     // ================================================================
     private function seedSettings(): void
     {
-        Setting::setValue('platform.name',      ['en' => 'TriLink', 'ar' => 'تري لينك'], 'general');
-        Setting::setValue('platform.currency',  'AED',                                    'general');
-        Setting::setValue('platform.timezone',  'Asia/Dubai',                             'general');
-        Setting::setValue('payments.gateway',   'stripe',                                 'payments');
-        Setting::setValue('shipping.providers', ['fastline', 'aramex', 'dhl'],            'shipping');
-        Setting::setValue('escrow.bank_partner','mashreq_neobiz',                         'finance');
-        Setting::setValue('integrations.signing_secret_length', 48,                       'integrations');
+        Setting::setValue('platform.name', ['en' => 'TriLink', 'ar' => 'تري لينك'], 'general');
+        Setting::setValue('platform.currency', 'AED', 'general');
+        Setting::setValue('platform.timezone', 'Asia/Dubai', 'general');
+        Setting::setValue('payments.gateway', 'stripe', 'payments');
+        Setting::setValue('shipping.providers', ['fastline', 'aramex', 'dhl'], 'shipping');
+        Setting::setValue('escrow.bank_partner', 'mashreq_neobiz', 'finance');
+        Setting::setValue('integrations.signing_secret_length', 48, 'integrations');
     }
 
     // ================================================================
@@ -2291,10 +2293,10 @@ class ComprehensiveSeeder extends Seeder
     // ================================================================
     private function seedAuditLogs(Company $buyer): void
     {
-        $admin   = User::where('email', 'admin@trilink.test')->first();
-        $ahmed   = User::where('email', 'buyer@al-ahram.test')->first();
+        $admin = User::where('email', 'admin@trilink.test')->first();
+        $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
         $manager = User::where('email', 'manager@al-ahram.test')->first();
-        if (!$admin || !$ahmed || !$manager) {
+        if (! $admin || ! $ahmed || ! $manager) {
             return;
         }
 
@@ -2312,16 +2314,16 @@ class ComprehensiveSeeder extends Seeder
         ];
         foreach ($rows as [$user, $action, $type, $rid, $cid]) {
             AuditLog::create([
-                'user_id'       => $user->id,
-                'company_id'    => $cid,
-                'action'        => $action->value,
+                'user_id' => $user->id,
+                'company_id' => $cid,
+                'action' => $action->value,
                 'resource_type' => $type,
-                'resource_id'   => $rid,
-                'before'        => null,
-                'after'         => ['demo' => true],
-                'ip_address'    => '127.0.0.1',
-                'user_agent'    => 'ComprehensiveSeeder/2.0',
-                'status'        => 'success',
+                'resource_id' => $rid,
+                'before' => null,
+                'after' => ['demo' => true],
+                'ip_address' => '127.0.0.1',
+                'user_agent' => 'ComprehensiveSeeder/2.0',
+                'status' => 'success',
             ]);
         }
     }
@@ -2331,9 +2333,9 @@ class ComprehensiveSeeder extends Seeder
     // ================================================================
     private function seedDatabaseNotifications(Company $buyer): void
     {
-        $ahmed   = User::where('email', 'buyer@al-ahram.test')->first();
+        $ahmed = User::where('email', 'buyer@al-ahram.test')->first();
         $manager = User::where('email', 'manager@al-ahram.test')->first();
-        if (!$ahmed || !$manager) {
+        if (! $ahmed || ! $manager) {
             return;
         }
 
@@ -2341,7 +2343,7 @@ class ComprehensiveSeeder extends Seeder
         DB::table('notifications')->where('notifiable_type', User::class)->whereIn('notifiable_id', [$ahmed->id, $manager->id])->delete();
 
         $contracts = Contract::where('buyer_company_id', $buyer->id)->limit(3)->get();
-        $payments  = Payment::where('company_id', $buyer->id)->limit(2)->get();
+        $payments = Payment::where('company_id', $buyer->id)->limit(2)->get();
 
         $defs = [
             [$ahmed,   'App\\Notifications\\NewBidNotification',          'bid',      'New bid received',          'Emirates Industrial Co. submitted a bid for "Copper Wire 16mm".'],
@@ -2352,20 +2354,20 @@ class ComprehensiveSeeder extends Seeder
 
         foreach ($defs as $i => [$user, $type, $entityType, $title, $message]) {
             DB::table('notifications')->insert([
-                'id'              => (string) Str::uuid(),
-                'type'            => $type,
+                'id' => (string) Str::uuid(),
+                'type' => $type,
                 'notifiable_type' => User::class,
-                'notifiable_id'   => $user->id,
-                'data'            => json_encode([
-                    'type'        => 'info',
-                    'title'       => $title,
-                    'message'     => $message,
+                'notifiable_id' => $user->id,
+                'data' => json_encode([
+                    'type' => 'info',
+                    'title' => $title,
+                    'message' => $message,
                     'entity_type' => $entityType,
-                    'entity_id'   => $contracts->first()?->id ?? 1,
+                    'entity_id' => $contracts->first()?->id ?? 1,
                 ]),
-                'read_at'         => $i === 0 ? null : now()->subMinutes($i * 30),
-                'created_at'      => now()->subHours($i + 1),
-                'updated_at'      => now()->subHours($i + 1),
+                'read_at' => $i === 0 ? null : now()->subMinutes($i * 30),
+                'created_at' => now()->subHours($i + 1),
+                'updated_at' => now()->subHours($i + 1),
             ]);
         }
     }
@@ -2416,11 +2418,11 @@ class ComprehensiveSeeder extends Seeder
         // Suppliers — match by the registration_number used in
         // seedCompaniesAndUsers() so the seeder is order-independent.
         $supplierZones = [
-            'SUP-EMIND-001'  => FreeZoneAuthority::KIZAD,
+            'SUP-EMIND-001' => FreeZoneAuthority::KIZAD,
             'SUP-KHOORY-001' => FreeZoneAuthority::JAFZA,
             'SUP-DBTECH-001' => FreeZoneAuthority::DMCC,
-            'SUP-GULFE-001'  => null, // mainland control case
-            'SUP-MEDCO-001'  => FreeZoneAuthority::DAFZA,
+            'SUP-GULFE-001' => null, // mainland control case
+            'SUP-MEDCO-001' => FreeZoneAuthority::DAFZA,
         ];
         foreach ($supplierZones as $reg => $zone) {
             if ($supplier = $supplierByReg->get($reg)) {
@@ -2430,10 +2432,10 @@ class ComprehensiveSeeder extends Seeder
 
         foreach ($rows as [$company, $zone, $jurisdiction]) {
             $company->forceFill([
-                'is_free_zone'        => $zone !== null,
+                'is_free_zone' => $zone !== null,
                 'free_zone_authority' => $zone?->value,
-                'is_designated_zone'  => $zone !== null && $zone->isDesignated(),
-                'legal_jurisdiction'  => $jurisdiction->value,
+                'is_designated_zone' => $zone !== null && $zone->isDesignated(),
+                'legal_jurisdiction' => $jurisdiction->value,
             ])->save();
         }
     }
@@ -2447,7 +2449,7 @@ class ComprehensiveSeeder extends Seeder
      * stay at the default (icv_weight_percentage = 0) so the pure-price
      * baseline behaviour is also visible in the demo data.
      *
-     * @param Collection<int,Rfq> $rfqs
+     * @param  Collection<int,Rfq>  $rfqs
      */
     private function seedIcvWeightingOnRfqs(Collection $rfqs): void
     {
@@ -2467,7 +2469,7 @@ class ComprehensiveSeeder extends Seeder
                 // second one is a more aggressive 60/40 to demonstrate
                 // the upper end of what we see in production.
                 'icv_weight_percentage' => $i === 0 ? 30 : 40,
-                'icv_minimum_score'     => 30.00,
+                'icv_minimum_score' => 30.00,
             ])->save();
         }
     }
@@ -2505,7 +2507,7 @@ class ComprehensiveSeeder extends Seeder
 
         foreach ($defs as $i => [$reg, $issuer, $score, $status, $issuedOffset, $expiresOffset]) {
             $supplier = $supplierByReg->get($reg);
-            if (!$supplier) {
+            if (! $supplier) {
                 continue;
             }
             // Deterministic certificate number so re-running the seeder
@@ -2514,23 +2516,23 @@ class ComprehensiveSeeder extends Seeder
 
             IcvCertificate::updateOrCreate(
                 [
-                    'company_id'         => $supplier->id,
-                    'issuer'             => $issuer,
+                    'company_id' => $supplier->id,
+                    'issuer' => $issuer,
                     'certificate_number' => $certNumber,
                 ],
                 [
-                    'score'             => $score,
-                    'issued_date'       => now()->addDays($issuedOffset)->toDateString(),
-                    'expires_date'      => now()->addDays($expiresOffset)->toDateString(),
-                    'file_path'         => null,
-                    'file_sha256'       => null,
-                    'file_size'         => null,
+                    'score' => $score,
+                    'issued_date' => now()->addDays($issuedOffset)->toDateString(),
+                    'expires_date' => now()->addDays($expiresOffset)->toDateString(),
+                    'file_path' => null,
+                    'file_sha256' => null,
+                    'file_size' => null,
                     'original_filename' => null,
-                    'status'            => $status,
-                    'rejection_reason'  => null,
-                    'uploaded_by'       => $admin->id,
-                    'verified_by'       => $status === IcvCertificate::STATUS_VERIFIED ? $admin->id : null,
-                    'verified_at'       => $status === IcvCertificate::STATUS_VERIFIED ? now()->addDays($issuedOffset + 1) : null,
+                    'status' => $status,
+                    'rejection_reason' => null,
+                    'uploaded_by' => $admin->id,
+                    'verified_by' => $status === IcvCertificate::STATUS_VERIFIED ? $admin->id : null,
+                    'verified_at' => $status === IcvCertificate::STATUS_VERIFIED ? now()->addDays($issuedOffset + 1) : null,
                 ],
             );
         }
@@ -2578,41 +2580,41 @@ class ComprehensiveSeeder extends Seeder
             Consent::TYPE_COOKIES_ESSENTIAL,
         ];
         $optedInExtras = [
-            'manager@al-ahram.test'      => [Consent::TYPE_COOKIES_ANALYTICS, Consent::TYPE_MARKETING_EMAIL],
-            'buyer@al-ahram.test'        => [Consent::TYPE_COOKIES_ANALYTICS],
-            'finance@al-ahram.test'      => [Consent::TYPE_MARKETING_EMAIL],
+            'manager@al-ahram.test' => [Consent::TYPE_COOKIES_ANALYTICS, Consent::TYPE_MARKETING_EMAIL],
+            'buyer@al-ahram.test' => [Consent::TYPE_COOKIES_ANALYTICS],
+            'finance@al-ahram.test' => [Consent::TYPE_MARKETING_EMAIL],
             'mohammed@emirates-ind.test' => [Consent::TYPE_COOKIES_ANALYTICS, Consent::TYPE_MARKETING_EMAIL],
-            'fatima@khoory.test'         => [Consent::TYPE_COOKIES_ANALYTICS],
+            'fatima@khoory.test' => [Consent::TYPE_COOKIES_ANALYTICS],
         ];
 
         foreach ($users as $email => $user) {
             foreach ($alwaysOn as $type) {
                 Consent::updateOrCreate(
                     [
-                        'user_id'      => $user->id,
+                        'user_id' => $user->id,
                         'consent_type' => $type,
-                        'version'      => '1.0',
+                        'version' => '1.0',
                     ],
                     [
-                        'granted_at'   => now()->subDays(45),
+                        'granted_at' => now()->subDays(45),
                         'withdrawn_at' => null,
-                        'ip_address'   => '127.0.0.1',
-                        'user_agent'   => 'ComprehensiveSeeder/2.0',
+                        'ip_address' => '127.0.0.1',
+                        'user_agent' => 'ComprehensiveSeeder/2.0',
                     ],
                 );
             }
             foreach ($optedInExtras[$email] ?? [] as $type) {
                 Consent::updateOrCreate(
                     [
-                        'user_id'      => $user->id,
+                        'user_id' => $user->id,
                         'consent_type' => $type,
-                        'version'      => '1.0',
+                        'version' => '1.0',
                     ],
                     [
-                        'granted_at'   => now()->subDays(40),
+                        'granted_at' => now()->subDays(40),
                         'withdrawn_at' => null,
-                        'ip_address'   => '127.0.0.1',
-                        'user_agent'   => 'ComprehensiveSeeder/2.0',
+                        'ip_address' => '127.0.0.1',
+                        'user_agent' => 'ComprehensiveSeeder/2.0',
                     ],
                 );
             }
@@ -2623,15 +2625,15 @@ class ComprehensiveSeeder extends Seeder
         if ($noura = $users->get('finance@al-ahram.test')) {
             Consent::updateOrCreate(
                 [
-                    'user_id'      => $noura->id,
+                    'user_id' => $noura->id,
                     'consent_type' => Consent::TYPE_THIRD_PARTY_SHARE,
-                    'version'      => '1.0',
+                    'version' => '1.0',
                 ],
                 [
-                    'granted_at'   => now()->subDays(50),
+                    'granted_at' => now()->subDays(50),
                     'withdrawn_at' => now()->subDays(5),
-                    'ip_address'   => '127.0.0.1',
-                    'user_agent'   => 'ComprehensiveSeeder/2.0',
+                    'ip_address' => '127.0.0.1',
+                    'user_agent' => 'ComprehensiveSeeder/2.0',
                 ],
             );
         }
@@ -2651,7 +2653,7 @@ class ComprehensiveSeeder extends Seeder
 
         foreach ($requestDefs as [$email, $type, $status, $reqOffset, $schedOffset, $compOffset, $rejection]) {
             $user = $users->get($email);
-            if (!$user) {
+            if (! $user) {
                 continue;
             }
 
@@ -2664,19 +2666,19 @@ class ComprehensiveSeeder extends Seeder
 
             PrivacyRequest::updateOrCreate(
                 [
-                    'user_id'      => $user->id,
+                    'user_id' => $user->id,
                     'request_type' => $type,
                 ],
                 [
-                    'status'               => $status,
-                    'requested_at'         => now()->addDays($reqOffset),
-                    'scheduled_for'        => $schedOffset !== null ? now()->addDays($schedOffset) : null,
-                    'completed_at'         => $compOffset !== null ? now()->addDays($compOffset) : null,
-                    'rejection_reason'     => $rejection,
+                    'status' => $status,
+                    'requested_at' => now()->addDays($reqOffset),
+                    'scheduled_for' => $schedOffset !== null ? now()->addDays($schedOffset) : null,
+                    'completed_at' => $compOffset !== null ? now()->addDays($compOffset) : null,
+                    'rejection_reason' => $rejection,
                     'fulfillment_metadata' => $status === PrivacyRequest::STATUS_COMPLETED
                         ? ['archive_path' => "privacy-exports/{$user->id}-export.zip", 'tables_touched' => 14]
                         : null,
-                    'handled_by'           => $isHandled ? $admin->id : null,
+                    'handled_by' => $isHandled ? $admin->id : null,
                 ],
             );
         }
@@ -2717,8 +2719,8 @@ class ComprehensiveSeeder extends Seeder
 
         foreach ($completedPayments as $payment) {
             $supplier = $payment->recipientCompany;
-            $buyer    = $payment->company;
-            if (!$supplier || !$buyer) {
+            $buyer = $payment->company;
+            if (! $supplier || ! $buyer) {
                 continue;
             }
 
@@ -2727,49 +2729,49 @@ class ComprehensiveSeeder extends Seeder
             $invoiceNumber = sprintf('INV-%d-%06d', $year, ($supplier->id * 1000) + $seq);
 
             $line = [
-                'description'    => $payment->contract?->title ?? ('Milestone ' . ($payment->milestone ?? '')),
-                'quantity'       => 1,
-                'unit'           => 'lump_sum',
-                'unit_price'     => (float) $payment->amount,
-                'discount'       => 0,
+                'description' => $payment->contract?->title ?? ('Milestone '.($payment->milestone ?? '')),
+                'quantity' => 1,
+                'unit' => 'lump_sum',
+                'unit_price' => (float) $payment->amount,
+                'discount' => 0,
                 'taxable_amount' => (float) $payment->amount,
-                'tax_rate'       => (float) ($payment->vat_rate ?? 5),
-                'tax_amount'     => (float) $payment->vat_amount,
-                'line_total'     => (float) $payment->total_amount,
+                'tax_rate' => (float) ($payment->vat_rate ?? 5),
+                'tax_amount' => (float) $payment->vat_amount,
+                'line_total' => (float) $payment->total_amount,
             ];
 
             TaxInvoice::updateOrCreate(
                 ['payment_id' => $payment->id],
                 [
-                    'invoice_number'      => $invoiceNumber,
-                    'contract_id'         => $payment->contract_id,
-                    'issue_date'          => $payment->approved_at?->toDateString() ?? now()->toDateString(),
-                    'supply_date'         => $payment->approved_at?->toDateString() ?? now()->toDateString(),
+                    'invoice_number' => $invoiceNumber,
+                    'contract_id' => $payment->contract_id,
+                    'issue_date' => $payment->approved_at?->toDateString() ?? now()->toDateString(),
+                    'supply_date' => $payment->approved_at?->toDateString() ?? now()->toDateString(),
                     'supplier_company_id' => $supplier->id,
-                    'supplier_trn'        => $supplier->tax_number,
-                    'supplier_name'       => $supplier->name,
-                    'supplier_address'    => trim(($supplier->address ?? '') . ', ' . ($supplier->city ?? '') . ', ' . ($supplier->country ?? ''), ', '),
-                    'supplier_country'    => $supplier->country,
-                    'buyer_company_id'    => $buyer->id,
-                    'buyer_trn'           => $buyer->tax_number,
-                    'buyer_name'          => $buyer->name,
-                    'buyer_address'       => trim(($buyer->address ?? '') . ', ' . ($buyer->city ?? '') . ', ' . ($buyer->country ?? ''), ', '),
-                    'buyer_country'       => $buyer->country,
-                    'line_items'          => [$line],
-                    'subtotal_excl_tax'   => (float) $payment->amount,
-                    'total_discount'      => 0,
-                    'total_tax'           => (float) $payment->vat_amount,
-                    'total_inclusive'     => (float) $payment->total_amount,
-                    'currency'            => $payment->currency ?? 'AED',
-                    'pdf_path'            => null,
-                    'pdf_sha256'          => null,
-                    'status'              => TaxInvoice::STATUS_ISSUED,
-                    'voided_at'           => null,
-                    'voided_by'           => null,
-                    'void_reason'         => null,
-                    'issued_by'           => $admin->id,
-                    'issued_at'           => $payment->approved_at ?? now(),
-                    'metadata'            => ['source' => 'ComprehensiveSeeder'],
+                    'supplier_trn' => $supplier->tax_number,
+                    'supplier_name' => $supplier->name,
+                    'supplier_address' => trim(($supplier->address ?? '').', '.($supplier->city ?? '').', '.($supplier->country ?? ''), ', '),
+                    'supplier_country' => $supplier->country,
+                    'buyer_company_id' => $buyer->id,
+                    'buyer_trn' => $buyer->tax_number,
+                    'buyer_name' => $buyer->name,
+                    'buyer_address' => trim(($buyer->address ?? '').', '.($buyer->city ?? '').', '.($buyer->country ?? ''), ', '),
+                    'buyer_country' => $buyer->country,
+                    'line_items' => [$line],
+                    'subtotal_excl_tax' => (float) $payment->amount,
+                    'total_discount' => 0,
+                    'total_tax' => (float) $payment->vat_amount,
+                    'total_inclusive' => (float) $payment->total_amount,
+                    'currency' => $payment->currency ?? 'AED',
+                    'pdf_path' => null,
+                    'pdf_sha256' => null,
+                    'status' => TaxInvoice::STATUS_ISSUED,
+                    'voided_at' => null,
+                    'voided_by' => null,
+                    'void_reason' => null,
+                    'issued_by' => $admin->id,
+                    'issued_at' => $payment->approved_at ?? now(),
+                    'metadata' => ['source' => 'ComprehensiveSeeder'],
                 ],
             );
         }
@@ -2790,7 +2792,7 @@ class ComprehensiveSeeder extends Seeder
         // the seeded data, then reverse the matching tax invoice that
         // sits on the same contract.
         $refunded = Payment::where('status', PaymentStatus::REFUNDED->value)->first();
-        if (!$refunded) {
+        if (! $refunded) {
             return;
         }
 
@@ -2801,7 +2803,7 @@ class ComprehensiveSeeder extends Seeder
             ->where('status', TaxInvoice::STATUS_ISSUED)
             ->orderByDesc('id')
             ->first();
-        if (!$original) {
+        if (! $original) {
             return;
         }
 
@@ -2817,18 +2819,18 @@ class ComprehensiveSeeder extends Seeder
             ['original_invoice_id' => $original->id, 'reason' => TaxCreditNote::REASON_REFUND],
             [
                 'credit_note_number' => $cnNumber,
-                'issue_date'         => now()->toDateString(),
-                'notes'              => 'Goodwill refund issued to the buyer per dispute settlement.',
-                'line_items'         => [$reverseLine],
-                'subtotal_excl_tax'  => (float) ($reverseLine['taxable_amount'] ?? 0),
-                'total_tax'          => (float) ($reverseLine['tax_amount'] ?? 0),
-                'total_inclusive'    => (float) ($reverseLine['line_total'] ?? 0),
-                'currency'           => $original->currency,
-                'pdf_path'           => null,
-                'pdf_sha256'         => null,
-                'issued_by'          => $admin->id,
-                'issued_at'          => now(),
-                'metadata'           => ['source' => 'ComprehensiveSeeder'],
+                'issue_date' => now()->toDateString(),
+                'notes' => 'Goodwill refund issued to the buyer per dispute settlement.',
+                'line_items' => [$reverseLine],
+                'subtotal_excl_tax' => (float) ($reverseLine['taxable_amount'] ?? 0),
+                'total_tax' => (float) ($reverseLine['tax_amount'] ?? 0),
+                'total_inclusive' => (float) ($reverseLine['line_total'] ?? 0),
+                'currency' => $original->currency,
+                'pdf_path' => null,
+                'pdf_sha256' => null,
+                'issued_by' => $admin->id,
+                'issued_at' => now(),
+                'metadata' => ['source' => 'ComprehensiveSeeder'],
             ],
         );
 
@@ -2846,7 +2848,7 @@ class ComprehensiveSeeder extends Seeder
     /** @param Collection<int,Rfq> $rfqs */
     private function seedCollusionAlerts(Collection $rfqs): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('collusion_alerts')) {
+        if (! Schema::hasTable('collusion_alerts')) {
             return;
         }
 
@@ -2857,52 +2859,52 @@ class ComprehensiveSeeder extends Seeder
 
         $alertDefs = [
             [
-                'rfq_id'   => $rfq->id,
-                'type'     => 'shared_beneficial_owner',
+                'rfq_id' => $rfq->id,
+                'type' => 'shared_beneficial_owner',
                 'severity' => 'critical',
-                'status'   => 'open',
+                'status' => 'open',
                 'evidence' => json_encode([
-                    'pattern'          => 'Two bidders share a beneficial owner (SHA1 match)',
-                    'company_a'        => 'Emirates Industrial Co.',
-                    'company_b'        => 'Al-Khoory Trading LLC',
-                    'bo_hash'          => sha1('784-1978-1234567-1'),
-                    'ownership_pct_a'  => 65,
-                    'ownership_pct_b'  => 40,
+                    'pattern' => 'Two bidders share a beneficial owner (SHA1 match)',
+                    'company_a' => 'Emirates Industrial Co.',
+                    'company_b' => 'Al-Khoory Trading LLC',
+                    'bo_hash' => sha1('784-1978-1234567-1'),
+                    'ownership_pct_a' => 65,
+                    'ownership_pct_b' => 40,
                 ]),
             ],
             [
-                'rfq_id'   => $rfq->id,
-                'type'     => 'shared_ip_address',
+                'rfq_id' => $rfq->id,
+                'type' => 'shared_ip_address',
                 'severity' => 'high',
-                'status'   => 'investigating',
+                'status' => 'investigating',
                 'evidence' => json_encode([
-                    'pattern'    => 'Two bids submitted from the same IP within 3 minutes',
+                    'pattern' => 'Two bids submitted from the same IP within 3 minutes',
                     'ip_address' => '185.23.45.67',
-                    'company_a'  => 'Dubai Tech Solutions',
-                    'company_b'  => 'Gulf Office Supplies',
-                    'time_gap'   => '2m 47s',
+                    'company_a' => 'Dubai Tech Solutions',
+                    'company_b' => 'Gulf Office Supplies',
+                    'time_gap' => '2m 47s',
                 ]),
             ],
             [
-                'rfq_id'   => $rfq->id,
-                'type'     => 'timing_cluster',
+                'rfq_id' => $rfq->id,
+                'type' => 'timing_cluster',
                 'severity' => 'medium',
-                'status'   => 'false_positive',
+                'status' => 'false_positive',
                 'evidence' => json_encode([
-                    'pattern'     => '3 bids submitted within a 10-minute window',
-                    'window_min'  => 10,
+                    'pattern' => '3 bids submitted within a 10-minute window',
+                    'window_min' => 10,
                     'submissions' => 3,
-                    'note'        => 'Reviewed — coincidental timing near RFQ deadline.',
+                    'note' => 'Reviewed — coincidental timing near RFQ deadline.',
                 ]),
             ],
             [
-                'rfq_id'   => $rfq->id,
-                'type'     => 'shared_email_domain',
+                'rfq_id' => $rfq->id,
+                'type' => 'shared_email_domain',
                 'severity' => 'medium',
-                'status'   => 'confirmed',
+                'status' => 'confirmed',
                 'evidence' => json_encode([
-                    'pattern'   => 'Two bidders share a non-generic email domain',
-                    'domain'    => 'holding-group.ae',
+                    'pattern' => 'Two bidders share a non-generic email domain',
+                    'domain' => 'holding-group.ae',
                     'company_a' => 'Subsidiary Alpha LLC',
                     'company_b' => 'Subsidiary Beta LLC',
                 ]),
@@ -2913,27 +2915,27 @@ class ComprehensiveSeeder extends Seeder
         $rfq2 = $rfqs->skip(1)->first();
         if ($rfq2) {
             $alertDefs[] = [
-                'rfq_id'   => $rfq2->id,
-                'type'     => 'shared_phone_prefix',
+                'rfq_id' => $rfq2->id,
+                'type' => 'shared_phone_prefix',
                 'severity' => 'medium',
-                'status'   => 'open',
+                'status' => 'open',
                 'evidence' => json_encode([
-                    'pattern'       => 'Two bidders share the first 8 digits of phone number',
-                    'phone_prefix'  => '+9715500',
-                    'company_a'     => 'Emirates Industrial Co.',
-                    'company_b'     => 'MedCo Diagnostics',
+                    'pattern' => 'Two bidders share the first 8 digits of phone number',
+                    'phone_prefix' => '+9715500',
+                    'company_a' => 'Emirates Industrial Co.',
+                    'company_b' => 'MedCo Diagnostics',
                 ]),
             ];
 
             $alertDefs[] = [
-                'rfq_id'   => $rfq2->id,
-                'type'     => 'self_bidding',
+                'rfq_id' => $rfq2->id,
+                'type' => 'self_bidding',
                 'severity' => 'critical',
-                'status'   => 'open',
+                'status' => 'open',
                 'evidence' => json_encode([
                     'pattern' => 'RFQ owner company submitted a bid on their own RFQ',
                     'company' => 'Al-Ahram Group',
-                    'rfq'     => $rfq2->rfq_number ?? 'RFQ-' . $rfq2->id,
+                    'rfq' => $rfq2->rfq_number ?? 'RFQ-'.$rfq2->id,
                 ]),
             ];
         }
@@ -2943,10 +2945,10 @@ class ComprehensiveSeeder extends Seeder
                 ['rfq_id' => $def['rfq_id'], 'type' => $def['type']],
                 array_merge($def, [
                     'admin_notes' => $def['status'] === 'false_positive' ? 'Reviewed and cleared — timing was coincidental.' : null,
-                    'handled_by'  => in_array($def['status'], ['investigating', 'false_positive', 'confirmed']) ? User::where('role', 'admin')->value('id') : null,
-                    'handled_at'  => in_array($def['status'], ['investigating', 'false_positive', 'confirmed']) ? now()->subDays(1) : null,
-                    'created_at'  => now()->subDays(rand(1, 14)),
-                    'updated_at'  => now(),
+                    'handled_by' => in_array($def['status'], ['investigating', 'false_positive', 'confirmed']) ? User::where('role', 'admin')->value('id') : null,
+                    'handled_at' => in_array($def['status'], ['investigating', 'false_positive', 'confirmed']) ? now()->subDays(1) : null,
+                    'created_at' => now()->subDays(rand(1, 14)),
+                    'updated_at' => now(),
                 ]),
             );
         }
@@ -2957,18 +2959,18 @@ class ComprehensiveSeeder extends Seeder
     // ================================================================
     private function seedBlacklistedCompanies(Company $sanctioned, User $admin): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('blacklisted_companies')) {
+        if (! Schema::hasTable('blacklisted_companies')) {
             return;
         }
 
         $entries = [
             [
-                'company_id'     => $sanctioned->id,
-                'reason'         => 'Sanctions hit detected — company matched OFAC SDN list entry.',
-                'notes'          => 'Automatic blacklisting triggered by SanctionsScreeningService. Company notified via registered email. Appeal window: 30 days from blacklist date.',
+                'company_id' => $sanctioned->id,
+                'reason' => 'Sanctions hit detected — company matched OFAC SDN list entry.',
+                'notes' => 'Automatic blacklisting triggered by SanctionsScreeningService. Company notified via registered email. Appeal window: 30 days from blacklist date.',
                 'blacklisted_by' => $admin->id,
-                'expires_at'     => null, // permanent
-                'is_active'      => true,
+                'expires_at' => null, // permanent
+                'is_active' => true,
             ],
         ];
 
@@ -2976,12 +2978,12 @@ class ComprehensiveSeeder extends Seeder
         $expiredCompany = $this->suppliers->last();
         if ($expiredCompany) {
             $entries[] = [
-                'company_id'     => $expiredCompany->id,
-                'reason'         => 'Temporary suspension — pending document re-verification after trade license expiry.',
-                'notes'          => 'Company submitted renewal; suspension lifted after verified documents received.',
+                'company_id' => $expiredCompany->id,
+                'reason' => 'Temporary suspension — pending document re-verification after trade license expiry.',
+                'notes' => 'Company submitted renewal; suspension lifted after verified documents received.',
                 'blacklisted_by' => $admin->id,
-                'expires_at'     => now()->subDays(30)->toDateTimeString(),
-                'is_active'      => false,
+                'expires_at' => now()->subDays(30)->toDateTimeString(),
+                'is_active' => false,
             ];
         }
 
@@ -3001,59 +3003,59 @@ class ComprehensiveSeeder extends Seeder
     // ================================================================
     private function seedPlatformFees(User $admin): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('platform_fees')) {
+        if (! Schema::hasTable('platform_fees')) {
             return;
         }
 
         $fees = [
             [
-                'name'        => 'Standard Transaction Fee',
-                'type'        => 'percentage',
-                'value'       => 2.5000,
-                'applies_to'  => 'payment',
-                'min_amount'  => 50.00,
-                'max_amount'  => 25000.00,
-                'is_active'   => true,
+                'name' => 'Standard Transaction Fee',
+                'type' => 'percentage',
+                'value' => 2.5000,
+                'applies_to' => 'payment',
+                'min_amount' => 50.00,
+                'max_amount' => 25000.00,
+                'is_active' => true,
                 'description' => 'Applied to every payment processed through the platform. Covers payment gateway fees and platform services.',
             ],
             [
-                'name'        => 'Escrow Service Fee',
-                'type'        => 'percentage',
-                'value'       => 1.0000,
-                'applies_to'  => 'escrow',
-                'min_amount'  => 100.00,
-                'max_amount'  => 50000.00,
-                'is_active'   => true,
+                'name' => 'Escrow Service Fee',
+                'type' => 'percentage',
+                'value' => 1.0000,
+                'applies_to' => 'escrow',
+                'min_amount' => 100.00,
+                'max_amount' => 50000.00,
+                'is_active' => true,
                 'description' => 'Charged when escrow is activated on a contract. Covers bank partner costs and escrow account management.',
             ],
             [
-                'name'        => 'RFQ Publishing Fee',
-                'type'        => 'fixed',
-                'value'       => 0.0000,
-                'applies_to'  => 'rfq',
-                'min_amount'  => null,
-                'max_amount'  => null,
-                'is_active'   => true,
+                'name' => 'RFQ Publishing Fee',
+                'type' => 'fixed',
+                'value' => 0.0000,
+                'applies_to' => 'rfq',
+                'min_amount' => null,
+                'max_amount' => null,
+                'is_active' => true,
                 'description' => 'Currently waived. Reserved for future premium RFQ features (featured placement, extended reach).',
             ],
             [
-                'name'        => 'Contract Stamp Fee',
-                'type'        => 'fixed',
-                'value'       => 150.0000,
-                'applies_to'  => 'contract',
-                'min_amount'  => null,
-                'max_amount'  => null,
-                'is_active'   => true,
+                'name' => 'Contract Stamp Fee',
+                'type' => 'fixed',
+                'value' => 150.0000,
+                'applies_to' => 'contract',
+                'min_amount' => null,
+                'max_amount' => null,
+                'is_active' => true,
                 'description' => 'One-time fee per contract execution. Covers digital signature verification and tamper-proof storage.',
             ],
             [
-                'name'        => 'Premium Supplier Listing',
-                'type'        => 'fixed',
-                'value'       => 500.0000,
-                'applies_to'  => 'rfq',
-                'min_amount'  => null,
-                'max_amount'  => null,
-                'is_active'   => false,
+                'name' => 'Premium Supplier Listing',
+                'type' => 'fixed',
+                'value' => 500.0000,
+                'applies_to' => 'rfq',
+                'min_amount' => null,
+                'max_amount' => null,
+                'is_active' => false,
                 'description' => 'Monthly fee for premium placement in supplier directory. Currently inactive — planned for Q3 2026.',
             ],
         ];
@@ -3075,7 +3077,7 @@ class ComprehensiveSeeder extends Seeder
     // ================================================================
     private function seedEInvoiceSubmissions(User $admin): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('e_invoice_submissions')) {
+        if (! Schema::hasTable('e_invoice_submissions')) {
             return;
         }
 
@@ -3088,20 +3090,20 @@ class ComprehensiveSeeder extends Seeder
             DB::table('e_invoice_submissions')->updateOrInsert(
                 ['tax_invoice_id' => $invoice->id, 'tax_credit_note_id' => null],
                 [
-                    'document_type'       => 'invoice',
-                    'status'              => $status,
-                    'asp_provider'        => 'mock',
-                    'asp_environment'     => 'sandbox',
-                    'payload_xml'         => '<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"><ID>' . $invoice->invoice_number . '</ID></Invoice>',
-                    'payload_sha256'      => hash('sha256', $invoice->invoice_number),
-                    'asp_submission_id'   => 'MOCK-' . Str::upper(Str::random(12)),
-                    'asp_response_raw'    => json_encode(['status' => $status, 'message' => $status === 'rejected' ? 'Schema validation failed: missing PaymentMeansCode' : 'OK']),
-                    'error_message'       => $status === 'failed' ? 'Max retries exceeded' : ($status === 'rejected' ? 'Schema validation failed' : null),
-                    'retries'             => $status === 'failed' ? 5 : ($status === 'rejected' ? 1 : 0),
-                    'submitted_at'        => now()->subHours(rand(1, 48)),
-                    'next_retry_at'       => $status === 'failed' ? now()->addHours(8) : null,
-                    'created_at'          => now()->subDays(rand(1, 14)),
-                    'updated_at'          => now(),
+                    'document_type' => 'invoice',
+                    'status' => $status,
+                    'asp_provider' => 'mock',
+                    'asp_environment' => 'sandbox',
+                    'payload_xml' => '<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"><ID>'.$invoice->invoice_number.'</ID></Invoice>',
+                    'payload_sha256' => hash('sha256', $invoice->invoice_number),
+                    'asp_submission_id' => 'MOCK-'.Str::upper(Str::random(12)),
+                    'asp_response_raw' => json_encode(['status' => $status, 'message' => $status === 'rejected' ? 'Schema validation failed: missing PaymentMeansCode' : 'OK']),
+                    'error_message' => $status === 'failed' ? 'Max retries exceeded' : ($status === 'rejected' ? 'Schema validation failed' : null),
+                    'retries' => $status === 'failed' ? 5 : ($status === 'rejected' ? 1 : 0),
+                    'submitted_at' => now()->subHours(rand(1, 48)),
+                    'next_retry_at' => $status === 'failed' ? now()->addHours(8) : null,
+                    'created_at' => now()->subDays(rand(1, 14)),
+                    'updated_at' => now(),
                 ],
             );
         }
@@ -3113,7 +3115,7 @@ class ComprehensiveSeeder extends Seeder
     /** @param Collection<int,Contract> $contracts */
     private function seedContractApprovals(Collection $contracts, Company $buyer): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('contract_approvals')) {
+        if (! Schema::hasTable('contract_approvals')) {
             return;
         }
 
@@ -3129,8 +3131,8 @@ class ComprehensiveSeeder extends Seeder
                 ['contract_id' => $contract->id, 'user_id' => $manager->id],
                 [
                     'company_id' => $buyer->id,
-                    'decision'   => 'approved',
-                    'notes'      => 'Approved — within budget and scope.',
+                    'decision' => 'approved',
+                    'notes' => 'Approved — within budget and scope.',
                 ],
             );
 
@@ -3138,8 +3140,8 @@ class ComprehensiveSeeder extends Seeder
                 ['contract_id' => $contract->id, 'user_id' => $financeMgr->id],
                 [
                     'company_id' => $buyer->id,
-                    'decision'   => 'approved',
-                    'notes'      => 'Finance review complete. Payment schedule verified.',
+                    'decision' => 'approved',
+                    'notes' => 'Finance review complete. Payment schedule verified.',
                 ],
             );
         }
@@ -3151,8 +3153,8 @@ class ComprehensiveSeeder extends Seeder
                 ['contract_id' => $pendingContract->id, 'user_id' => $manager->id],
                 [
                     'company_id' => $buyer->id,
-                    'decision'   => 'pending',
-                    'notes'      => null,
+                    'decision' => 'pending',
+                    'notes' => null,
                 ],
             );
         }
@@ -3164,7 +3166,7 @@ class ComprehensiveSeeder extends Seeder
     /** @param Collection<int,Contract> $contracts */
     private function seedContractParties(Collection $contracts, Company $buyer, Company $logistics): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('contract_parties')) {
+        if (! Schema::hasTable('contract_parties')) {
             return;
         }
 
@@ -3193,24 +3195,24 @@ class ComprehensiveSeeder extends Seeder
     // ================================================================
     private function seedPrivacyPolicyVersions(User $admin): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('privacy_policy_versions')) {
+        if (! Schema::hasTable('privacy_policy_versions')) {
             return;
         }
 
         $versions = [
             [
-                'version'        => '1.0',
-                'body_en'        => "TriLink Trading — Privacy Policy v1.0\n\nThis policy governs how we collect, store, and process personal data under UAE Federal Decree-Law 45 of 2021 (PDPL).",
-                'body_ar'        => "تريلينك تريدينج — سياسة الخصوصية الإصدار 1.0\n\nتحكم هذه السياسة كيفية جمع البيانات الشخصية وتخزينها ومعالجتها وفقًا للمرسوم بقانون اتحادي رقم 45 لسنة 2021 (PDPL).",
+                'version' => '1.0',
+                'body_en' => "TriLink Trading — Privacy Policy v1.0\n\nThis policy governs how we collect, store, and process personal data under UAE Federal Decree-Law 45 of 2021 (PDPL).",
+                'body_ar' => "تريلينك تريدينج — سياسة الخصوصية الإصدار 1.0\n\nتحكم هذه السياسة كيفية جمع البيانات الشخصية وتخزينها ومعالجتها وفقًا للمرسوم بقانون اتحادي رقم 45 لسنة 2021 (PDPL).",
                 'effective_from' => CarbonImmutable::now()->subMonths(6),
-                'changelog'      => 'Initial public release.',
+                'changelog' => 'Initial public release.',
             ],
             [
-                'version'        => '1.1',
-                'body_en'        => "TriLink Trading — Privacy Policy v1.1\n\nClarifies cross-border transfer rules per PDPL Article 22 + DSAR window reduced from 45 to 30 days.",
-                'body_ar'        => "تريلينك تريدينج — سياسة الخصوصية الإصدار 1.1\n\nتوضيح قواعد النقل عبر الحدود وفقًا للمادة 22 من PDPL وتقليل نافذة طلبات DSAR من 45 إلى 30 يومًا.",
+                'version' => '1.1',
+                'body_en' => "TriLink Trading — Privacy Policy v1.1\n\nClarifies cross-border transfer rules per PDPL Article 22 + DSAR window reduced from 45 to 30 days.",
+                'body_ar' => "تريلينك تريدينج — سياسة الخصوصية الإصدار 1.1\n\nتوضيح قواعد النقل عبر الحدود وفقًا للمادة 22 من PDPL وتقليل نافذة طلبات DSAR من 45 إلى 30 يومًا.",
                 'effective_from' => CarbonImmutable::now()->subMonths(2),
-                'changelog'      => 'Tightened DSAR turnaround + cross-border clauses.',
+                'changelog' => 'Tightened DSAR turnaround + cross-border clauses.',
             ],
         ];
 
@@ -3218,12 +3220,12 @@ class ComprehensiveSeeder extends Seeder
             PrivacyPolicyVersion::updateOrCreate(
                 ['version' => $v['version']],
                 [
-                    'body_en'        => $v['body_en'],
-                    'body_ar'        => $v['body_ar'],
-                    'sha256'         => PrivacyPolicyVersion::canonicalSha256($v['body_en'], $v['body_ar']),
+                    'body_en' => $v['body_en'],
+                    'body_ar' => $v['body_ar'],
+                    'sha256' => PrivacyPolicyVersion::canonicalSha256($v['body_en'], $v['body_ar']),
                     'effective_from' => $v['effective_from'],
-                    'changelog'      => $v['changelog'],
-                    'published_by'   => $admin->id,
+                    'changelog' => $v['changelog'],
+                    'published_by' => $admin->id,
                 ],
             );
         }
@@ -3233,12 +3235,12 @@ class ComprehensiveSeeder extends Seeder
     // Phase 8 — Tier 3 compliance certificate uploads (CoO, ECAS, Halal, GSO)
     // ================================================================
     /**
-     * @param Collection<int,Company> $suppliers
-     * @param Collection<int,Shipment> $shipments
+     * @param  Collection<int,Company>  $suppliers
+     * @param  Collection<int,Shipment>  $shipments
      */
     private function seedCertificateUploads(Collection $suppliers, Collection $shipments, User $admin): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('certificate_uploads')) {
+        if (! Schema::hasTable('certificate_uploads')) {
             return;
         }
 
@@ -3250,43 +3252,43 @@ class ComprehensiveSeeder extends Seeder
         foreach ($suppliers as $supplier) {
             CertificateUpload::updateOrCreate(
                 [
-                    'company_id'         => $supplier->id,
-                    'certificate_type'   => CertificateUpload::TYPE_COO,
-                    'certificate_number' => 'COO-' . strtoupper(substr(md5($supplier->id . 'coo'), 0, 8)),
+                    'company_id' => $supplier->id,
+                    'certificate_type' => CertificateUpload::TYPE_COO,
+                    'certificate_number' => 'COO-'.strtoupper(substr(md5($supplier->id.'coo'), 0, 8)),
                 ],
                 [
-                    'issuer'            => 'Dubai Chamber of Commerce',
-                    'issued_date'       => CarbonImmutable::now()->subMonths(8)->toDateString(),
-                    'expires_date'      => CarbonImmutable::now()->addMonths(4)->toDateString(),
-                    'file_path'         => "demo/certs/{$supplier->id}-coo.pdf",
-                    'file_sha256'       => hash('sha256', "coo-{$supplier->id}"),
-                    'file_size'         => 184_320,
+                    'issuer' => 'Dubai Chamber of Commerce',
+                    'issued_date' => CarbonImmutable::now()->subMonths(8)->toDateString(),
+                    'expires_date' => CarbonImmutable::now()->addMonths(4)->toDateString(),
+                    'file_path' => "demo/certs/{$supplier->id}-coo.pdf",
+                    'file_sha256' => hash('sha256', "coo-{$supplier->id}"),
+                    'file_size' => 184_320,
                     'original_filename' => 'certificate-of-origin.pdf',
-                    'status'            => CertificateUpload::STATUS_VERIFIED,
-                    'uploaded_by'       => $admin->id,
-                    'verified_by'       => $admin->id,
-                    'verified_at'       => CarbonImmutable::now()->subMonths(7),
+                    'status' => CertificateUpload::STATUS_VERIFIED,
+                    'uploaded_by' => $admin->id,
+                    'verified_by' => $admin->id,
+                    'verified_at' => CarbonImmutable::now()->subMonths(7),
                 ],
             );
 
             CertificateUpload::updateOrCreate(
                 [
-                    'company_id'         => $supplier->id,
-                    'certificate_type'   => CertificateUpload::TYPE_ISO,
-                    'certificate_number' => 'ISO-9001-' . strtoupper(substr(md5($supplier->id . 'iso'), 0, 6)),
+                    'company_id' => $supplier->id,
+                    'certificate_type' => CertificateUpload::TYPE_ISO,
+                    'certificate_number' => 'ISO-9001-'.strtoupper(substr(md5($supplier->id.'iso'), 0, 6)),
                 ],
                 [
-                    'issuer'            => 'Bureau Veritas',
-                    'issued_date'       => CarbonImmutable::now()->subYear()->toDateString(),
-                    'expires_date'      => CarbonImmutable::now()->addYears(2)->toDateString(),
-                    'file_path'         => "demo/certs/{$supplier->id}-iso.pdf",
-                    'file_sha256'       => hash('sha256', "iso-{$supplier->id}"),
-                    'file_size'         => 220_540,
+                    'issuer' => 'Bureau Veritas',
+                    'issued_date' => CarbonImmutable::now()->subYear()->toDateString(),
+                    'expires_date' => CarbonImmutable::now()->addYears(2)->toDateString(),
+                    'file_path' => "demo/certs/{$supplier->id}-iso.pdf",
+                    'file_sha256' => hash('sha256', "iso-{$supplier->id}"),
+                    'file_size' => 220_540,
                     'original_filename' => 'iso-9001.pdf',
-                    'status'            => CertificateUpload::STATUS_VERIFIED,
-                    'uploaded_by'       => $admin->id,
-                    'verified_by'       => $admin->id,
-                    'verified_at'       => CarbonImmutable::now()->subMonths(11),
+                    'status' => CertificateUpload::STATUS_VERIFIED,
+                    'uploaded_by' => $admin->id,
+                    'verified_by' => $admin->id,
+                    'verified_at' => CarbonImmutable::now()->subMonths(11),
                 ],
             );
 
@@ -3294,41 +3296,41 @@ class ComprehensiveSeeder extends Seeder
             if ($i === 0) {
                 CertificateUpload::updateOrCreate(
                     [
-                        'company_id'         => $supplier->id,
-                        'certificate_type'   => CertificateUpload::TYPE_ECAS,
-                        'certificate_number' => 'ECAS-' . uniqid(),
+                        'company_id' => $supplier->id,
+                        'certificate_type' => CertificateUpload::TYPE_ECAS,
+                        'certificate_number' => 'ECAS-'.uniqid(),
                     ],
                     [
-                        'issuer'            => 'Emirates Authority for Standardization (ESMA)',
-                        'issued_date'       => CarbonImmutable::now()->subMonths(3)->toDateString(),
-                        'expires_date'      => CarbonImmutable::now()->addYear()->toDateString(),
-                        'file_path'         => "demo/certs/{$supplier->id}-ecas.pdf",
-                        'file_sha256'       => hash('sha256', "ecas-{$supplier->id}"),
-                        'file_size'         => 312_990,
+                        'issuer' => 'Emirates Authority for Standardization (ESMA)',
+                        'issued_date' => CarbonImmutable::now()->subMonths(3)->toDateString(),
+                        'expires_date' => CarbonImmutable::now()->addYear()->toDateString(),
+                        'file_path' => "demo/certs/{$supplier->id}-ecas.pdf",
+                        'file_sha256' => hash('sha256', "ecas-{$supplier->id}"),
+                        'file_size' => 312_990,
                         'original_filename' => 'ecas-conformity.pdf',
-                        'status'            => CertificateUpload::STATUS_VERIFIED,
-                        'uploaded_by'       => $admin->id,
-                        'verified_by'       => $admin->id,
-                        'verified_at'       => CarbonImmutable::now()->subMonths(2),
+                        'status' => CertificateUpload::STATUS_VERIFIED,
+                        'uploaded_by' => $admin->id,
+                        'verified_by' => $admin->id,
+                        'verified_at' => CarbonImmutable::now()->subMonths(2),
                     ],
                 );
 
                 CertificateUpload::updateOrCreate(
                     [
-                        'company_id'         => $supplier->id,
-                        'certificate_type'   => CertificateUpload::TYPE_HALAL,
-                        'certificate_number' => 'HALAL-' . uniqid(),
+                        'company_id' => $supplier->id,
+                        'certificate_type' => CertificateUpload::TYPE_HALAL,
+                        'certificate_number' => 'HALAL-'.uniqid(),
                     ],
                     [
-                        'issuer'            => 'Emirates International Accreditation Centre (EIAC)',
-                        'issued_date'       => CarbonImmutable::now()->subWeeks(2)->toDateString(),
-                        'expires_date'      => CarbonImmutable::now()->addYear()->toDateString(),
-                        'file_path'         => "demo/certs/{$supplier->id}-halal.pdf",
-                        'file_sha256'       => hash('sha256', "halal-{$supplier->id}"),
-                        'file_size'         => 198_770,
+                        'issuer' => 'Emirates International Accreditation Centre (EIAC)',
+                        'issued_date' => CarbonImmutable::now()->subWeeks(2)->toDateString(),
+                        'expires_date' => CarbonImmutable::now()->addYear()->toDateString(),
+                        'file_path' => "demo/certs/{$supplier->id}-halal.pdf",
+                        'file_sha256' => hash('sha256', "halal-{$supplier->id}"),
+                        'file_size' => 198_770,
                         'original_filename' => 'halal-cert.pdf',
-                        'status'            => CertificateUpload::STATUS_PENDING,
-                        'uploaded_by'       => $admin->id,
+                        'status' => CertificateUpload::STATUS_PENDING,
+                        'uploaded_by' => $admin->id,
                     ],
                 );
             }
@@ -3338,23 +3340,23 @@ class ComprehensiveSeeder extends Seeder
                 $firstShipment = $shipments->first();
                 CertificateUpload::updateOrCreate(
                     [
-                        'company_id'         => $supplier->id,
-                        'certificate_type'   => CertificateUpload::TYPE_GSO,
-                        'certificate_number' => 'GSO-' . uniqid(),
+                        'company_id' => $supplier->id,
+                        'certificate_type' => CertificateUpload::TYPE_GSO,
+                        'certificate_number' => 'GSO-'.uniqid(),
                     ],
                     [
-                        'shipment_id'       => $firstShipment?->id,
-                        'issuer'            => 'GCC Standardization Organization',
-                        'issued_date'       => CarbonImmutable::now()->subMonths(2)->toDateString(),
-                        'expires_date'      => CarbonImmutable::now()->addMonths(10)->toDateString(),
-                        'file_path'         => "demo/certs/{$supplier->id}-gso.pdf",
-                        'file_sha256'       => hash('sha256', "gso-{$supplier->id}"),
-                        'file_size'         => 256_000,
+                        'shipment_id' => $firstShipment?->id,
+                        'issuer' => 'GCC Standardization Organization',
+                        'issued_date' => CarbonImmutable::now()->subMonths(2)->toDateString(),
+                        'expires_date' => CarbonImmutable::now()->addMonths(10)->toDateString(),
+                        'file_path' => "demo/certs/{$supplier->id}-gso.pdf",
+                        'file_sha256' => hash('sha256', "gso-{$supplier->id}"),
+                        'file_size' => 256_000,
                         'original_filename' => 'gso-quality.pdf',
-                        'status'            => CertificateUpload::STATUS_VERIFIED,
-                        'uploaded_by'       => $admin->id,
-                        'verified_by'       => $admin->id,
-                        'verified_at'       => CarbonImmutable::now()->subMonths(1),
+                        'status' => CertificateUpload::STATUS_VERIFIED,
+                        'uploaded_by' => $admin->id,
+                        'verified_by' => $admin->id,
+                        'verified_at' => CarbonImmutable::now()->subMonths(1),
                     ],
                 );
             }
@@ -3367,12 +3369,12 @@ class ComprehensiveSeeder extends Seeder
     // Phase 8.5 — Supplier-initiated category extension requests
     // ================================================================
     /**
-     * @param Collection<int,Company> $suppliers
-     * @param array<string,Category> $cats
+     * @param  Collection<int,Company>  $suppliers
+     * @param  array<string,Category>  $cats
      */
     private function seedCategoryRequests(Collection $suppliers, array $cats, User $admin): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('company_category_requests')) {
+        if (! Schema::hasTable('company_category_requests')) {
             return;
         }
 
@@ -3388,8 +3390,8 @@ class ComprehensiveSeeder extends Seeder
             ['company_id' => $first->id, 'category_id' => $catList[0]->id],
             [
                 'requested_by' => $requesterFirst?->id,
-                'note'         => 'We have ECAS-certified inventory in this segment and would like to bid on related RFQs.',
-                'status'       => CompanyCategoryRequest::STATUS_PENDING,
+                'note' => 'We have ECAS-certified inventory in this segment and would like to bid on related RFQs.',
+                'status' => CompanyCategoryRequest::STATUS_PENDING,
             ],
         );
 
@@ -3401,10 +3403,10 @@ class ComprehensiveSeeder extends Seeder
                 ['company_id' => $second->id, 'category_id' => $catList[1]->id],
                 [
                     'requested_by' => $requesterSecond?->id,
-                    'note'         => 'Existing supplier in adjacent category — expanding scope.',
-                    'status'       => CompanyCategoryRequest::STATUS_APPROVED,
-                    'reviewed_by'  => $admin->id,
-                    'reviewed_at'  => CarbonImmutable::now()->subDays(3),
+                    'note' => 'Existing supplier in adjacent category — expanding scope.',
+                    'status' => CompanyCategoryRequest::STATUS_APPROVED,
+                    'reviewed_by' => $admin->id,
+                    'reviewed_at' => CarbonImmutable::now()->subDays(3),
                 ],
             );
         }
@@ -3416,11 +3418,11 @@ class ComprehensiveSeeder extends Seeder
             CompanyCategoryRequest::updateOrCreate(
                 ['company_id' => $third->id, 'category_id' => $catList[count($catList) - 1]->id],
                 [
-                    'requested_by'     => $requesterThird?->id,
-                    'note'             => 'Looking to enter this segment.',
-                    'status'           => CompanyCategoryRequest::STATUS_REJECTED,
-                    'reviewed_by'      => $admin->id,
-                    'reviewed_at'      => CarbonImmutable::now()->subDays(1),
+                    'requested_by' => $requesterThird?->id,
+                    'note' => 'Looking to enter this segment.',
+                    'status' => CompanyCategoryRequest::STATUS_REJECTED,
+                    'reviewed_by' => $admin->id,
+                    'reviewed_at' => CarbonImmutable::now()->subDays(1),
                     'rejection_reason' => 'No verified product portfolio yet — please submit ICV + product samples first.',
                 ],
             );
@@ -3431,23 +3433,23 @@ class ComprehensiveSeeder extends Seeder
     // Phase 9 — Tax Residency Certificates on companies
     // ================================================================
     /**
-     * @param Collection<int,Company> $suppliers
+     * @param  Collection<int,Company>  $suppliers
      */
     private function seedTrcOnCompanies(Company $buyer, Collection $suppliers): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasColumn('companies', 'trc_path')) {
+        if (! Schema::hasColumn('companies', 'trc_path')) {
             return;
         }
 
         $buyer->update([
-            'trc_path'        => 'demo/trc/buyer-trc-2025.pdf',
-            'trc_expires_at'  => CarbonImmutable::now()->addMonths(9),
+            'trc_path' => 'demo/trc/buyer-trc-2025.pdf',
+            'trc_expires_at' => CarbonImmutable::now()->addMonths(9),
         ]);
 
         foreach ($suppliers->take(2) as $supplier) {
             $supplier->update([
-                'trc_path'        => "demo/trc/supplier-{$supplier->id}-trc-2025.pdf",
-                'trc_expires_at'  => CarbonImmutable::now()->addMonths(7),
+                'trc_path' => "demo/trc/supplier-{$supplier->id}-trc-2025.pdf",
+                'trc_expires_at' => CarbonImmutable::now()->addMonths(7),
             ]);
         }
     }
@@ -3457,7 +3459,7 @@ class ComprehensiveSeeder extends Seeder
     // ================================================================
     private function seedAuditChainAnchors(): void
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('audit_chain_anchors')) {
+        if (! Schema::hasTable('audit_chain_anchors')) {
             return;
         }
 
@@ -3481,14 +3483,14 @@ class ComprehensiveSeeder extends Seeder
             DB::table('audit_chain_anchors')->updateOrInsert(
                 ['anchor_sha256' => $hash],
                 [
-                    'chain_head_hash'      => hash('sha256', "head-{$a['rows']}"),
-                    'chain_head_id'        => $a['rows'],
-                    'row_count'            => $a['rows'],
-                    'storage_path'         => "s3://trilink-audit-anchors/" . $a['anchored_at']->format('Y/m/d') . "-{$a['rows']}.json",
-                    's3_etag'              => '"' . substr(md5("etag-{$a['rows']}"), 0, 32) . '"',
+                    'chain_head_hash' => hash('sha256', "head-{$a['rows']}"),
+                    'chain_head_id' => $a['rows'],
+                    'row_count' => $a['rows'],
+                    'storage_path' => 's3://trilink-audit-anchors/'.$a['anchored_at']->format('Y/m/d')."-{$a['rows']}.json",
+                    's3_etag' => '"'.substr(md5("etag-{$a['rows']}"), 0, 32).'"',
                     'opentimestamps_proof' => null,
-                    'anchored_at'          => $a['anchored_at'],
-                    'created_at'           => $a['anchored_at'],
+                    'anchored_at' => $a['anchored_at'],
+                    'created_at' => $a['anchored_at'],
                 ],
             );
         }

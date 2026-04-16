@@ -5,26 +5,35 @@ namespace App\Http\Controllers\Web;
 use App\Enums\AmendmentStatus;
 use App\Enums\AuditAction;
 use App\Enums\ContractStatus;
+use App\Enums\MilestoneType;
 use App\Enums\PaymentStatus;
 use App\Enums\ShipmentStatus;
-use App\Models\AuditLog;
-use App\Models\ContractApproval;
-use App\Models\ContractInternalNote;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Web\Concerns\AuthorizesContract;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
+use App\Http\Controllers\Web\Concerns\HandlesContractTerms;
+use App\Models\AuditLog;
 use App\Models\Company;
 use App\Models\Contract;
 use App\Models\ContractAmendment;
 use App\Models\ContractAmendmentMessage;
+use App\Models\ContractApproval;
+use App\Models\ContractInternalNote;
 use App\Models\ContractVersion;
+use App\Models\EscrowRelease;
+use App\Models\Feedback;
 use App\Models\Shipment;
 use App\Models\User;
+use App\Rules\SafeUpload;
+use App\Services\AI\ContractRiskAnalysisService;
 use App\Services\ContractService;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
@@ -33,15 +42,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ContractController extends Controller
 {
+    use AuthorizesContract;
     use FormatsForViews;
-    use \App\Http\Controllers\Web\Concerns\AuthorizesContract;
-    use \App\Http\Controllers\Web\Concerns\HandlesContractTerms;
+    use HandlesContractTerms;
 
     public function __construct(
         private readonly ContractService $service,
-        private readonly ?\App\Services\AI\ContractRiskAnalysisService $riskService = null,
-    ) {
-    }
+        private readonly ?ContractRiskAnalysisService $riskService = null,
+    ) {}
 
     public function exportCsv(Request $request): StreamedResponse
     {
@@ -73,7 +81,7 @@ class ContractController extends Controller
             ->values();
         $companyNames = Company::whereIn('id', $partyCompanyIds)->pluck('name', 'id');
 
-        $filename = 'contracts-' . now()->format('Ymd-His') . '.csv';
+        $filename = 'contracts-'.now()->format('Ymd-His').'.csv';
 
         return response()->streamDownload(function () use ($contracts, $companyNames) {
             $out = fopen('php://output', 'w');
@@ -98,7 +106,7 @@ class ContractController extends Controller
 
             foreach ($contracts as $c) {
                 $supplierName = $this->supplierName($c, $companyNames);
-                $buyerName    = $companyNames[$c->buyer_company_id] ?? '—';
+                $buyerName = $companyNames[$c->buyer_company_id] ?? '—';
                 $paid = $c->payments
                     ? $c->payments->where('status', PaymentStatus::COMPLETED->value)->sum('amount')
                     : 0;
@@ -132,7 +140,7 @@ class ContractController extends Controller
         abort_unless(auth()->user()?->hasPermission('contract.view'), 403);
 
         $companyId = $this->currentCompanyId();
-        $query     = trim((string) $request->query('q', ''));
+        $query = trim((string) $request->query('q', ''));
 
         // Filters from query string.
         $statusFilter = $request->query('status', 'all');
@@ -180,20 +188,20 @@ class ContractController extends Controller
                     ->where('role', '!=', 'buyer');
             })->where(function ($q) use ($companyId) {
                 $q->whereNull('buyer_company_id')
-                  ->orWhere('buyer_company_id', '!=', $companyId);
+                    ->orWhere('buyer_company_id', '!=', $companyId);
             });
         }
 
         // Stats are computed against the un-search/-filtered base, so the
         // headline numbers don't dance around as the user types in search.
-        $statsBase  = clone $base;
+        $statsBase = clone $base;
         $totalValue = (clone $statsBase)->sum('total_amount');
 
         $stats = [
-            'total'     => (clone $statsBase)->count(),
-            'active'    => (clone $statsBase)->where('status', ContractStatus::ACTIVE->value)->count(),
+            'total' => (clone $statsBase)->count(),
+            'active' => (clone $statsBase)->where('status', ContractStatus::ACTIVE->value)->count(),
             'completed' => (clone $statsBase)->where('status', ContractStatus::COMPLETED->value)->count(),
-            'value'     => $this->shortMoney((float) $totalValue),
+            'value' => $this->shortMoney((float) $totalValue),
         ];
 
         // Per-direction counts so the filter chips can show "Buying (12)"
@@ -204,8 +212,8 @@ class ContractController extends Controller
             $directionBase->forCompany($companyId);
         }
         $directionCounts = [
-            'all'     => (clone $directionBase)->count(),
-            'buying'  => $companyId
+            'all' => (clone $directionBase)->count(),
+            'buying' => $companyId
                 ? (clone $directionBase)->where('buyer_company_id', $companyId)->count()
                 : 0,
             'selling' => $companyId
@@ -218,7 +226,7 @@ class ContractController extends Controller
                     })
                     ->where(function ($q) use ($companyId) {
                         $q->whereNull('buyer_company_id')
-                          ->orWhere('buyer_company_id', '!=', $companyId);
+                            ->orWhere('buyer_company_id', '!=', $companyId);
                     })
                     ->count()
                 : 0,
@@ -234,19 +242,19 @@ class ContractController extends Controller
         }
 
         match ($sort) {
-            'oldest'      => $base->oldest(),
-            'value_desc'  => $base->orderByDesc('total_amount')->orderByDesc('id'),
-            'value_asc'   => $base->orderBy('total_amount')->orderByDesc('id'),
+            'oldest' => $base->oldest(),
+            'value_desc' => $base->orderByDesc('total_amount')->orderByDesc('id'),
+            'value_asc' => $base->orderBy('total_amount')->orderByDesc('id'),
             'ending_soon' => $base->orderByRaw('end_date IS NULL, end_date ASC')->orderByDesc('id'),
-            default       => $base->latest(),
+            default => $base->latest(),
         };
 
         // Pre-load every party company referenced in the listing so the
         // counterparty column doesn't N+1 across the page. Payments are
         // eager-loaded so the per-row "Received / Pending" totals come
         // from real data instead of a progress estimate.
-        $perPage      = 15;
-        $paginator    = (clone $base)->with('payments')->paginate($perPage)->withQueryString();
+        $perPage = 15;
+        $paginator = (clone $base)->with('payments')->paginate($perPage)->withQueryString();
         $contractRows = $paginator->getCollection();
 
         $partyCompanyIds = $contractRows
@@ -267,17 +275,17 @@ class ContractController extends Controller
             // it's a supplier party (it would never appear in the listing
             // otherwise — see the WHERE clause above). The counterparty
             // is whichever side this company is NOT.
-            $isBuyer       = $companyId && (int) $c->buyer_company_id === (int) $companyId;
-            $myRole        = $isBuyer ? 'buyer' : 'supplier';
-            $direction     = $isBuyer ? 'buying' : 'selling';
-            $counterparty  = $isBuyer
+            $isBuyer = $companyId && (int) $c->buyer_company_id === (int) $companyId;
+            $myRole = $isBuyer ? 'buyer' : 'supplier';
+            $direction = $isBuyer ? 'buying' : 'selling';
+            $counterparty = $isBuyer
                 ? $this->supplierName($c, $companyNames)
                 : ($companyNames[$c->buyer_company_id] ?? '—');
 
             // Received vs pending payment totals from the eager-loaded
             // payments relation. Used by both directions because every
             // tenant cares about cash position regardless of role.
-            $paidAmount    = 0.0;
+            $paidAmount = 0.0;
             $pendingAmount = 0.0;
             if ($c->relationLoaded('payments') && $c->payments) {
                 foreach ($c->payments as $p) {
@@ -294,29 +302,29 @@ class ContractController extends Controller
                 : null;
 
             return [
-                'id'                  => $c->contract_number,
-                'numeric_id'          => $c->id,
-                'status'              => $statusKey,
-                'title'               => $c->title,
+                'id' => $c->contract_number,
+                'numeric_id' => $c->id,
+                'status' => $statusKey,
+                'title' => $c->title,
                 // Direction + counterparty are the new role-aware fields.
                 // The view uses them to render a Buying/Selling badge and
                 // the right counterparty label per row.
-                'my_role'             => $myRole,
-                'direction'           => $direction,
-                'counterparty'        => $counterparty,
+                'my_role' => $myRole,
+                'direction' => $direction,
+                'counterparty' => $counterparty,
                 // Legacy `supplier` key kept so any unrelated callers
                 // (PDF / CSV / Blade snippets) that still reference it
                 // don't break. Always points at the OTHER side.
-                'supplier'            => $counterparty,
-                'amount'              => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
-                'started'             => $this->date($c->start_date ?? $c->created_at),
-                'expected'            => $this->date($c->end_date),
-                'days_left'           => $daysLeft,
-                'progress_label'      => $label,
-                'progress'            => $progress,
-                'progress_color'      => $color,
-                'received'            => $this->money($paidAmount, $c->currency ?? 'AED'),
-                'pending'             => $this->money($pendingAmount, $c->currency ?? 'AED'),
+                'supplier' => $counterparty,
+                'amount' => $this->money((float) $c->total_amount, $c->currency ?? 'AED'),
+                'started' => $this->date($c->start_date ?? $c->created_at),
+                'expected' => $this->date($c->end_date),
+                'days_left' => $daysLeft,
+                'progress_label' => $label,
+                'progress' => $progress,
+                'progress_color' => $color,
+                'received' => $this->money($paidAmount, $c->currency ?? 'AED'),
+                'pending' => $this->money($pendingAmount, $c->currency ?? 'AED'),
             ];
         })->toArray();
 
@@ -361,26 +369,26 @@ class ContractController extends Controller
                 $contract->id,
                 now()->toDateString(),
             );
-            if (!\Illuminate\Support\Facades\Cache::has($cacheKey)) {
+            if (! Cache::has($cacheKey)) {
                 AuditLog::create([
-                    'user_id'       => $viewer?->id,
-                    'company_id'    => $viewer?->company_id,
-                    'action'        => AuditAction::VIEW->value,
+                    'user_id' => $viewer?->id,
+                    'company_id' => $viewer?->company_id,
+                    'action' => AuditAction::VIEW->value,
                     'resource_type' => 'Contract',
-                    'resource_id'   => $contract->id,
-                    'ip_address'    => $request->ip(),
-                    'user_agent'    => substr((string) $request->userAgent(), 0, 255),
-                    'status'        => 'success',
+                    'resource_id' => $contract->id,
+                    'ip_address' => $request->ip(),
+                    'user_agent' => substr((string) $request->userAgent(), 0, 255),
+                    'status' => 'success',
                 ]);
                 // 24-hour TTL — fresh cache key tomorrow means a
                 // first view of the same contract on a new day
                 // produces a fresh audit row.
-                \Illuminate\Support\Facades\Cache::put($cacheKey, true, now()->addDay());
+                Cache::put($cacheKey, true, now()->addDay());
             }
         } catch (\Throwable $e) {
             \Log::warning('Contract view audit log failed', [
                 'contract_id' => $contract->id,
-                'error'       => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
 
@@ -402,10 +410,10 @@ class ContractController extends Controller
         // (latest ICV score, insurance status) without N+1 queries.
         $partyCompanyIds = collect($contract->parties ?? [])->pluck('company_id')->filter()->unique();
         $companies = Company::with([
-                'users' => fn ($q) => $q->orderBy('id'),
-                'icvCertificates',
-                'insurances',
-            ])
+            'users' => fn ($q) => $q->orderBy('id'),
+            'icvCertificates',
+            'insurances',
+        ])
             ->whereIn('id', $partyCompanyIds)
             ->get()
             ->keyBy('id');
@@ -436,32 +444,32 @@ class ContractController extends Controller
             }
 
             return [
-                'code'           => $this->initials($name),
-                'color'          => $role === 'buyer' ? 'bg-accent' : 'bg-[#10B981]',
-                'name'           => $name,
-                'type'           => $role === 'buyer' ? __('contracts.buyer') : __('contracts.supplier'),
-                'contact'        => implode(' · ', $contactParts),
-                'signed'         => (bool) $signature,
-                'signed_on'      => $signature ? $this->longDate($signature['signed_at'] ?? null) : null,
+                'code' => $this->initials($name),
+                'color' => $role === 'buyer' ? 'bg-accent' : 'bg-[#10B981]',
+                'name' => $name,
+                'type' => $role === 'buyer' ? __('contracts.buyer') : __('contracts.supplier'),
+                'contact' => implode(' · ', $contactParts),
+                'signed' => (bool) $signature,
+                'signed_on' => $signature ? $this->longDate($signature['signed_at'] ?? null) : null,
                 // Phase 4 / Sprint 18 — surface the legal identity of
                 // the party so a reviewer doesn't need to drill into
                 // the company profile to confirm TRN, registration #,
                 // address, and jurisdiction. Each is null-safe so
                 // legacy or partially-filled companies still render.
-                'trn'            => $company?->tax_number ?: null,
-                'registration'   => $company?->registration_number ?: null,
-                'jurisdiction'   => $jurisdiction,
-                'address'        => $company?->address ?: null,
-                'country'        => $company?->country ?: null,
+                'trn' => $company?->tax_number ?: null,
+                'registration' => $company?->registration_number ?: null,
+                'jurisdiction' => $jurisdiction,
+                'address' => $company?->address ?: null,
+                'country' => $company?->country ?: null,
                 // Audit metadata captured at sign time. The view
                 // displays IP/device/hash inside an expandable details
                 // strip so the reader can verify the e-signature meets
                 // Federal Decree-Law 46/2021 evidentiary standards.
-                'sig_audit'      => $signature ? [
-                    'ip'         => $signature['ip_address']  ?? null,
-                    'user_agent' => $signature['user_agent']  ?? null,
-                    'hash'       => $signature['contract_hash'] ?? null,
-                    'consent_at' => $signature['consent_at']  ?? null,
+                'sig_audit' => $signature ? [
+                    'ip' => $signature['ip_address'] ?? null,
+                    'user_agent' => $signature['user_agent'] ?? null,
+                    'hash' => $signature['contract_hash'] ?? null,
+                    'consent_at' => $signature['consent_at'] ?? null,
                 ] : null,
                 // Compliance signals — surface ICV score and the
                 // insurance coverage state on the party card so a
@@ -469,11 +477,11 @@ class ContractController extends Controller
                 // navigating to the company profile. Both are null
                 // for buyer-side parties because they typically
                 // don't matter (the supplier is the one being vetted).
-                'icv_score'         => $role === 'supplier' ? $company?->latestActiveIcvScore() : null,
-                'is_insured'        => $role === 'supplier' ? ($company?->isInsured() ?? false) : null,
+                'icv_score' => $role === 'supplier' ? $company?->latestActiveIcvScore() : null,
+                'is_insured' => $role === 'supplier' ? ($company?->isInsured() ?? false) : null,
                 // Public profile route so the user can drill into the
                 // supplier directory page in one click.
-                'profile_url'       => $cid ? route('dashboard.suppliers.profile', ['id' => $cid]) : null,
+                'profile_url' => $cid ? route('dashboard.suppliers.profile', ['id' => $cid]) : null,
             ];
         })->all();
 
@@ -484,25 +492,25 @@ class ContractController extends Controller
         $payments = $contract->payments;
         $milestones = collect($contract->payment_schedule ?? [])->map(function ($entry) use ($payments, $currency, $contract) {
             $rawKey = (string) ($entry['milestone'] ?? '');
-            $type = \App\Enums\MilestoneType::fromString($rawKey);
+            $type = MilestoneType::fromString($rawKey);
             $percentage = (int) ($entry['percentage'] ?? 0);
             $amount = (float) ($entry['amount'] ?? 0);
 
-            $payment = $type === \App\Enums\MilestoneType::OTHER
+            $payment = $type === MilestoneType::OTHER
                 ? null
-                : $payments->first(fn ($p) => \App\Enums\MilestoneType::fromString((string) $p->milestone) === $type);
+                : $payments->first(fn ($p) => MilestoneType::fromString((string) $p->milestone) === $type);
 
             $statusValue = $payment ? $this->statusValue($payment->status) : null;
             $isPaid = in_array($statusValue, ['completed', 'paid'], true);
-            $isPending = $payment && !$isPaid;
+            $isPending = $payment && ! $isPaid;
 
             return [
-                'name'       => $this->milestoneName($rawKey),
+                'name' => $this->milestoneName($rawKey),
                 'percentage' => $percentage,
-                'amount'     => $this->money($amount, $currency),
-                'status'     => $isPaid ? 'paid' : ($isPending ? 'pending' : 'future'),
-                'due_date'   => $this->longDate($payment?->approved_at ?? $contract->end_date),
-                'paid_date'  => $isPaid ? $this->longDate($payment->approved_at ?? $payment->updated_at) : null,
+                'amount' => $this->money($amount, $currency),
+                'status' => $isPaid ? 'paid' : ($isPending ? 'pending' : 'future'),
+                'due_date' => $this->longDate($payment?->approved_at ?? $contract->end_date),
+                'paid_date' => $isPaid ? $this->longDate($payment->approved_at ?? $payment->updated_at) : null,
                 'payment_id' => $isPending ? $payment->id : null,
             ];
         })->all();
@@ -537,7 +545,7 @@ class ContractController extends Controller
         $canSign = $user
             && $user->hasPermission('contract.sign')
             && $userCompanyIsParty
-            && !$userCompanyAlreadySigned
+            && ! $userCompanyAlreadySigned
             && in_array($this->statusValue($contract->status), $signableStatuses, true);
 
         // Role-in-this-contract: the same user/company can be a buyer in
@@ -548,16 +556,16 @@ class ContractController extends Controller
         // user's global role/company type.
         $myCompanyId = $user?->company_id;
         $isBuyerHere = $myCompanyId && (int) $contract->buyer_company_id === (int) $myCompanyId;
-        $myRole      = $isBuyerHere ? 'buyer' : 'supplier';
-        $direction   = $isBuyerHere ? 'buying' : 'selling';
+        $myRole = $isBuyerHere ? 'buyer' : 'supplier';
+        $direction = $isBuyerHere ? 'buying' : 'selling';
 
         // Counterparty resolution — the other side of the trade. Used by
         // the unified detail view for the "Counterparty" sidebar card so
         // the user always sees who they're dealing with regardless of
         // direction. Falls back to the first non-current-company party
         // when the current user is the buyer.
-        $buyerCompanyId   = $contract->buyer_company_id;
-        $buyerCompanyRow  = $buyerCompanyId
+        $buyerCompanyId = $contract->buyer_company_id;
+        $buyerCompanyRow = $buyerCompanyId
             ? Company::with(['users' => fn ($q) => $q->orderBy('id')])->find($buyerCompanyId)
             : null;
 
@@ -574,16 +582,16 @@ class ContractController extends Controller
         }
 
         $counterparty = [
-            'name'  => $counterpartyCompany?->name ?? '—',
+            'name' => $counterpartyCompany?->name ?? '—',
             'email' => $counterpartyCompany?->email ?? $counterpartyCompany?->users->first()?->email ?? '—',
             'phone' => $counterpartyCompany?->phone ?? '—',
-            'role'  => $isBuyerHere ? 'supplier' : 'buyer',
+            'role' => $isBuyerHere ? 'supplier' : 'buyer',
         ];
 
         // Buyer contact stays in the data array for backwards compatibility
         // with any include / partial that still references it.
         $buyerContact = [
-            'name'  => $buyerCompanyRow?->name ?? '—',
+            'name' => $buyerCompanyRow?->name ?? '—',
             'email' => $buyerCompanyRow?->email ?? $buyerCompanyRow?->users->first()?->email ?? '—',
             'phone' => $buyerCompanyRow?->phone ?? '—',
         ];
@@ -593,16 +601,17 @@ class ContractController extends Controller
         // bids store under that column) and resolves each row to a labelled
         // milestone + percentage + formatted amount + display "stage".
         $paymentSchedule = collect($contract->payment_schedule ?? [])->map(function ($entry) use ($currency, $totalAmount) {
-            $pct  = (float) ($entry['percentage'] ?? 0);
-            $amt  = (float) ($entry['amount'] ?? round($totalAmount * $pct / 100, 2));
+            $pct = (float) ($entry['percentage'] ?? 0);
+            $amt = (float) ($entry['amount'] ?? round($totalAmount * $pct / 100, 2));
             $rawLabel = (string) ($entry['milestone'] ?? '');
-            $type = \App\Enums\MilestoneType::fromString($rawLabel);
-            $stage = $type === \App\Enums\MilestoneType::OTHER ? 'milestone' : $type->value;
+            $type = MilestoneType::fromString($rawLabel);
+            $stage = $type === MilestoneType::OTHER ? 'milestone' : $type->value;
+
             return [
-                'milestone'  => $this->milestoneName($rawLabel),
+                'milestone' => $this->milestoneName($rawLabel),
                 'percentage' => $pct,
-                'amount'     => $this->money($amt, $currency),
-                'stage'      => $stage,
+                'amount' => $this->money($amt, $currency),
+                'stage' => $stage,
             ];
         })->values()->all();
 
@@ -612,14 +621,15 @@ class ContractController extends Controller
         $supplierDocs = collect($contract->supplier_documents ?? [])->values()->map(function ($doc, $idx) use ($contract) {
             $name = is_array($doc) ? ($doc['name'] ?? 'document') : (string) $doc;
             $size = is_array($doc) ? ($doc['size'] ?? null) : null;
+
             return [
-                'name'        => $name,
-                'type'        => strtoupper(pathinfo($name, PATHINFO_EXTENSION) ?: 'FILE'),
-                'size'        => $size ? (is_numeric($size) ? round($size / 1024 / 1024, 1) . ' MB' : $size) : '—',
+                'name' => $name,
+                'type' => strtoupper(pathinfo($name, PATHINFO_EXTENSION) ?: 'FILE'),
+                'size' => $size ? (is_numeric($size) ? round($size / 1024 / 1024, 1).' MB' : $size) : '—',
                 'uploaded_at' => is_array($doc) && isset($doc['uploaded_at'])
-                    ? \Carbon\Carbon::parse($doc['uploaded_at'])->format('M j, Y')
+                    ? Carbon::parse($doc['uploaded_at'])->format('M j, Y')
                     : '—',
-                'url'         => route('dashboard.contracts.documents.download', ['id' => $contract->id, 'idx' => $idx]),
+                'url' => route('dashboard.contracts.documents.download', ['id' => $contract->id, 'idx' => $idx]),
             ];
         })->all();
 
@@ -628,8 +638,8 @@ class ContractController extends Controller
         $progressLog = collect($contract->progress_updates ?? [])->reverse()->values()->map(function ($entry) {
             return [
                 'percent' => (int) ($entry['percent'] ?? 0),
-                'note'    => $entry['note'] ?? null,
-                'when'    => isset($entry['at']) ? \Carbon\Carbon::parse($entry['at'])->diffForHumans() : '—',
+                'note' => $entry['note'] ?? null,
+                'when' => isset($entry['at']) ? Carbon::parse($entry['at'])->diffForHumans() : '—',
             ];
         })->all();
 
@@ -641,7 +651,7 @@ class ContractController extends Controller
                 || in_array($user->company_id, collect($contract->parties ?? [])->pluck('company_id')->all(), true));
         $existingReview = null;
         if ($canReview) {
-            $existingReview = \App\Models\Feedback::where('contract_id', $contract->id)
+            $existingReview = Feedback::where('contract_id', $contract->id)
                 ->where('rater_company_id', $user->company_id)
                 ->first();
         }
@@ -680,7 +690,7 @@ class ContractController extends Controller
             $this->statusValue($contract->status),
             [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value],
             true
-        ) && !$contract->allPartiesHaveSigned();
+        ) && ! $contract->allPartiesHaveSigned();
 
         $canAmend = $user
             && $user->hasPermission('contract.view')
@@ -688,11 +698,11 @@ class ContractController extends Controller
             && $preSignature;
 
         $amendments = $amendmentRecords->map(function (ContractAmendment $a) use ($user, $userIsParty) {
-            $changes      = $a->changes ?? [];
+            $changes = $a->changes ?? [];
             $proposerUser = $a->requestedBy;
-            $proposerCo   = $proposerUser?->company_id;
-            $isMine       = $user && $proposerCo === $user->company_id;
-            $statusValue  = $a->status instanceof \BackedEnum ? $a->status->value : (string) $a->status;
+            $proposerCo = $proposerUser?->company_id;
+            $isMine = $user && $proposerCo === $user->company_id;
+            $statusValue = $a->status instanceof \BackedEnum ? $a->status->value : (string) $a->status;
 
             // Negotiation thread bubbles. Each message is grouped to
             // either 'mine' (current user's company) or 'theirs' so the
@@ -710,10 +720,10 @@ class ContractController extends Controller
                 ->values()
                 ->map(function (ContractAmendmentMessage $m) use ($user) {
                     return [
-                        'id'      => $m->id,
-                        'body'    => $m->body,
-                        'author'  => $m->user?->name ?? '—',
-                        'when'    => $m->created_at?->diffForHumans() ?? '—',
+                        'id' => $m->id,
+                        'body' => $m->body,
+                        'author' => $m->user?->name ?? '—',
+                        'when' => $m->created_at?->diffForHumans() ?? '—',
                         'is_mine' => $user && (int) $m->company_id === (int) $user->company_id,
                     ];
                 })
@@ -728,34 +738,34 @@ class ContractController extends Controller
             $bilingualMismatch = $proposedLang && $proposedLang !== app()->getLocale();
 
             return [
-                'id'             => $a->id,
-                'kind'           => $changes['kind'] ?? 'modify',
-                'section_index'  => (int) ($changes['section_index'] ?? 0),
-                'section_title'  => (string) ($changes['section_title'] ?? ''),
-                'item_index'     => $changes['item_index'] ?? null,
-                'old_text'       => $changes['old_text'] ?? null,
-                'new_text'       => (string) ($changes['new_text'] ?? ''),
-                'reason'         => $a->reason,
-                'status'         => $statusValue,
-                'is_pending'     => $statusValue === AmendmentStatus::PENDING_APPROVAL->value,
-                'proposed_by'    => $proposerUser?->name ?? '—',
+                'id' => $a->id,
+                'kind' => $changes['kind'] ?? 'modify',
+                'section_index' => (int) ($changes['section_index'] ?? 0),
+                'section_title' => (string) ($changes['section_title'] ?? ''),
+                'item_index' => $changes['item_index'] ?? null,
+                'old_text' => $changes['old_text'] ?? null,
+                'new_text' => (string) ($changes['new_text'] ?? ''),
+                'reason' => $a->reason,
+                'status' => $statusValue,
+                'is_pending' => $statusValue === AmendmentStatus::PENDING_APPROVAL->value,
+                'proposed_by' => $proposerUser?->name ?? '—',
                 'proposed_by_me' => $isMine,
-                'proposed_at'    => $a->created_at?->diffForHumans() ?? '—',
-                'proposed_lang'  => $proposedLang,
+                'proposed_at' => $a->created_at?->diffForHumans() ?? '—',
+                'proposed_lang' => $proposedLang,
                 'bilingual_mismatch' => $bilingualMismatch,
                 // Counter-party can only approve / reject if pending AND not the proposer's company.
-                'can_decide'     => $statusValue === AmendmentStatus::PENDING_APPROVAL->value
+                'can_decide' => $statusValue === AmendmentStatus::PENDING_APPROVAL->value
                     && $user
                     && $proposerCo
                     && $proposerCo !== $user->company_id,
                 // Discussion thread for this clause amendment.
-                'messages'       => $messages,
-                'message_count'  => $totalMessages,
+                'messages' => $messages,
+                'message_count' => $totalMessages,
                 'has_more_messages' => $totalMessages > count($messages),
                 // Either party can post a message any time before the
                 // contract is fully signed (so the conversation can
                 // continue right up until the moment of signature).
-                'can_message'    => $user && $userIsParty,
+                'can_message' => $user && $userIsParty,
             ];
         })->all();
 
@@ -768,30 +778,31 @@ class ContractController extends Controller
         // renders something useful instead of an empty stub.
         $lineItems = collect($contract->amounts['line_items'] ?? [])
             ->map(function ($item) use ($currency) {
-                $qty       = (float) ($item['quantity']  ?? 1);
-                $unit      = (float) ($item['unit_price'] ?? 0);
-                $lineTotal = (float) ($item['total']     ?? round($qty * $unit, 2));
+                $qty = (float) ($item['quantity'] ?? 1);
+                $unit = (float) ($item['unit_price'] ?? 0);
+                $lineTotal = (float) ($item['total'] ?? round($qty * $unit, 2));
+
                 return [
-                    'name'       => (string) ($item['name'] ?? '—'),
-                    'sku'        => (string) ($item['sku']  ?? ''),
-                    'qty'        => $qty,
-                    'unit'       => (string) ($item['unit_of_measure'] ?? ''),
+                    'name' => (string) ($item['name'] ?? '—'),
+                    'sku' => (string) ($item['sku'] ?? ''),
+                    'qty' => $qty,
+                    'unit' => (string) ($item['unit_of_measure'] ?? ''),
                     'unit_price' => $this->money($unit, $currency),
-                    'total'      => $this->money($lineTotal, $currency),
+                    'total' => $this->money($lineTotal, $currency),
                 ];
             })
             ->all();
         if (empty($lineItems)) {
             // Buy-Now or single-line contract — synthesise one row.
             $unit = (float) ($contract->amounts['unit_price'] ?? $contract->amounts['subtotal'] ?? $contract->total_amount);
-            $qty  = (float) ($contract->amounts['quantity']   ?? 1);
+            $qty = (float) ($contract->amounts['quantity'] ?? 1);
             $lineItems = [[
-                'name'       => $contract->title,
-                'sku'        => '',
-                'qty'        => $qty,
-                'unit'       => '',
+                'name' => $contract->title,
+                'sku' => '',
+                'qty' => $qty,
+                'unit' => '',
                 'unit_price' => $this->money($qty > 0 ? $unit / $qty : $unit, $currency),
-                'total'      => $this->money((float) $contract->total_amount, $currency),
+                'total' => $this->money((float) $contract->total_amount, $currency),
             ]];
         }
 
@@ -805,14 +816,15 @@ class ContractController extends Controller
             ->values()
             ->map(function ($p) use ($currency) {
                 $statusValue = $this->statusValue($p->status);
+
                 return [
-                    'id'         => $p->id,
-                    'milestone'  => $p->milestone ?: __('contracts.milestone'),
-                    'amount'     => $this->money((float) $p->total_amount, $p->currency ?: $currency),
-                    'status'     => $statusValue,
-                    'is_paid'    => in_array($statusValue, ['completed', 'paid'], true),
-                    'date'       => $this->longDate($p->approved_at ?? $p->updated_at ?? $p->created_at),
-                    'invoice_url'=> route('dashboard.payments.show', ['id' => $p->id]),
+                    'id' => $p->id,
+                    'milestone' => $p->milestone ?: __('contracts.milestone'),
+                    'amount' => $this->money((float) $p->total_amount, $p->currency ?: $currency),
+                    'status' => $statusValue,
+                    'is_paid' => in_array($statusValue, ['completed', 'paid'], true),
+                    'date' => $this->longDate($p->approved_at ?? $p->updated_at ?? $p->created_at),
+                    'invoice_url' => route('dashboard.payments.show', ['id' => $p->id]),
                 ];
             })
             ->all();
@@ -825,74 +837,74 @@ class ContractController extends Controller
         $userCompany = $user?->company_id ? Company::find($user->company_id) : null;
         $signatureAssets = [
             'has_signature' => (bool) $userCompany?->signature_path,
-            'has_stamp'     => (bool) $userCompany?->stamp_path,
-            'has_both'      => (bool) $userCompany?->hasSignatureAssets(),
+            'has_stamp' => (bool) $userCompany?->stamp_path,
+            'has_both' => (bool) $userCompany?->hasSignatureAssets(),
             'signature_url' => $userCompany?->signatureUrl(),
-            'stamp_url'     => $userCompany?->stampUrl(),
+            'stamp_url' => $userCompany?->stampUrl(),
         ];
         // The "ready to sign" flag combines the existing signable check
         // with the new asset gate so the button is only enabled when
         // BOTH conditions are true. The view still falls back to the
         // upload modal CTA when can_sign is true but assets are missing.
-        $needsSignatureAssets = $canSign && !$signatureAssets['has_both'];
+        $needsSignatureAssets = $canSign && ! $signatureAssets['has_both'];
 
         $data = [
-            'id'              => $contract->contract_number,
-            'numeric_id'      => $contract->id,
+            'id' => $contract->contract_number,
+            'numeric_id' => $contract->id,
             // Phase 4 / Sprint 18 — surfaced for the "Buy Again" button so
             // the view can gate it on (current user company == buyer).
             'buyer_company_id' => $contract->buyer_company_id,
-            'escrow'          => $escrowPanel,
-            'title'           => $contract->title,
-            'status'          => $statusKey,
-            'amount'          => $this->money($totalAmount, $currency),
-            'progress'        => $progress,
-            'progress_label'  => $progressLabel,
-            'days_remaining'  => $daysRemaining,
-            'parties'         => $parties,
-            'milestones'      => $milestones,
-            'payment_schedule'=> $paymentSchedule,
-            'terms_sections'  => $termsSections,
-            'amendments'      => $amendments,
-            'can_amend'       => $canAmend,
-            'timeline'        => $timeline,
-            'documents'       => $documents,
+            'escrow' => $escrowPanel,
+            'title' => $contract->title,
+            'status' => $statusKey,
+            'amount' => $this->money($totalAmount, $currency),
+            'progress' => $progress,
+            'progress_label' => $progressLabel,
+            'days_remaining' => $daysRemaining,
+            'parties' => $parties,
+            'milestones' => $milestones,
+            'payment_schedule' => $paymentSchedule,
+            'terms_sections' => $termsSections,
+            'amendments' => $amendments,
+            'can_amend' => $canAmend,
+            'timeline' => $timeline,
+            'documents' => $documents,
             'supplier_documents' => $supplierDocs,
-            'progress_log'    => $progressLog,
-            'has_shipment'    => $contract->shipments->isNotEmpty(),
-            'shipment_id'     => $contract->shipments->first()?->tracking_number,
-            'can_sign'              => $canSign,
-            'needs_signature_assets'=> $needsSignatureAssets,
-            'signature_assets'      => $signatureAssets,
+            'progress_log' => $progressLog,
+            'has_shipment' => $contract->shipments->isNotEmpty(),
+            'shipment_id' => $contract->shipments->first()?->tracking_number,
+            'can_sign' => $canSign,
+            'needs_signature_assets' => $needsSignatureAssets,
+            'signature_assets' => $signatureAssets,
             // Decline / terminate gating. Pre-signature with no party
             // signed yet → decline; ACTIVE / SIGNED → terminate. Both
             // surfaced as separate flags so the view can render two
             // distinct buttons (decline is destructive but reversible
             // by re-issuing; terminate is destructive and final).
-            'can_decline'           => $userIsParty
+            'can_decline' => $userIsParty
                 && in_array($this->statusValue($contract->status), [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value], true)
                 && empty($contract->signatures),
-            'can_terminate'         => $userIsParty
+            'can_terminate' => $userIsParty
                 && in_array($this->statusValue($contract->status), [ContractStatus::ACTIVE->value, ContractStatus::SIGNED->value], true),
             // Renew button — buyer-side only, visible whenever the
             // contract is in a state where renewal makes sense
             // (active, completed or terminated). Pre-signature
             // contracts haven't been "real" yet so renewing them
             // is just creating a new contract.
-            'can_renew'             => $user
+            'can_renew' => $user
                 && (int) $user->company_id === (int) $contract->buyer_company_id
                 && in_array($this->statusValue($contract->status), [ContractStatus::ACTIVE->value, ContractStatus::COMPLETED->value, ContractStatus::TERMINATED->value], true),
             // Line items + payments history surface in the supplier
             // Items / Payments tabs (which were stub placeholders
             // before this commit).
-            'line_items'            => $lineItems,
-            'payments_history'      => $paymentsHistory,
+            'line_items' => $lineItems,
+            'payments_history' => $paymentsHistory,
             // Current version of the contract terms — used by the
             // "View changes" button in the show page so users can jump
             // straight into the diff view when there is more than one
             // snapshot to compare against.
-            'version'               => $contract->version,
-            'has_revisions'         => $contract->version > 1,
+            'version' => $contract->version,
+            'has_revisions' => $contract->version > 1,
             // AI Risk Analysis snippet — overall band, score, top 3
             // findings. The full analysis lives behind the dedicated
             // /ai/contracts/{id}/risk endpoint; the show page only
@@ -901,65 +913,65 @@ class ContractController extends Controller
             // Permission-gated and try/catch'd so users without ai.use
             // (or environments without the AI service configured) get
             // null and the view simply hides the card.
-            'risk'                  => $this->buildRiskSnippet($contract, $user),
+            'risk' => $this->buildRiskSnippet($contract, $user),
             // Internal approval state — surfaces a bright banner on
             // the contract show page when the contract is waiting on
             // an internal approver before being released to the
             // counter-party for signature.
             'awaiting_internal_approval' => $this->statusValue($contract->status) === ContractStatus::PENDING_INTERNAL_APPROVAL->value,
-            'can_approve_internally'     => $user
+            'can_approve_internally' => $user
                 && $user->hasPermission('contract.approve')
                 && (int) $user->company_id === (int) $contract->buyer_company_id
                 && $this->statusValue($contract->status) === ContractStatus::PENDING_INTERNAL_APPROVAL->value,
-            'approval_threshold_aed'     => optional(Company::find($contract->buyer_company_id))->approval_threshold_aed,
+            'approval_threshold_aed' => optional(Company::find($contract->buyer_company_id))->approval_threshold_aed,
             // Internal team notes — strict tenant scope: only notes
             // authored by users from the CURRENT user's company. Notes
             // from the counter-party are never even loaded into memory
             // so a Blade leak (forgotten @if) cannot expose them.
-            'internal_notes'        => $user
+            'internal_notes' => $user
                 ? ContractInternalNote::where('contract_id', $contract->id)
                     ->where('company_id', $user->company_id)
                     ->with('user:id,first_name,last_name,email')
                     ->latest()
                     ->get()
                     ->map(fn ($n) => [
-                        'id'      => $n->id,
-                        'body'    => $n->body,
-                        'author'  => trim(($n->user?->first_name ?? '') . ' ' . ($n->user?->last_name ?? '')) ?: ($n->user?->email ?? '—'),
-                        'when'    => $n->created_at?->diffForHumans() ?? '—',
+                        'id' => $n->id,
+                        'body' => $n->body,
+                        'author' => trim(($n->user?->first_name ?? '').' '.($n->user?->last_name ?? '')) ?: ($n->user?->email ?? '—'),
+                        'when' => $n->created_at?->diffForHumans() ?? '—',
                         'is_mine' => $n->user_id === $user->id,
                     ])
                     ->all()
                 : [],
-            'amounts_meta'          => [
-                'tax_treatment'     => $contract->amounts['tax_treatment']     ?? null,
-                'incoterm'          => $contract->amounts['incoterm']          ?? null,
+            'amounts_meta' => [
+                'tax_treatment' => $contract->amounts['tax_treatment'] ?? null,
+                'incoterm' => $contract->amounts['incoterm'] ?? null,
                 'country_of_origin' => $contract->amounts['country_of_origin'] ?? null,
-                'hs_code'           => $contract->amounts['hs_code']           ?? null,
+                'hs_code' => $contract->amounts['hs_code'] ?? null,
             ],
-            'can_review'            => $canReview,
+            'can_review' => $canReview,
             'existing_review' => $existingReview ? [
-                'rating'  => $existingReview->rating,
+                'rating' => $existingReview->rating,
                 'comment' => $existingReview->comment,
             ] : null,
-            'start_date'      => $this->longDate($contract->start_date ?? $contract->created_at),
-            'end_date'        => $this->longDate($contract->end_date),
-            'buyer_contact'   => $buyerContact,
+            'start_date' => $this->longDate($contract->start_date ?? $contract->created_at),
+            'end_date' => $this->longDate($contract->end_date),
+            'buyer_contact' => $buyerContact,
             // Direction-aware fields. The unified show view branches off
             // these to render the right action panel + header badge for
             // each side of the trade — instead of dispatching to a
             // separate supplier-only template.
-            'my_role'         => $myRole,            // 'buyer' | 'supplier'
-            'direction'       => $direction,         // 'buying' | 'selling'
-            'counterparty'    => $counterparty,      // {name, email, phone, role}
-            'total_amount'    => $this->money($totalAmount, $currency),
+            'my_role' => $myRole,            // 'buyer' | 'supplier'
+            'direction' => $direction,         // 'buying' | 'selling'
+            'counterparty' => $counterparty,      // {name, email, phone, role}
+            'total_amount' => $this->money($totalAmount, $currency),
             // Status is an enum cast — use statusValue() helper. Sum total_amount
             // (amount + VAT) so "Received" reflects what was actually transferred.
-            'paid_amount'     => $this->money(
+            'paid_amount' => $this->money(
                 (float) $payments->filter(fn ($p) => in_array($this->statusValue($p->status), ['completed', 'paid'], true))->sum('total_amount'),
                 $currency
             ),
-            'pending_amount'  => $this->money(
+            'pending_amount' => $this->money(
                 $totalAmount - (float) $payments->filter(fn ($p) => in_array($this->statusValue($p->status), ['completed', 'paid'], true))->sum('total_amount'),
                 $currency
             ),
@@ -1014,17 +1026,17 @@ class ContractController extends Controller
             }
 
             $pdf = Pdf::loadView('contracts.pdf', [
-                'contract'        => $contract,
-                'buyerCompany'    => $contract->buyerCompany,
+                'contract' => $contract,
+                'buyerCompany' => $contract->buyerCompany,
                 'supplierCompany' => $supplierCompany,
-                'pdfLocale'       => $lang,
-                'pdfSections'     => $sections,
+                'pdfLocale' => $lang,
+                'pdfSections' => $sections,
             ]);
 
             // Filename includes a language suffix so the buyer can keep both
             // versions on disk side by side without overwriting each other.
-            $filename = $contract->contract_number . '-' . $lang . '.pdf';
-            $output   = $pdf->download($filename);
+            $filename = $contract->contract_number.'-'.$lang.'.pdf';
+            $output = $pdf->download($filename);
         } finally {
             App::setLocale($previousLocale);
         }
@@ -1079,7 +1091,7 @@ class ContractController extends Controller
     public function renew(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
@@ -1090,7 +1102,7 @@ class ContractController extends Controller
         abort_unless((int) $user->company_id === (int) $contract->buyer_company_id, 403);
 
         $statusValue = $this->statusValue($contract->status);
-        if (!in_array($statusValue, [
+        if (! in_array($statusValue, [
             ContractStatus::ACTIVE->value,
             ContractStatus::COMPLETED->value,
             ContractStatus::TERMINATED->value,
@@ -1121,7 +1133,7 @@ class ContractController extends Controller
     public function decideApproval(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.approve'), 403);
         $this->authorizeContractParty($contract);
@@ -1138,24 +1150,24 @@ class ContractController extends Controller
 
         $validated = $request->validate([
             'decision' => ['required', 'in:approved,rejected'],
-            'notes'    => ['nullable', 'string', 'max:1000'],
+            'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         DB::transaction(function () use ($contract, $user, $validated) {
             ContractApproval::create([
                 'contract_id' => $contract->id,
-                'user_id'     => $user->id,
-                'company_id'  => $user->company_id,
-                'decision'    => $validated['decision'],
-                'notes'       => $validated['notes'] ?? null,
+                'user_id' => $user->id,
+                'company_id' => $user->company_id,
+                'decision' => $validated['decision'],
+                'notes' => $validated['notes'] ?? null,
             ]);
 
             if ($validated['decision'] === ContractApproval::DECISION_APPROVED) {
                 $contract->update(['status' => ContractStatus::PENDING_SIGNATURES]);
             } else {
                 $contract->update([
-                    'status'      => ContractStatus::CANCELLED,
-                    'description' => trim(($contract->description ?? '') . "\n\n[INTERNAL REJECT " . now()->toDateString() . " by " . $this->displayName($user) . "] " . ($validated['notes'] ?? '')),
+                    'status' => ContractStatus::CANCELLED,
+                    'description' => trim(($contract->description ?? '')."\n\n[INTERNAL REJECT ".now()->toDateString().' by '.$this->displayName($user).'] '.($validated['notes'] ?? '')),
                 ]);
             }
         });
@@ -1203,22 +1215,23 @@ class ContractController extends Controller
         $events = collect($contract->signatures ?? [])
             ->map(function ($sig) use ($companies) {
                 $companyId = $sig['company_id'] ?? null;
-                $company   = $companyId ? $companies->get($companyId) : null;
-                $signer    = isset($sig['user_id']) ? User::find($sig['user_id']) : null;
+                $company = $companyId ? $companies->get($companyId) : null;
+                $signer = isset($sig['user_id']) ? User::find($sig['user_id']) : null;
                 $signerName = $signer
-                    ? trim(($signer->first_name ?? '') . ' ' . ($signer->last_name ?? ''))
+                    ? trim(($signer->first_name ?? '').' '.($signer->last_name ?? ''))
                     : '—';
+
                 return [
-                    'company_name'   => $company?->name ?? '—',
-                    'company_trn'    => $company?->tax_number ?? '—',
-                    'signer_name'    => $signerName ?: ($signer->email ?? '—'),
-                    'signer_email'   => $signer?->email ?? '—',
-                    'signed_at'      => $sig['signed_at']     ?? '—',
-                    'ip_address'     => $sig['ip_address']    ?? '—',
-                    'user_agent'     => $sig['user_agent']    ?? '—',
-                    'consent_text'   => $sig['consent_text']  ?? '—',
-                    'consent_at'     => $sig['consent_at']    ?? '—',
-                    'contract_hash'  => $sig['contract_hash'] ?? '—',
+                    'company_name' => $company?->name ?? '—',
+                    'company_trn' => $company?->tax_number ?? '—',
+                    'signer_name' => $signerName ?: ($signer->email ?? '—'),
+                    'signer_email' => $signer?->email ?? '—',
+                    'signed_at' => $sig['signed_at'] ?? '—',
+                    'ip_address' => $sig['ip_address'] ?? '—',
+                    'user_agent' => $sig['user_agent'] ?? '—',
+                    'consent_text' => $sig['consent_text'] ?? '—',
+                    'consent_at' => $sig['consent_at'] ?? '—',
+                    'contract_hash' => $sig['contract_hash'] ?? '—',
                     'contract_version' => $sig['contract_version'] ?? $contract->version,
                 ];
             })
@@ -1226,11 +1239,12 @@ class ContractController extends Controller
 
         $pdf = Pdf::loadView('contracts.audit-certificate', [
             'contract' => $contract,
-            'events'   => $events,
-            'generated_at' => now()->toDayDateTimeString() . ' UTC',
+            'events' => $events,
+            'generated_at' => now()->toDayDateTimeString().' UTC',
         ]);
 
-        $filename = $contract->contract_number . '-audit-certificate.pdf';
+        $filename = $contract->contract_number.'-audit-certificate.pdf';
+
         return $pdf->download($filename);
     }
 
@@ -1244,7 +1258,7 @@ class ContractController extends Controller
     public function postInternalNote(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
@@ -1255,9 +1269,9 @@ class ContractController extends Controller
 
         ContractInternalNote::create([
             'contract_id' => $contract->id,
-            'user_id'     => $user->id,
-            'company_id'  => $user->company_id,
-            'body'        => trim($validated['body']),
+            'user_id' => $user->id,
+            'company_id' => $user->company_id,
+            'body' => trim($validated['body']),
         ]);
 
         return redirect()
@@ -1273,7 +1287,7 @@ class ContractController extends Controller
     public function deleteInternalNote(string $id, int $noteId): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
@@ -1309,12 +1323,12 @@ class ContractController extends Controller
     public function diffVersions(string $id, Request $request): View
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
 
         $from = (int) $request->query('from', 1);
-        $to   = (int) $request->query('to', $contract->version);
+        $to = (int) $request->query('to', $contract->version);
         if ($from > $to) {
             [$from, $to] = [$to, $from];
         }
@@ -1326,19 +1340,19 @@ class ContractController extends Controller
             ->get(['version', 'created_at', 'created_by']);
 
         $fromVersion = $allVersions->firstWhere('version', $from);
-        $toVersion   = $allVersions->firstWhere('version', $to);
+        $toVersion = $allVersions->firstWhere('version', $to);
 
-        if (!$fromVersion || !$toVersion) {
+        if (! $fromVersion || ! $toVersion) {
             abort(404);
         }
 
         // The snapshot column holds the full contract array. We only
         // care about the terms slice for the diff.
         $fromSnapshot = ContractVersion::where('contract_id', $contract->id)->where('version', $from)->value('snapshot');
-        $toSnapshot   = ContractVersion::where('contract_id', $contract->id)->where('version', $to)->value('snapshot');
+        $toSnapshot = ContractVersion::where('contract_id', $contract->id)->where('version', $to)->value('snapshot');
 
         $fromTerms = $this->parseTermsSections($fromSnapshot['terms'] ?? null);
-        $toTerms   = $this->parseTermsSections($toSnapshot['terms']   ?? null);
+        $toTerms = $this->parseTermsSections($toSnapshot['terms'] ?? null);
 
         // Build a structured diff: for every section that exists in
         // either version, line up the items and tag each as added /
@@ -1349,14 +1363,14 @@ class ContractController extends Controller
         $diff = $this->buildTermsDiff($fromTerms, $toTerms);
 
         return view('dashboard.contracts.diff', [
-            'contract'    => $contract,
-            'from'        => $from,
-            'to'          => $to,
-            'all_versions'=> $allVersions->map(fn ($v) => [
+            'contract' => $contract,
+            'from' => $from,
+            'to' => $to,
+            'all_versions' => $allVersions->map(fn ($v) => [
                 'version' => $v->version,
-                'date'    => $this->longDate($v->created_at),
+                'date' => $this->longDate($v->created_at),
             ])->values()->all(),
-            'diff'        => $diff,
+            'diff' => $diff,
         ]);
     }
 
@@ -1375,22 +1389,24 @@ class ContractController extends Controller
         $maxSections = max(count($fromTerms), count($toTerms));
         for ($s = 0; $s < $maxSections; $s++) {
             $a = $fromTerms[$s] ?? null;
-            $b = $toTerms[$s]   ?? null;
+            $b = $toTerms[$s] ?? null;
 
-            if ($a && !$b) {
+            if ($a && ! $b) {
                 $sections[] = [
-                    'title'  => $a['title'],
+                    'title' => $a['title'],
                     'status' => 'removed',
-                    'items'  => array_map(fn ($t) => ['status' => 'removed', 'from' => $t, 'to' => null], $a['items'] ?? []),
+                    'items' => array_map(fn ($t) => ['status' => 'removed', 'from' => $t, 'to' => null], $a['items'] ?? []),
                 ];
+
                 continue;
             }
-            if ($b && !$a) {
+            if ($b && ! $a) {
                 $sections[] = [
-                    'title'  => $b['title'],
+                    'title' => $b['title'],
                     'status' => 'added',
-                    'items'  => array_map(fn ($t) => ['status' => 'added', 'from' => null, 'to' => $t], $b['items'] ?? []),
+                    'items' => array_map(fn ($t) => ['status' => 'added', 'from' => null, 'to' => $t], $b['items'] ?? []),
                 ];
+
                 continue;
             }
 
@@ -1419,11 +1435,12 @@ class ContractController extends Controller
             $status = count($sectionStatus) === 1 ? $sectionStatus[0] : 'modified';
 
             $sections[] = [
-                'title'  => $b['title'] ?? $a['title'] ?? '',
+                'title' => $b['title'] ?? $a['title'] ?? '',
                 'status' => $status,
-                'items'  => $items,
+                'items' => $items,
             ];
         }
+
         return $sections;
     }
 
@@ -1449,15 +1466,15 @@ class ContractController extends Controller
     public function decline(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
 
         $statusValue = $this->statusValue($contract->status);
-        $hasAnySignature = !empty($contract->signatures);
+        $hasAnySignature = ! empty($contract->signatures);
 
-        if (!in_array($statusValue, [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value], true) || $hasAnySignature) {
+        if (! in_array($statusValue, [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value], true) || $hasAnySignature) {
             return back()->withErrors([
                 'contract' => __('contracts.decline_window_closed'),
             ]);
@@ -1468,8 +1485,8 @@ class ContractController extends Controller
         ]);
 
         $contract->update([
-            'status'      => ContractStatus::CANCELLED,
-            'description' => trim(($contract->description ?? '') . "\n\n[DECLINED " . now()->toDateString() . "] " . $validated['reason']),
+            'status' => ContractStatus::CANCELLED,
+            'description' => trim(($contract->description ?? '')."\n\n[DECLINED ".now()->toDateString().'] '.$validated['reason']),
         ]);
 
         return redirect()
@@ -1493,13 +1510,13 @@ class ContractController extends Controller
     public function terminate(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeContractParty($contract);
 
         $statusValue = $this->statusValue($contract->status);
-        if (!in_array($statusValue, [ContractStatus::ACTIVE->value, ContractStatus::SIGNED->value], true)) {
+        if (! in_array($statusValue, [ContractStatus::ACTIVE->value, ContractStatus::SIGNED->value], true)) {
             return back()->withErrors([
                 'contract' => __('contracts.terminate_window_closed'),
             ]);
@@ -1510,8 +1527,8 @@ class ContractController extends Controller
         ]);
 
         $contract->update([
-            'status'      => ContractStatus::TERMINATED,
-            'description' => trim(($contract->description ?? '') . "\n\n[TERMINATED " . now()->toDateString() . " by " . $this->displayName($user) . "] " . $validated['reason']),
+            'status' => ContractStatus::TERMINATED,
+            'description' => trim(($contract->description ?? '')."\n\n[TERMINATED ".now()->toDateString().' by '.$this->displayName($user).'] '.$validated['reason']),
         ]);
 
         return redirect()
@@ -1545,27 +1562,27 @@ class ContractController extends Controller
     public function updateProgress(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeSupplierParty($contract, $user);
 
         $validated = $request->validate([
             'progress_percentage' => ['required', 'integer', 'min:0', 'max:100'],
-            'note'                => ['nullable', 'string', 'max:500'],
+            'note' => ['nullable', 'string', 'max:500'],
         ]);
 
         $log = $contract->progress_updates ?? [];
         $log[] = [
-            'at'      => now()->toIso8601String(),
-            'by'      => $user->id,
+            'at' => now()->toIso8601String(),
+            'by' => $user->id,
             'percent' => (int) $validated['progress_percentage'],
-            'note'    => $validated['note'] ?? null,
+            'note' => $validated['note'] ?? null,
         ];
 
         $contract->update([
             'progress_percentage' => (int) $validated['progress_percentage'],
-            'progress_updates'    => $log,
+            'progress_updates' => $log,
         ]);
 
         return redirect()
@@ -1581,27 +1598,27 @@ class ContractController extends Controller
     public function uploadDocuments(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('contract.view'), 403);
         $this->authorizeSupplierParty($contract, $user);
 
         $request->validate([
-            'documents'   => ['required', 'array', 'max:10'],
-            'documents.*' => ['file', 'max:10240', ...\App\Rules\SafeUpload::documents()],
+            'documents' => ['required', 'array', 'max:10'],
+            'documents.*' => ['file', 'max:10240', ...SafeUpload::documents()],
         ]);
 
         $existing = $contract->supplier_documents ?? [];
         foreach ($request->file('documents') as $file) {
-            if (!$file || !$file->isValid()) {
+            if (! $file || ! $file->isValid()) {
                 continue;
             }
             $path = $file->store("contract-documents/{$contract->id}", 'local');
             $existing[] = [
-                'name'        => $file->getClientOriginalName(),
-                'path'        => $path,
-                'size'        => $file->getSize(),
-                'mime'        => $file->getClientMimeType(),
+                'name' => $file->getClientOriginalName(),
+                'path' => $path,
+                'size' => $file->getSize(),
+                'mime' => $file->getClientMimeType(),
                 'uploaded_at' => now()->toIso8601String(),
                 'uploaded_by' => $user->id,
             ];
@@ -1621,7 +1638,7 @@ class ContractController extends Controller
     public function downloadDocument(string $id, int $idx): StreamedResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
         abort_unless($user?->hasPermission('contract.view'), 403);
 
         // Authorize: user's company must be the buyer OR a party in `parties`.
@@ -1630,7 +1647,7 @@ class ContractController extends Controller
         $isParty = in_array($user->company_id, $partyIds, true);
         abort_unless($isBuyer || $isParty, 403);
 
-        $docs  = (array) ($contract->supplier_documents ?? []);
+        $docs = (array) ($contract->supplier_documents ?? []);
         $entry = $docs[$idx] ?? null;
         abort_unless(is_array($entry) && isset($entry['path']), 404);
         abort_unless(Storage::disk('local')->exists($entry['path']), 404);
@@ -1649,30 +1666,30 @@ class ContractController extends Controller
     public function scheduleShipment(string $id, Request $request): RedirectResponse
     {
         $contract = $this->findOrFail($id);
-        $user     = auth()->user();
+        $user = auth()->user();
 
         abort_unless($user?->hasPermission('shipment.view'), 403);
         $this->authorizeSupplierParty($contract, $user);
 
         $validated = $request->validate([
-            'tracking_number'     => ['nullable', 'string', 'max:100'],
-            'carrier'             => ['nullable', 'string', 'max:100'],
-            'origin'              => ['nullable', 'string', 'max:200'],
-            'destination'         => ['nullable', 'string', 'max:200'],
-            'estimated_delivery'  => ['nullable', 'date', 'after:today'],
+            'tracking_number' => ['nullable', 'string', 'max:100'],
+            'carrier' => ['nullable', 'string', 'max:100'],
+            'origin' => ['nullable', 'string', 'max:200'],
+            'destination' => ['nullable', 'string', 'max:200'],
+            'estimated_delivery' => ['nullable', 'date', 'after:today'],
         ]);
 
         // `origin`/`destination` are JSON columns on shipments — wrap the
         // free-form string the form posts so the cast doesn't choke.
         $shipment = Shipment::create([
-            'tracking_number'    => $validated['tracking_number'] ?? ('SHP-' . strtoupper(uniqid())),
-            'contract_id'        => $contract->id,
-            'company_id'         => $user->company_id,
-            'status'             => ShipmentStatus::IN_PRODUCTION->value,
-            'origin'             => $validated['origin'] ? ['text' => $validated['origin']] : null,
-            'destination'        => $validated['destination'] ? ['text' => $validated['destination']] : null,
+            'tracking_number' => $validated['tracking_number'] ?? ('SHP-'.strtoupper(uniqid())),
+            'contract_id' => $contract->id,
+            'company_id' => $user->company_id,
+            'status' => ShipmentStatus::IN_PRODUCTION->value,
+            'origin' => $validated['origin'] ? ['text' => $validated['origin']] : null,
+            'destination' => $validated['destination'] ? ['text' => $validated['destination']] : null,
             'estimated_delivery' => $validated['estimated_delivery'] ?? null,
-            'notes'              => $validated['carrier'] ? 'Carrier: ' . $validated['carrier'] : null,
+            'notes' => $validated['carrier'] ? 'Carrier: '.$validated['carrier'] : null,
         ]);
 
         return redirect()
@@ -1687,9 +1704,9 @@ class ContractController extends Controller
     private function authorizeSupplierParty(Contract $contract, $user): void
     {
         $partyIds = collect($contract->parties ?? [])->pluck('company_id')->all();
-        $isParty  = in_array($user->company_id, $partyIds, true);
-        $isBuyer  = $user->company_id === $contract->buyer_company_id;
-        abort_unless($isParty && !$isBuyer, 403, 'Only the supplier side may perform this action.');
+        $isParty = in_array($user->company_id, $partyIds, true);
+        $isBuyer = $user->company_id === $contract->buyer_company_id;
+        abort_unless($isParty && ! $isBuyer, 403, 'Only the supplier side may perform this action.');
     }
 
     /**
@@ -1719,10 +1736,10 @@ class ContractController extends Controller
     {
         return match ($status) {
             'draft', 'pending_signatures', 'pending_internal_approval' => 'pending',
-            'signed', 'active'            => 'active',
-            'completed'                   => 'completed',
-            'terminated', 'cancelled'     => 'closed',
-            default                       => 'pending',
+            'signed', 'active' => 'active',
+            'completed' => 'completed',
+            'terminated', 'cancelled' => 'closed',
+            default => 'pending',
         };
     }
 
@@ -1741,17 +1758,17 @@ class ContractController extends Controller
     {
         $label = match ($statusKey) {
             'completed' => __('status.completed'),
-            'active'    => __('contracts.in_production'),
-            'pending'   => __('status.pending'),
-            'closed'    => __('status.closed'),
-            default     => '',
+            'active' => __('contracts.in_production'),
+            'pending' => __('status.pending'),
+            'closed' => __('status.closed'),
+            default => '',
         };
 
         $color = match ($statusKey) {
             'completed' => '#10B981',
-            'active'    => '#3B82F6',
-            'pending'   => '#F59E0B',
-            default     => '#6B7280',
+            'active' => '#3B82F6',
+            'pending' => '#F59E0B',
+            default => '#6B7280',
         };
 
         // Real progress from the model when we have it (preferred path).
@@ -1762,10 +1779,10 @@ class ContractController extends Controller
         // Status-only fallback for callers that don't have the Contract.
         $progress = match ($statusKey) {
             'completed' => 100,
-            'active'    => 50,
-            'pending'   => 5,
-            'closed'    => 0,
-            default     => 0,
+            'active' => 50,
+            'pending' => 5,
+            'closed' => 0,
+            default => 0,
         };
 
         return [$progress, $label, $color];
@@ -1788,16 +1805,18 @@ class ContractController extends Controller
                 break;
             }
         }
+
         return $letters !== '' ? $letters : mb_strtoupper(mb_substr($name, 0, 2));
     }
 
     private function milestoneName(string $rawLabel): string
     {
-        $type = \App\Enums\MilestoneType::fromString($rawLabel);
-        if ($type !== \App\Enums\MilestoneType::OTHER) {
+        $type = MilestoneType::fromString($rawLabel);
+        if ($type !== MilestoneType::OTHER) {
             return __($type->translationKey());
         }
         $key = trim($rawLabel);
+
         return $key === '' ? __('contracts.milestone') : ucwords(str_replace('_', ' ', strtolower($key)));
     }
 
@@ -1829,10 +1848,10 @@ class ContractController extends Controller
         $events = [];
 
         $events[] = [
-            'done'  => true,
-            'date'  => $this->longDate($contract->created_at),
+            'done' => true,
+            'date' => $this->longDate($contract->created_at),
             'title' => __('contracts.timeline_created'),
-            'desc'  => __('contracts.timeline_created_desc'),
+            'desc' => __('contracts.timeline_created_desc'),
         ];
 
         $signatures = collect($contract->signatures ?? []);
@@ -1840,10 +1859,10 @@ class ContractController extends Controller
             $lastSigned = $signatures->pluck('signed_at')->filter()->sort()->last();
             $allSigned = $contract->allPartiesHaveSigned();
             $events[] = [
-                'done'  => $allSigned,
-                'date'  => $this->longDate($lastSigned),
+                'done' => $allSigned,
+                'date' => $this->longDate($lastSigned),
                 'title' => __('contracts.timeline_signed'),
-                'desc'  => __('contracts.timeline_signed_desc'),
+                'desc' => __('contracts.timeline_signed_desc'),
             ];
         }
 
@@ -1851,10 +1870,10 @@ class ContractController extends Controller
             $statusValue = $this->statusValue($payment->status);
             $isPaid = in_array($statusValue, ['completed', 'paid'], true);
             $events[] = [
-                'done'  => $isPaid,
-                'date'  => $this->longDate($payment->approved_at ?? $payment->updated_at),
+                'done' => $isPaid,
+                'date' => $this->longDate($payment->approved_at ?? $payment->updated_at),
                 'title' => $payment->milestone ?: __('contracts.payment_milestones'),
-                'desc'  => $isPaid
+                'desc' => $isPaid
                     ? __('contracts.timeline_payment_paid', ['amount' => $this->money((float) $payment->amount, $payment->currency ?? 'AED')])
                     : __('contracts.timeline_payment_pending', ['amount' => $this->money((float) $payment->amount, $payment->currency ?? 'AED')]),
             ];
@@ -1862,10 +1881,10 @@ class ContractController extends Controller
 
         if ($contract->end_date) {
             $events[] = [
-                'done'  => $contract->end_date->isPast(),
-                'date'  => $this->longDate($contract->end_date),
+                'done' => $contract->end_date->isPast(),
+                'date' => $this->longDate($contract->end_date),
                 'title' => __('contracts.timeline_final_delivery'),
-                'desc'  => __('contracts.timeline_final_delivery_desc'),
+                'desc' => __('contracts.timeline_final_delivery_desc'),
             ];
         }
 
@@ -1887,8 +1906,8 @@ class ContractController extends Controller
     {
         $documents = [
             [
-                'name'   => $contract->contract_number . '.pdf',
-                'url'    => route('dashboard.contracts.pdf', ['id' => $contract->id]),
+                'name' => $contract->contract_number.'.pdf',
+                'url' => route('dashboard.contracts.pdf', ['id' => $contract->id]),
                 'status' => null,
             ],
         ];
@@ -1897,10 +1916,10 @@ class ContractController extends Controller
         // signature with IP, device, hash and consent timestamp. Only
         // surface it when at least one party has signed (otherwise the
         // certificate is empty).
-        if (!empty($contract->signatures)) {
+        if (! empty($contract->signatures)) {
             $documents[] = [
-                'name'   => __('contracts.audit_certificate_filename', ['number' => $contract->contract_number]),
-                'url'    => route('dashboard.contracts.audit-certificate', ['id' => $contract->id]),
+                'name' => __('contracts.audit_certificate_filename', ['number' => $contract->contract_number]),
+                'url' => route('dashboard.contracts.audit-certificate', ['id' => $contract->id]),
                 'status' => 'audit',
             ];
         }
@@ -1918,8 +1937,8 @@ class ContractController extends Controller
                 continue;
             }
             $documents[] = [
-                'name'   => __('contracts.amendment') . ' #' . $amendment->id,
-                'url'    => route('dashboard.contracts.diff', ['id' => $contract->id]) . '?from=' . max(1, ((int) ($amendment->from_version ?? 1))) . '&to=' . ((int) ($amendment->from_version ?? 1) + 1),
+                'name' => __('contracts.amendment').' #'.$amendment->id,
+                'url' => route('dashboard.contracts.diff', ['id' => $contract->id]).'?from='.max(1, ((int) ($amendment->from_version ?? 1))).'&to='.((int) ($amendment->from_version ?? 1) + 1),
                 'status' => 'amendment',
             ];
         }
@@ -1937,10 +1956,10 @@ class ContractController extends Controller
      */
     private function buildRiskSnippet(Contract $contract, ?User $user): ?array
     {
-        if (!$user || !$user->hasPermission('ai.use')) {
+        if (! $user || ! $user->hasPermission('ai.use')) {
             return null;
         }
-        if (!$this->riskService) {
+        if (! $this->riskService) {
             return null;
         }
         try {
@@ -1948,8 +1967,9 @@ class ContractController extends Controller
         } catch (\Throwable $e) {
             \Log::warning('Risk analysis snippet failed', [
                 'contract_id' => $contract->id,
-                'error'       => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
+
             return null;
         }
 
@@ -1958,27 +1978,27 @@ class ContractController extends Controller
             // ones first when there are more than 3.
             ->sortByDesc(function ($f) {
                 return match (strtolower((string) ($f['severity'] ?? ''))) {
-                    'high'   => 3,
+                    'high' => 3,
                     'medium' => 2,
-                    'low'    => 1,
-                    default  => 0,
+                    'low' => 1,
+                    default => 0,
                 };
             })
             ->take(3)
             ->values()
             ->map(fn ($f) => [
-                'severity'    => strtolower((string) ($f['severity'] ?? 'low')),
-                'category'    => (string) ($f['category'] ?? ''),
-                'title'       => (string) ($f['title'] ?? ''),
+                'severity' => strtolower((string) ($f['severity'] ?? 'low')),
+                'category' => (string) ($f['category'] ?? ''),
+                'title' => (string) ($f['title'] ?? ''),
                 'description' => (string) ($f['description'] ?? ''),
             ])
             ->all();
 
         return [
-            'score'         => (int) ($analysis['score'] ?? 0),
-            'band'          => strtolower((string) ($analysis['overall'] ?? 'low')),
-            'top_findings'  => $findings,
-            'total_findings'=> count($analysis['findings'] ?? []),
+            'score' => (int) ($analysis['score'] ?? 0),
+            'band' => strtolower((string) ($analysis['overall'] ?? 'low')),
+            'top_findings' => $findings,
+            'total_findings' => count($analysis['findings'] ?? []),
         ];
     }
 
@@ -1999,68 +2019,68 @@ class ContractController extends Controller
         $account = $contract->escrowAccount;
         $currency = $account?->currency ?? $contract->currency ?? 'AED';
 
-        if (!$account) {
+        if (! $account) {
             return [
-                'activated'    => false,
+                'activated' => false,
                 'can_activate' => $canActivate,
-                'currency'     => $currency,
+                'currency' => $currency,
             ];
         }
 
         $available = $account->availableBalance();
         $deposited = (float) $account->total_deposited;
-        $released  = (float) $account->total_released;
-        $expected  = (float) $contract->total_amount;
+        $released = (float) $account->total_released;
+        $expected = (float) $contract->total_amount;
 
         // Recent ledger entries — most recent 6 events for the sidebar.
         // The full ledger lives on the escrow dashboard.
         $recentReleases = $account->releases
             ->sortByDesc('recorded_at')
             ->take(6)
-            ->map(function (\App\Models\EscrowRelease $r) use ($currency) {
+            ->map(function (EscrowRelease $r) use ($currency) {
                 return [
-                    'id'        => $r->id,
-                    'type'      => $r->type,
-                    'amount'    => $this->money((float) $r->amount, $r->currency ?: $currency),
+                    'id' => $r->id,
+                    'type' => $r->type,
+                    'amount' => $this->money((float) $r->amount, $r->currency ?: $currency),
                     'milestone' => $r->milestone,
-                    'trigger'   => $r->triggered_by,
-                    'when'      => $r->recorded_at?->diffForHumans() ?? '—',
+                    'trigger' => $r->triggered_by,
+                    'when' => $r->recorded_at?->diffForHumans() ?? '—',
                     'reference' => $r->bank_reference,
-                    'notes'     => $r->notes,
+                    'notes' => $r->notes,
                 ];
             })
             ->values()
             ->all();
 
         return [
-            'activated'        => true,
-            'can_activate'     => false,
-            'can_deposit'      => $isBuyer && $user?->hasPermission('escrow.deposit') && $account->isActive(),
-            'can_release'      => $isBuyer && $user?->hasPermission('escrow.release') && $account->isActive() && $available > 0,
-            'can_refund'       => $isBuyer && $user?->hasPermission('escrow.release') && $account->isActive() && $available > 0,
-            'status'           => $account->status,
-            'bank_partner'     => $account->bank_partner,
-            'external_id'      => $account->external_account_id,
-            'currency'         => $currency,
-            'expected'         => $this->money($expected, $currency),
-            'deposited'        => $this->money($deposited, $currency),
-            'released'         => $this->money($released, $currency),
-            'available'        => $this->money($available, $currency),
-            'available_raw'    => $available,
-            'progress'         => $expected > 0
+            'activated' => true,
+            'can_activate' => false,
+            'can_deposit' => $isBuyer && $user?->hasPermission('escrow.deposit') && $account->isActive(),
+            'can_release' => $isBuyer && $user?->hasPermission('escrow.release') && $account->isActive() && $available > 0,
+            'can_refund' => $isBuyer && $user?->hasPermission('escrow.release') && $account->isActive() && $available > 0,
+            'status' => $account->status,
+            'bank_partner' => $account->bank_partner,
+            'external_id' => $account->external_account_id,
+            'currency' => $currency,
+            'expected' => $this->money($expected, $currency),
+            'deposited' => $this->money($deposited, $currency),
+            'released' => $this->money($released, $currency),
+            'available' => $this->money($available, $currency),
+            'available_raw' => $available,
+            'progress' => $expected > 0
                 ? min(100, (int) round(($deposited / $expected) * 100))
                 : 0,
             'release_progress' => $deposited > 0
                 ? min(100, (int) round(($released / $deposited) * 100))
                 : 0,
-            'recent_events'    => $recentReleases,
-            'unpaid_payments'  => $contract->payments
+            'recent_events' => $recentReleases,
+            'unpaid_payments' => $contract->payments
                 ->whereNotIn('status', ['completed', 'refunded', 'cancelled'])
                 ->map(fn ($p) => [
-                    'id'        => $p->id,
+                    'id' => $p->id,
                     'milestone' => $p->milestone ?: __('contracts.milestone'),
-                    'amount'    => $this->money((float) $p->total_amount, $p->currency ?? $currency),
-                    'amount_raw'=> (float) $p->total_amount,
+                    'amount' => $this->money((float) $p->total_amount, $p->currency ?? $currency),
+                    'amount_raw' => (float) $p->total_amount,
                 ])
                 ->values()
                 ->all(),
@@ -2070,12 +2090,12 @@ class ContractController extends Controller
     private function shortMoney(float $value, string $currency = 'AED'): string
     {
         if ($value >= 1_000_000) {
-            return $currency . ' ' . round($value / 1_000_000, 1) . 'M';
+            return $currency.' '.round($value / 1_000_000, 1).'M';
         }
         if ($value >= 1_000) {
-            return $currency . ' ' . round($value / 1_000) . 'K';
+            return $currency.' '.round($value / 1_000).'K';
         }
 
-        return $currency . ' ' . number_format($value);
+        return $currency.' '.number_format($value);
     }
 }

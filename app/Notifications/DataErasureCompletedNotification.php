@@ -17,8 +17,8 @@ use Illuminate\Notifications\Notification;
  */
 class DataErasureCompletedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly PrivacyRequest $request,
@@ -41,11 +41,11 @@ class DataErasureCompletedNotification extends Notification implements ShouldQue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'success',
-            'title'       => $this->t($notifiable, 'notifications.privacy.erasure_completed.title'),
-            'message'     => $this->t($notifiable, 'notifications.privacy.erasure_completed.message'),
+            'type' => 'success',
+            'title' => $this->t($notifiable, 'notifications.privacy.erasure_completed.title'),
+            'message' => $this->t($notifiable, 'notifications.privacy.erasure_completed.message'),
             'entity_type' => 'privacy_request',
-            'entity_id'   => $this->request->id,
+            'entity_id' => $this->request->id,
         ];
     }
 }

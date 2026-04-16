@@ -17,8 +17,8 @@ use Illuminate\Notifications\Notification;
  */
 class DataExportReadyNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly PrivacyRequest $request,
@@ -49,12 +49,12 @@ class DataExportReadyNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'success',
-            'title'       => $this->t($notifiable, 'notifications.privacy.export_ready.title'),
-            'message'     => $this->t($notifiable, 'notifications.privacy.export_ready.message'),
+            'type' => 'success',
+            'title' => $this->t($notifiable, 'notifications.privacy.export_ready.title'),
+            'message' => $this->t($notifiable, 'notifications.privacy.export_ready.message'),
             'entity_type' => 'privacy_request',
-            'entity_id'   => $this->request->id,
-            'action_url'  => '/dashboard/profile/privacy',
+            'entity_id' => $this->request->id,
+            'action_url' => '/dashboard/profile/privacy',
         ];
     }
 }

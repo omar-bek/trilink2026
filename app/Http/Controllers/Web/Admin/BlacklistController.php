@@ -34,8 +34,8 @@ class BlacklistController extends Controller
             ->get();
 
         $stats = [
-            'active'  => DB::table('blacklisted_companies')->where('is_active', true)->count(),
-            'total'   => DB::table('blacklisted_companies')->count(),
+            'active' => DB::table('blacklisted_companies')->where('is_active', true)->count(),
+            'total' => DB::table('blacklisted_companies')->count(),
             'expired' => DB::table('blacklisted_companies')->where('is_active', true)->where('expires_at', '<', now())->count(),
         ];
 
@@ -48,20 +48,20 @@ class BlacklistController extends Controller
 
         $data = $request->validate([
             'company_id' => ['required', 'exists:companies,id'],
-            'reason'     => ['required', 'string', 'max:500'],
-            'notes'      => ['nullable', 'string', 'max:2000'],
+            'reason' => ['required', 'string', 'max:500'],
+            'notes' => ['nullable', 'string', 'max:2000'],
             'expires_at' => ['nullable', 'date', 'after:today'],
         ]);
 
         DB::table('blacklisted_companies')->insert([
-            'company_id'     => $data['company_id'],
-            'reason'         => $data['reason'],
-            'notes'          => $data['notes'] ?? null,
+            'company_id' => $data['company_id'],
+            'reason' => $data['reason'],
+            'notes' => $data['notes'] ?? null,
             'blacklisted_by' => $request->user()->id,
-            'expires_at'     => $data['expires_at'] ?? null,
-            'is_active'      => true,
-            'created_at'     => now(),
-            'updated_at'     => now(),
+            'expires_at' => $data['expires_at'] ?? null,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return back()->with('status', __('admin.blacklist.added'));
@@ -72,7 +72,7 @@ class BlacklistController extends Controller
         abort_unless($request->user()?->isAdmin(), 403);
 
         DB::table('blacklisted_companies')->where('id', $id)->update([
-            'is_active'  => false,
+            'is_active' => false,
             'updated_at' => now(),
         ]);
 

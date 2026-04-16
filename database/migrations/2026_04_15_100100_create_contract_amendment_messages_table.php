@@ -24,7 +24,8 @@ use Illuminate\Support\Facades\Schema;
  * Editing a posted message would muddy the audit trail; if the
  * sender misspoke they post a follow-up.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('contract_amendment_messages', function (Blueprint $table) {

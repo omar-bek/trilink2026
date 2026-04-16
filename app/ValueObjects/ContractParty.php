@@ -39,9 +39,10 @@ final class ContractParty
      */
     public static function collection(?array $rows): array
     {
-        if (!$rows) {
+        if (! $rows) {
             return [];
         }
+
         return array_values(array_map(self::fromArray(...), $rows));
     }
 
@@ -59,8 +60,8 @@ final class ContractParty
     {
         return array_filter([
             'company_id' => $this->companyId,
-            'role'       => $this->role,
-            'name'       => $this->name,
+            'role' => $this->role,
+            'name' => $this->name,
         ], fn ($v) => $v !== null);
     }
 }

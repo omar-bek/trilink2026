@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AuditAction;
 use App\Enums\BidStatus;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
@@ -9,6 +10,7 @@ use App\Enums\RfqStatus;
 use App\Enums\RfqType;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
+use App\Models\AuditLog;
 use App\Models\BeneficialOwner;
 use App\Models\Bid;
 use App\Models\Company;
@@ -32,16 +34,16 @@ class CorporateTaxAntiCollusionPhase7Test extends TestCase
     private function makeCompany(string $name, CompanyType $type = CompanyType::SUPPLIER): Company
     {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => 'TRN-' . random_int(100000, 999999),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@' . strtolower(str_replace(' ', '', $name)) . '.ae',
-            'phone'               => '+97150' . random_int(1000000, 9999999),
-            'address'             => 'Dubai',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => 'TRN-'.random_int(100000, 999999),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@'.strtolower(str_replace(' ', '', $name)).'.ae',
+            'phone' => '+97150'.random_int(1000000, 9999999),
+            'address' => 'Dubai',
+            'city' => 'Dubai',
+            'country' => 'AE',
         ]);
     }
 
@@ -49,11 +51,11 @@ class CorporateTaxAntiCollusionPhase7Test extends TestCase
     {
         return User::create([
             'first_name' => 'Test',
-            'last_name'  => 'User',
-            'email'      => 'u-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => $role,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'u-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => $role,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -101,39 +103,39 @@ class CorporateTaxAntiCollusionPhase7Test extends TestCase
     {
         $service = $this->app->make(AntiCollusionService::class);
 
-        $buyer   = $this->makeCompany('AC Buyer', CompanyType::BUYER);
-        $suppA   = $this->makeCompany('Supplier A');
-        $suppB   = $this->makeCompany('Supplier B');
+        $buyer = $this->makeCompany('AC Buyer', CompanyType::BUYER);
+        $suppA = $this->makeCompany('Supplier A');
+        $suppB = $this->makeCompany('Supplier B');
 
         // Same beneficial owner in both companies
         BeneficialOwner::create([
-            'company_id'           => $suppA->id,
-            'full_name'            => 'Shared Owner',
-            'nationality'          => 'AE',
-            'id_type'              => 'emirates_id',
-            'id_number'            => '784-1980-1234567-1',
+            'company_id' => $suppA->id,
+            'full_name' => 'Shared Owner',
+            'nationality' => 'AE',
+            'id_type' => 'emirates_id',
+            'id_number' => '784-1980-1234567-1',
             'ownership_percentage' => 60,
-            'is_pep'               => false,
+            'is_pep' => false,
         ]);
         BeneficialOwner::create([
-            'company_id'           => $suppB->id,
-            'full_name'            => 'Shared Owner',
-            'nationality'          => 'AE',
-            'id_type'              => 'emirates_id',
-            'id_number'            => '784-1980-1234567-1', // same!
+            'company_id' => $suppB->id,
+            'full_name' => 'Shared Owner',
+            'nationality' => 'AE',
+            'id_type' => 'emirates_id',
+            'id_number' => '784-1980-1234567-1', // same!
             'ownership_percentage' => 51,
-            'is_pep'               => false,
+            'is_pep' => false,
         ]);
 
         $rfq = Rfq::create([
             'rfq_number' => 'RFQ-AC-1',
-            'title'      => 'Collusion Test',
+            'title' => 'Collusion Test',
             'company_id' => $buyer->id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'items'      => [['name' => 'Item', 'qty' => 1]],
-            'budget'     => 1000,
-            'currency'   => 'AED',
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'Item', 'qty' => 1]],
+            'budget' => 1000,
+            'currency' => 'AED',
         ]);
 
         Bid::create(['rfq_id' => $rfq->id, 'company_id' => $suppA->id, 'provider_id' => $this->makeUser($suppA)->id, 'status' => BidStatus::SUBMITTED, 'price' => 900, 'currency' => 'AED']);
@@ -154,22 +156,22 @@ class CorporateTaxAntiCollusionPhase7Test extends TestCase
     {
         $service = $this->app->make(AntiCollusionService::class);
 
-        $buyer   = $this->makeCompany('IP Buyer', CompanyType::BUYER);
-        $suppA   = $this->makeCompany('IP Supplier A');
-        $suppB   = $this->makeCompany('IP Supplier B');
+        $buyer = $this->makeCompany('IP Buyer', CompanyType::BUYER);
+        $suppA = $this->makeCompany('IP Supplier A');
+        $suppB = $this->makeCompany('IP Supplier B');
 
         $userA = $this->makeUser($suppA);
         $userB = $this->makeUser($suppB);
 
         $rfq = Rfq::create([
             'rfq_number' => 'RFQ-IP-1',
-            'title'      => 'IP Test',
+            'title' => 'IP Test',
             'company_id' => $buyer->id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'items'      => [['name' => 'X', 'qty' => 1]],
-            'budget'     => 1000,
-            'currency'   => 'AED',
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'X', 'qty' => 1]],
+            'budget' => 1000,
+            'currency' => 'AED',
         ]);
 
         $bidA = Bid::create(['rfq_id' => $rfq->id, 'company_id' => $suppA->id, 'provider_id' => $userA->id, 'status' => BidStatus::SUBMITTED, 'price' => 900, 'currency' => 'AED']);
@@ -178,16 +180,16 @@ class CorporateTaxAntiCollusionPhase7Test extends TestCase
         // The service reads IPs from audit_logs (no last_login_ip on
         // User schema). Simulate the audit rows the AuditLogObserver
         // would create during a real bid submit — same IP for both.
-        \App\Models\AuditLog::create([
+        AuditLog::create([
             'user_id' => $userA->id, 'company_id' => $suppA->id,
-            'action' => \App\Enums\AuditAction::CREATE,
+            'action' => AuditAction::CREATE,
             'resource_type' => 'Bid', 'resource_id' => $bidA->id,
             'ip_address' => '203.0.113.42', 'user_agent' => 'test',
             'status' => 'success',
         ]);
-        \App\Models\AuditLog::create([
+        AuditLog::create([
             'user_id' => $userB->id, 'company_id' => $suppB->id,
-            'action' => \App\Enums\AuditAction::CREATE,
+            'action' => AuditAction::CREATE,
             'resource_type' => 'Bid', 'resource_id' => $bidB->id,
             'ip_address' => '203.0.113.42', 'user_agent' => 'test',
             'status' => 'success',

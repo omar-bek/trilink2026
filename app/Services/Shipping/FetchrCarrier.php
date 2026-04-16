@@ -11,12 +11,19 @@ use Illuminate\Support\Facades\Http;
  */
 class FetchrCarrier extends AbstractCarrier
 {
-    public function code(): string { return 'fetchr'; }
-    public function name(): string { return 'Fetchr'; }
+    public function code(): string
+    {
+        return 'fetchr';
+    }
+
+    public function name(): string
+    {
+        return 'Fetchr';
+    }
 
     protected function isLive(): bool
     {
-        return !empty($this->config['api_key']);
+        return ! empty($this->config['api_key']);
     }
 
     protected function liveQuote(array $request): array
@@ -26,23 +33,23 @@ class FetchrCarrier extends AbstractCarrier
         $response = Http::timeout(10)
             ->withToken($this->config['api_key'])
             ->post($endpoint, [
-                'origin'      => $request['origin'] ?? [],
+                'origin' => $request['origin'] ?? [],
                 'destination' => $request['destination'] ?? [],
-                'weight'      => $request['weight_kg'] ?? 1,
-                'parcels'     => $request['parcels'] ?? 1,
+                'weight' => $request['weight_kg'] ?? 1,
+                'parcels' => $request['parcels'] ?? 1,
             ]);
 
-        if (!$response->successful()) {
-            return ['success' => false, 'error' => 'Fetchr API HTTP ' . $response->status()];
+        if (! $response->successful()) {
+            return ['success' => false, 'error' => 'Fetchr API HTTP '.$response->status()];
         }
 
         $body = $response->json();
         $rates = [];
         foreach ($body['rates'] ?? [] as $r) {
             $rates[] = [
-                'service'      => $r['service'] ?? 'standard',
-                'price'        => (float) ($r['amount'] ?? 0),
-                'currency'     => $r['currency'] ?? 'AED',
+                'service' => $r['service'] ?? 'standard',
+                'price' => (float) ($r['amount'] ?? 0),
+                'currency' => $r['currency'] ?? 'AED',
                 'transit_days' => (int) ($r['transit_days'] ?? 1),
             ];
         }
@@ -50,8 +57,16 @@ class FetchrCarrier extends AbstractCarrier
         return $rates ? ['success' => true, 'rates' => $rates] : $this->mockQuote($request);
     }
 
-    protected function mockBaseFee(): float { return 18.0; }
-    protected function mockPerKgRate(): float { return 3.5; }
+    protected function mockBaseFee(): float
+    {
+        return 18.0;
+    }
+
+    protected function mockPerKgRate(): float
+    {
+        return 3.5;
+    }
+
     protected function mockTransitDays(string $service): int
     {
         return $service === 'express' ? 0 : 2; // Same-day in express mode

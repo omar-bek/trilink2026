@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Web;
 use App\Enums\DocumentType;
 use App\Http\Controllers\Controller;
 use App\Models\CompanyDocument;
+use App\Rules\SafeUpload;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rules\Enum;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Manager-facing CRUD for the company's Document Vault. Each row is a real
@@ -36,11 +39,11 @@ class CompanyDocumentController extends Controller
         //   - Expiring Soon  : verified and within 30 days of expiry
         //   - Expired        : status flipped to expired by the daily job
         $stats = [
-            'total'    => $documents->count(),
+            'total' => $documents->count(),
             'verified' => $documents->where('status', CompanyDocument::STATUS_VERIFIED)->count(),
-            'pending'  => $documents->where('status', CompanyDocument::STATUS_PENDING)->count(),
+            'pending' => $documents->where('status', CompanyDocument::STATUS_PENDING)->count(),
             'expiring' => $documents->filter(fn (CompanyDocument $d) => $d->status === CompanyDocument::STATUS_VERIFIED && $d->isExpiringSoon())->count(),
-            'expired'  => $documents->filter(fn (CompanyDocument $d) => $d->status === CompanyDocument::STATUS_EXPIRED || $d->isExpired())->count(),
+            'expired' => $documents->filter(fn (CompanyDocument $d) => $d->status === CompanyDocument::STATUS_EXPIRED || $d->isExpired())->count(),
         ];
 
         $types = DocumentType::cases();
@@ -54,10 +57,10 @@ class CompanyDocumentController extends Controller
         abort_unless($user?->company_id, 403);
 
         $data = $request->validate([
-            'type'       => ['required', 'string', new \Illuminate\Validation\Rules\Enum(DocumentType::class)],
-            'label'      => ['nullable', 'string', 'max:191'],
-            'file'       => ['required', 'file', 'max:10240', ...\App\Rules\SafeUpload::pdfOrImage()],
-            'issued_at'  => ['nullable', 'date'],
+            'type' => ['required', 'string', new Enum(DocumentType::class)],
+            'label' => ['nullable', 'string', 'max:191'],
+            'file' => ['required', 'file', 'max:10240', ...SafeUpload::pdfOrImage()],
+            'issued_at' => ['nullable', 'date'],
             'expires_at' => ['nullable', 'date', 'after:today'],
         ]);
 
@@ -67,17 +70,17 @@ class CompanyDocumentController extends Controller
         $path = $file->store("company-documents/{$user->company_id}", 'local');
 
         CompanyDocument::create([
-            'company_id'        => $user->company_id,
-            'type'              => $data['type'],
-            'label'             => $data['label'] ?? null,
-            'file_path'         => $path,
+            'company_id' => $user->company_id,
+            'type' => $data['type'],
+            'label' => $data['label'] ?? null,
+            'file_path' => $path,
             'original_filename' => $file->getClientOriginalName(),
-            'file_size'         => $file->getSize(),
-            'mime_type'         => $file->getMimeType(),
-            'status'            => CompanyDocument::STATUS_PENDING,
-            'issued_at'         => $data['issued_at'] ?? null,
-            'expires_at'        => $data['expires_at'] ?? null,
-            'uploaded_by'       => $user->id,
+            'file_size' => $file->getSize(),
+            'mime_type' => $file->getMimeType(),
+            'status' => CompanyDocument::STATUS_PENDING,
+            'issued_at' => $data['issued_at'] ?? null,
+            'expires_at' => $data['expires_at'] ?? null,
+            'uploaded_by' => $user->id,
         ]);
 
         return redirect()
@@ -85,10 +88,10 @@ class CompanyDocumentController extends Controller
             ->with('status', __('trust.uploaded_successfully'));
     }
 
-    public function download(int $id): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function download(int $id): StreamedResponse
     {
         $user = auth()->user();
-        $doc  = CompanyDocument::where('company_id', $user->company_id)->findOrFail($id);
+        $doc = CompanyDocument::where('company_id', $user->company_id)->findOrFail($id);
 
         abort_unless(
             $doc->file_path && Storage::disk('local')->exists($doc->file_path),
@@ -105,7 +108,7 @@ class CompanyDocumentController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         $user = auth()->user();
-        $doc  = CompanyDocument::where('company_id', $user->company_id)->findOrFail($id);
+        $doc = CompanyDocument::where('company_id', $user->company_id)->findOrFail($id);
 
         if ($doc->file_path && Storage::disk('local')->exists($doc->file_path)) {
             Storage::disk('local')->delete($doc->file_path);
@@ -135,8 +138,8 @@ class CompanyDocumentController extends Controller
         $doc = CompanyDocument::where('company_id', $user->company_id)->findOrFail($id);
 
         $data = $request->validate([
-            'file'       => ['required', 'file', 'max:10240', ...\App\Rules\SafeUpload::pdfOrImage()],
-            'issued_at'  => ['nullable', 'date'],
+            'file' => ['required', 'file', 'max:10240', ...SafeUpload::pdfOrImage()],
+            'issued_at' => ['nullable', 'date'],
             'expires_at' => ['nullable', 'date', 'after:today'],
         ]);
 
@@ -150,17 +153,17 @@ class CompanyDocumentController extends Controller
         $path = $file->store("company-documents/{$user->company_id}", 'local');
 
         $doc->update([
-            'file_path'         => $path,
+            'file_path' => $path,
             'original_filename' => $file->getClientOriginalName(),
-            'file_size'         => $file->getSize(),
-            'mime_type'         => $file->getMimeType(),
-            'status'            => CompanyDocument::STATUS_PENDING,
-            'issued_at'         => $data['issued_at'] ?? null,
-            'expires_at'        => $data['expires_at'] ?? null,
-            'rejection_reason'  => null,
-            'verified_by'       => null,
-            'verified_at'       => null,
-            'uploaded_by'       => $user->id,
+            'file_size' => $file->getSize(),
+            'mime_type' => $file->getMimeType(),
+            'status' => CompanyDocument::STATUS_PENDING,
+            'issued_at' => $data['issued_at'] ?? null,
+            'expires_at' => $data['expires_at'] ?? null,
+            'rejection_reason' => null,
+            'verified_by' => null,
+            'verified_at' => null,
+            'uploaded_by' => $user->id,
         ]);
 
         return redirect()

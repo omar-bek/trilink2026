@@ -21,9 +21,7 @@ use Illuminate\Support\Facades\Cache;
  */
 class NegotiationAssistantService
 {
-    public function __construct(private readonly AnthropicClient $client)
-    {
-    }
+    public function __construct(private readonly AnthropicClient $client) {}
 
     /**
      * Suggest a counter-offer for the given bid. Returns:
@@ -43,14 +41,15 @@ class NegotiationAssistantService
         $bid->loadMissing(['rfq.bids', 'company']);
         $rfq = $bid->rfq;
 
-        if (!$rfq) {
+        if (! $rfq) {
             return $this->mockSuggestion(null, $bid);
         }
 
         // Cache per (bid, last bid update) so the assistant doesn't
         // re-call the API on every page refresh while the negotiation
         // hasn't moved.
-        $cacheKey = 'neg:' . $bid->id . ':' . ($bid->updated_at?->timestamp ?? 0);
+        $cacheKey = 'neg:'.$bid->id.':'.($bid->updated_at?->timestamp ?? 0);
+
         return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($bid, $rfq) {
             if ($this->client->isConfigured()) {
                 $live = $this->callClaude($bid, $rfq);
@@ -58,6 +57,7 @@ class NegotiationAssistantService
                     return $live;
                 }
             }
+
             return $this->mockSuggestion($rfq, $bid);
         });
     }
@@ -70,14 +70,14 @@ class NegotiationAssistantService
             ->where('id', '!=', $bid->id)
             ->take(10)
             ->map(fn ($b) => [
-                'price'    => (float) $b->price,
+                'price' => (float) $b->price,
                 'currency' => $b->currency,
                 'lead_days' => $b->delivery_time_days,
             ])
             ->values()
             ->all();
 
-        $system = <<<TXT
+        $system = <<<'TXT'
 You are a B2B procurement negotiation assistant. Given an open bid and the surrounding market on the same RFQ, recommend a counter-offer that is realistic, justified, and respects supplier margins.
 
 Respond with ONLY a JSON object:
@@ -97,36 +97,36 @@ Rules:
 TXT;
 
         $userPayload = json_encode([
-            'rfq_title'      => $rfq->title,
-            'category_id'    => $rfq->category_id,
-            'current_bid'    => [
-                'price'         => (float) $bid->price,
-                'currency'      => $bid->currency,
-                'lead_days'     => $bid->delivery_time_days,
+            'rfq_title' => $rfq->title,
+            'category_id' => $rfq->category_id,
+            'current_bid' => [
+                'price' => (float) $bid->price,
+                'currency' => $bid->currency,
+                'lead_days' => $bid->delivery_time_days,
                 'payment_terms' => $bid->payment_terms,
-                'supplier'      => $bid->company?->name,
+                'supplier' => $bid->company?->name,
             ],
             'competing_bids' => $competing,
         ], JSON_UNESCAPED_UNICODE);
 
         $parsed = $this->client->send($system, $userPayload, expectJson: true, maxTokens: 800);
-        if (!$parsed) {
+        if (! $parsed) {
             return null;
         }
 
         // Sanity-clamp the price the LLM suggests so a hallucinated
         // outlier doesn't get pushed straight into the negotiation room.
         $current = (float) $bid->price;
-        $price   = max($current * 0.7, min($current, (float) ($parsed['recommended_price'] ?? $current)));
+        $price = max($current * 0.7, min($current, (float) ($parsed['recommended_price'] ?? $current)));
 
         return [
-            'success'           => true,
-            'source'            => 'claude',
+            'success' => true,
+            'source' => 'claude',
             'recommended_price' => round($price, 2),
-            'currency'          => (string) ($parsed['currency'] ?? $bid->currency ?? 'AED'),
-            'rationale'         => (string) ($parsed['rationale'] ?? ''),
-            'talking_points'    => array_slice((array) ($parsed['talking_points'] ?? []), 0, 5),
-            'confidence'        => max(0.0, min(1.0, (float) ($parsed['confidence'] ?? 0.5))),
+            'currency' => (string) ($parsed['currency'] ?? $bid->currency ?? 'AED'),
+            'rationale' => (string) ($parsed['rationale'] ?? ''),
+            'talking_points' => array_slice((array) ($parsed['talking_points'] ?? []), 0, 5),
+            'confidence' => max(0.0, min(1.0, (float) ($parsed['confidence'] ?? 0.5))),
         ];
     }
 
@@ -137,30 +137,30 @@ TXT;
      */
     private function mockSuggestion(?Rfq $rfq, Bid $bid): array
     {
-        $current   = (float) $bid->price;
+        $current = (float) $bid->price;
         $competing = $rfq?->bids?->where('id', '!=', $bid->id)?->pluck('price')?->map(fn ($p) => (float) $p) ?? collect();
-        $lowest    = $competing->min();
+        $lowest = $competing->min();
 
         if ($lowest && $lowest < $current) {
             $recommended = round($lowest * 0.95, 2);
-            $rationale   = sprintf('Lowest competing bid is %s; recommend matching with a 5%% concession.', number_format($lowest, 2));
+            $rationale = sprintf('Lowest competing bid is %s; recommend matching with a 5%% concession.', number_format($lowest, 2));
         } else {
             $recommended = round($current * 0.92, 2);
-            $rationale   = 'No competing bids to compare; suggest an 8% reduction as an opening counter.';
+            $rationale = 'No competing bids to compare; suggest an 8% reduction as an opening counter.';
         }
 
         return [
-            'success'           => true,
-            'source'            => 'mock',
+            'success' => true,
+            'source' => 'mock',
             'recommended_price' => $recommended,
-            'currency'          => $bid->currency ?? 'AED',
-            'rationale'         => $rationale,
-            'talking_points'    => [
+            'currency' => $bid->currency ?? 'AED',
+            'rationale' => $rationale,
+            'talking_points' => [
                 'Reference the published budget in the original RFQ.',
                 'Highlight repeat-buyer potential if you award this contract.',
                 'Ask for a longer payment term in exchange for holding the price.',
             ],
-            'confidence'        => 0.5,
+            'confidence' => 0.5,
         ];
     }
 }

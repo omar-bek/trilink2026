@@ -30,9 +30,7 @@ use Illuminate\View\View;
  */
 class VerificationQueueController extends Controller
 {
-    public function __construct(private readonly VerificationService $verification)
-    {
-    }
+    public function __construct(private readonly VerificationService $verification) {}
 
     public function index(Request $request): View
     {
@@ -60,7 +58,7 @@ class VerificationQueueController extends Controller
 
         $rows = $candidates->map(function (Company $c) {
             $eligible = $this->verification->eligibleLevel($c);
-            $current  = $c->verification_level ?? VerificationLevel::UNVERIFIED;
+            $current = $c->verification_level ?? VerificationLevel::UNVERIFIED;
 
             $pendingDocs = $c->companyDocuments
                 ->where('status', CompanyDocument::STATUS_PENDING)
@@ -89,13 +87,13 @@ class VerificationQueueController extends Controller
             }
 
             return [
-                'company'           => $c,
-                'current_level'     => $current,
-                'eligible_level'    => $eligible,
+                'company' => $c,
+                'current_level' => $current,
+                'eligible_level' => $eligible,
                 'pending_doc_count' => $pendingDocs,
                 'sanctions_screening' => $sanctions,
-                'reasons'           => $reasons,
-                'urgency'           => $urgency,
+                'reasons' => $reasons,
+                'urgency' => $urgency,
             ];
         });
 
@@ -105,12 +103,12 @@ class VerificationQueueController extends Controller
                 'sanctions' => in_array('sanctions_hit', $row['reasons'], true) || in_array('sanctions_review', $row['reasons'], true),
                 'documents' => in_array('pending_documents', $row['reasons'], true),
                 'promotion' => in_array('eligible_promotion', $row['reasons'], true),
-                default     => $row['urgency'] > 0,
+                default => $row['urgency'] > 0,
             };
         })->sortByDesc('urgency')->values();
 
         $stats = [
-            'total'         => $rows->count(),
+            'total' => $rows->count(),
             'sanctions_hit' => $rows->filter(fn ($r) => in_array('sanctions_hit', $r['reasons'], true))->count(),
             'sanctions_review' => $rows->filter(fn ($r) => in_array('sanctions_review', $r['reasons'], true))->count(),
             'pending_documents' => $rows->filter(fn ($r) => in_array('pending_documents', $r['reasons'], true))->count(),
@@ -118,8 +116,8 @@ class VerificationQueueController extends Controller
         ];
 
         return view('dashboard.admin.verification.index', [
-            'rows'   => $rows,
-            'stats'  => $stats,
+            'rows' => $rows,
+            'stats' => $stats,
             'filter' => $filter,
         ]);
     }
@@ -130,10 +128,10 @@ class VerificationQueueController extends Controller
      */
     public function autoPromote(int $id): RedirectResponse
     {
-        $company  = Company::findOrFail($id);
+        $company = Company::findOrFail($id);
         $promoted = $this->verification->autoPromoteIfEligible($company, auth()->id());
 
-        if (!$promoted) {
+        if (! $promoted) {
             return back()->with('status', __('verification.no_promotion_needed'));
         }
 

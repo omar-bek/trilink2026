@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Bid extends Model
 {
-    use HasFactory, SoftDeletes, Searchable;
+    use HasFactory, Searchable, SoftDeletes;
 
     protected $fillable = [
         'rfq_id',
@@ -56,8 +56,8 @@ class Bid extends Model
             'ai_score' => 'array',
             'tax_rate_snapshot' => 'decimal:2',
             'subtotal_excl_tax' => 'decimal:2',
-            'tax_amount'        => 'decimal:2',
-            'total_incl_tax'    => 'decimal:2',
+            'tax_amount' => 'decimal:2',
+            'total_incl_tax' => 'decimal:2',
         ];
     }
 

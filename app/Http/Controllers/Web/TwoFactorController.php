@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Services\TwoFactorService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 
 /**
@@ -23,9 +22,7 @@ use Illuminate\View\View;
  */
 class TwoFactorController extends Controller
 {
-    public function __construct(private readonly TwoFactorService $service)
-    {
-    }
+    public function __construct(private readonly TwoFactorService $service) {}
 
     /**
      * Show the setup panel. If the user already has a confirmed 2FA, we
@@ -53,10 +50,10 @@ class TwoFactorController extends Controller
         );
 
         return view('dashboard.settings.two-factor', [
-            'secret'      => $secret,
-            'uri'         => $uri,
-            'qrSrc'       => 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' . urlencode($uri),
-            'enabled'     => (bool) $user->two_factor_confirmed_at,
+            'secret' => $secret,
+            'uri' => $uri,
+            'qrSrc' => 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='.urlencode($uri),
+            'enabled' => (bool) $user->two_factor_confirmed_at,
             'recoveryCodes' => $user->two_factor_confirmed_at ? (array) ($user->two_factor_recovery_codes ?? []) : [],
         ]);
     }
@@ -85,8 +82,8 @@ class TwoFactorController extends Controller
         }
 
         $user->forceFill([
-            'two_factor_confirmed_at'    => now(),
-            'two_factor_recovery_codes'  => $this->service->generateRecoveryCodes(),
+            'two_factor_confirmed_at' => now(),
+            'two_factor_recovery_codes' => $this->service->generateRecoveryCodes(),
         ])->save();
 
         return redirect()
@@ -107,9 +104,9 @@ class TwoFactorController extends Controller
         ]);
 
         $user->forceFill([
-            'two_factor_secret'          => null,
-            'two_factor_recovery_codes'  => null,
-            'two_factor_confirmed_at'    => null,
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
         ])->save();
 
         return redirect()

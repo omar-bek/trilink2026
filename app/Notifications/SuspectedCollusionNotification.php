@@ -42,7 +42,7 @@ class SuspectedCollusionNotification extends Notification implements ShouldQueue
 
         return (new MailMessage)
             ->subject("[CRITICAL] Suspected bid collusion on RFQ {$rfqNumber}")
-            ->greeting('Hi ' . ($notifiable->first_name ?? 'Admin') . ',')
+            ->greeting('Hi '.($notifiable->first_name ?? 'Admin').',')
             ->line("The anti-collusion service detected {$count} critical-severity finding(s) on RFQ **{$rfqNumber}** (\"{$this->rfq->title}\").")
             ->line('At least two bidders share a beneficial owner — this is the textbook bid-rigging scenario under Federal Decree-Law 36/2023 Article 5.')
             ->line('Please investigate immediately and label the alert before the award is finalised.')
@@ -53,14 +53,14 @@ class SuspectedCollusionNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'          => 'suspected_collusion',
-            'title'         => 'Suspected bid collusion',
-            'message'       => count($this->findings) . ' critical finding(s) on RFQ ' . ($this->rfq->rfq_number ?? $this->rfq->id),
-            'rfq_id'        => $this->rfq->id,
-            'rfq_number'    => $this->rfq->rfq_number,
+            'type' => 'suspected_collusion',
+            'title' => 'Suspected bid collusion',
+            'message' => count($this->findings).' critical finding(s) on RFQ '.($this->rfq->rfq_number ?? $this->rfq->id),
+            'rfq_id' => $this->rfq->id,
+            'rfq_number' => $this->rfq->rfq_number,
             'finding_count' => count($this->findings),
-            'severity'      => 'critical',
-            'action_url'    => '/dashboard/admin/anti-collusion',
+            'severity' => 'critical',
+            'action_url' => '/dashboard/admin/anti-collusion',
         ];
     }
 }

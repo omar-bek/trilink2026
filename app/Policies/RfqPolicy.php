@@ -72,7 +72,7 @@ class RfqPolicy
             return false;
         }
 
-        if (!$rfq->isOpen()) {
+        if (! $rfq->isOpen()) {
             return false;
         }
 

@@ -7,13 +7,14 @@ use App\Models\Contract;
 use App\Models\ContractParty;
 use App\Notifications\ContractCreatedNotification;
 use App\Notifications\ContractSignatureRequestedNotification;
+use App\Services\ContractService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
  * Single source of truth for "a contract was just created — tell
  * everyone." Previously this dispatch lived inside
- * {@see \App\Services\ContractService::createFromBid()} only, which
+ * {@see ContractService::createFromBid()} only, which
  * meant the buy-now flow and the cart-checkout flow created contracts
  * silently with no email + no in-app notification. The observer
  * guarantees every contract creation path goes through the same
@@ -64,7 +65,7 @@ class ContractObserver
             } catch (\Throwable $e) {
                 \Log::warning('ContractObserver::deleted junction cleanup failed', [
                     'contract_id' => $contract->id,
-                    'error'       => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
@@ -81,7 +82,7 @@ class ContractObserver
      */
     private function syncJunction(Contract $contract): void
     {
-        if (!Schema::hasTable('contract_parties')) {
+        if (! Schema::hasTable('contract_parties')) {
             return; // migration not yet applied
         }
 
@@ -92,13 +93,13 @@ class ContractObserver
                 if ($contract->buyer_company_id) {
                     $desired[] = [
                         'company_id' => (int) $contract->buyer_company_id,
-                        'role'       => 'buyer',
+                        'role' => 'buyer',
                     ];
                 }
                 foreach ((array) ($contract->parties ?? []) as $party) {
-                    $cid  = $party['company_id'] ?? null;
+                    $cid = $party['company_id'] ?? null;
                     $role = $party['role'] ?? null;
-                    if (!$cid || !$role) {
+                    if (! $cid || ! $role) {
                         continue;
                     }
                     // Skip the buyer-on-buyer dedupe so we don't insert
@@ -108,7 +109,7 @@ class ContractObserver
                     }
                     $desired[] = [
                         'company_id' => (int) $cid,
-                        'role'       => $role,
+                        'role' => $role,
                     ];
                 }
 
@@ -122,11 +123,11 @@ class ContractObserver
                     return;
                 }
 
-                $now  = now();
+                $now = now();
                 $rows = array_map(fn ($d) => array_merge($d, [
                     'contract_id' => $contract->id,
-                    'created_at'  => $now,
-                    'updated_at'  => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ]), $desired);
 
                 DB::table('contract_parties')->insertOrIgnore($rows);
@@ -138,7 +139,7 @@ class ContractObserver
             // working as a fallback until every callsite migrates.
             \Log::warning('ContractObserver::syncJunction failed', [
                 'contract_id' => $contract->id,
-                'error'       => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -166,7 +167,7 @@ class ContractObserver
         } catch (\Throwable $e) {
             \Log::warning('ContractObserver::created notification failed', [
                 'contract_id' => $contract->id,
-                'error'       => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -207,7 +208,7 @@ class ContractObserver
         } catch (\Throwable $e) {
             \Log::warning('ContractObserver signature-requested notification failed', [
                 'contract_id' => $contract->id,
-                'error'       => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }

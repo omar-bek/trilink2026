@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use App\Models\Company;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Services\ContractService;
@@ -25,9 +26,7 @@ use Illuminate\View\View;
  */
 class ProductController extends Controller
 {
-    public function __construct(private readonly ContractService $contractService)
-    {
-    }
+    public function __construct(private readonly ContractService $contractService) {}
 
     // ─────────────────────────────────────────────────────────────────────
     // SUPPLIER SIDE — manage own catalog
@@ -72,7 +71,7 @@ class ProductController extends Controller
 
         $product = Product::create(array_merge($data, [
             'company_id' => $user->company_id,
-            'branch_id'  => $user->branch_id,
+            'branch_id' => $user->branch_id,
         ]));
 
         // Phase 4 / Sprint 15 — persist any variants posted alongside
@@ -156,14 +155,14 @@ class ProductController extends Controller
      */
     public function browse(Request $request): View
     {
-        $companyId  = auth()->user()->company_id;
-        $query      = $request->input('q');
-        $catId      = $request->input('category_id');
-        $priceMin   = $request->input('price_min');
-        $priceMax   = $request->input('price_max');
-        $country    = $request->input('country');
+        $companyId = auth()->user()->company_id;
+        $query = $request->input('q');
+        $catId = $request->input('category_id');
+        $priceMin = $request->input('price_min');
+        $priceMax = $request->input('price_max');
+        $country = $request->input('country');
         $verifLevel = $request->input('verification');
-        $inStock    = $request->boolean('in_stock');
+        $inStock = $request->boolean('in_stock');
 
         $products = Product::query()
             ->with(['company', 'category', 'variants'])
@@ -190,7 +189,7 @@ class ProductController extends Controller
         // Country dropdown is sourced from the supplier set actually on
         // the platform — this stays stable as the catalog grows but
         // doesn't pollute the UI with countries we have no suppliers in.
-        $countries = \App\Models\Company::query()
+        $countries = Company::query()
             ->whereNotNull('country')
             ->where('country', '!=', '')
             ->distinct()
@@ -224,7 +223,7 @@ class ProductController extends Controller
 
         $product = Product::with('company')->findOrFail($id);
 
-        if (!$product->isPurchasable()) {
+        if (! $product->isPurchasable()) {
             return back()->withErrors(['quantity' => __('catalog.not_purchasable')]);
         }
 
@@ -234,7 +233,7 @@ class ProductController extends Controller
 
         $maxQty = $product->stock_qty ?? 1_000_000;
         $data = $request->validate([
-            'quantity' => ['required', 'integer', 'min:' . $product->min_order_qty, 'max:' . $maxQty],
+            'quantity' => ['required', 'integer', 'min:'.$product->min_order_qty, 'max:'.$maxQty],
         ]);
 
         $contract = $this->contractService->createFromProduct(
@@ -252,29 +251,29 @@ class ProductController extends Controller
     private function validateData(Request $request): array
     {
         return $request->validate([
-            'category_id'    => ['nullable', 'exists:categories,id'],
-            'sku'            => ['nullable', 'string', 'max:64'],
-            'hs_code'        => ['nullable', 'string', 'max:16'],
-            'name'           => ['required', 'string', 'max:191'],
-            'name_ar'        => ['nullable', 'string', 'max:191'],
-            'description'    => ['nullable', 'string', 'max:2000'],
-            'base_price'     => ['required', 'numeric', 'min:0'],
-            'currency'       => ['required', 'string', 'size:3'],
-            'unit'           => ['required', 'string', 'max:32'],
-            'min_order_qty'  => ['required', 'integer', 'min:1'],
-            'stock_qty'      => ['nullable', 'integer', 'min:0'],
+            'category_id' => ['nullable', 'exists:categories,id'],
+            'sku' => ['nullable', 'string', 'max:64'],
+            'hs_code' => ['nullable', 'string', 'max:16'],
+            'name' => ['required', 'string', 'max:191'],
+            'name_ar' => ['nullable', 'string', 'max:191'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'base_price' => ['required', 'numeric', 'min:0'],
+            'currency' => ['required', 'string', 'size:3'],
+            'unit' => ['required', 'string', 'max:32'],
+            'min_order_qty' => ['required', 'integer', 'min:1'],
+            'stock_qty' => ['nullable', 'integer', 'min:0'],
             'lead_time_days' => ['required', 'integer', 'min:0', 'max:365'],
-            'is_active'      => ['sometimes', 'boolean'],
+            'is_active' => ['sometimes', 'boolean'],
 
             // Image upload — multiple files via images[]. Hard cap of 6 keeps
             // storage and the front-end thumbnail strip predictable. Each
             // file is capped at 4 MB to match the company-logo precedent.
-            'images'         => ['nullable', 'array', 'max:6'],
-            'images.*'       => ['image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'images' => ['nullable', 'array', 'max:6'],
+            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
 
             // Edit form: paths the user wants to keep. Anything in the
             // product's existing images that isn't in this list is deleted.
-            'existing_images'   => ['nullable', 'array', 'max:6'],
+            'existing_images' => ['nullable', 'array', 'max:6'],
             'existing_images.*' => ['string'],
         ]);
     }
@@ -290,14 +289,14 @@ class ProductController extends Controller
      * the primary thumbnail by the catalog views.
      *
      * @param  list<string>  $existingPaths  All paths currently on the product (before update)
-     * @param  list<string>  $keepPaths      Paths the form sent back as `existing_images[]`
+     * @param  list<string>  $keepPaths  Paths the form sent back as `existing_images[]`
      * @return list<string>
      */
     private function syncImages(Request $request, int $companyId, array $existingPaths, array $keepPaths): array
     {
         // Normalise existing & keep so we can compare safely.
         $existing = array_values(array_filter($existingPaths, 'is_string'));
-        $keep     = array_values(array_filter($keepPaths, 'is_string'));
+        $keep = array_values(array_filter($keepPaths, 'is_string'));
 
         // Anything in $existing that isn't in $keep needs to be deleted.
         $toDelete = array_diff($existing, $keep);
@@ -346,30 +345,31 @@ class ProductController extends Controller
                 }
 
                 // Soft-delete an existing variant the user toggled to remove.
-                if (!empty($row['_delete']) && !empty($row['id'])) {
+                if (! empty($row['_delete']) && ! empty($row['id'])) {
                     ProductVariant::where('product_id', $product->id)
                         ->where('id', $row['id'])
                         ->delete();
+
                     continue;
                 }
 
                 $attributes = null;
-                if (!empty($row['attributes_json'])) {
+                if (! empty($row['attributes_json'])) {
                     $decoded = json_decode((string) $row['attributes_json'], true);
                     $attributes = is_array($decoded) ? $decoded : null;
                 }
 
                 $payload = [
-                    'product_id'     => $product->id,
-                    'name'           => (string) ($row['name'] ?? 'Default'),
-                    'sku'            => $row['sku'] ?? null,
-                    'attributes'     => $attributes,
+                    'product_id' => $product->id,
+                    'name' => (string) ($row['name'] ?? 'Default'),
+                    'sku' => $row['sku'] ?? null,
+                    'attributes' => $attributes,
                     'price_modifier' => (float) ($row['price_modifier'] ?? 0),
-                    'stock_qty'      => isset($row['stock_qty']) && $row['stock_qty'] !== '' ? (int) $row['stock_qty'] : null,
-                    'is_active'      => filter_var($row['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                    'stock_qty' => isset($row['stock_qty']) && $row['stock_qty'] !== '' ? (int) $row['stock_qty'] : null,
+                    'is_active' => filter_var($row['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
                 ];
 
-                if (!empty($row['id'])) {
+                if (! empty($row['id'])) {
                     ProductVariant::where('product_id', $product->id)
                         ->where('id', $row['id'])
                         ->update($payload);
@@ -389,7 +389,7 @@ class ProductController extends Controller
     {
         $data = $request->validate([
             'description' => ['required', 'string', 'min:3', 'max:1000'],
-            'country'     => ['nullable', 'string', 'size:2'],
+            'country' => ['nullable', 'string', 'size:2'],
         ]);
 
         return response()->json($service->suggest($data['description'], $data['country'] ?? null));

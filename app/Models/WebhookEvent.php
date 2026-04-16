@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\QueryException;
 
 /**
  * Replay-protection ledger for incoming webhook deliveries. Every webhook
@@ -29,7 +30,7 @@ class WebhookEvent extends Model
     protected function casts(): array
     {
         return [
-            'payload'      => 'array',
+            'payload' => 'array',
             'processed_at' => 'datetime',
         ];
     }
@@ -46,14 +47,15 @@ class WebhookEvent extends Model
     {
         try {
             self::create([
-                'provider'     => $provider,
-                'event_id'     => $eventId,
-                'event_type'   => $eventType,
-                'payload'      => $payload,
+                'provider' => $provider,
+                'event_id' => $eventId,
+                'event_type' => $eventType,
+                'payload' => $payload,
                 'processed_at' => now(),
             ]);
+
             return true;
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             // 23000 = integrity constraint violation (duplicate key) on
             // both MySQL and SQLite. Anything else is a real DB problem
             // we want to surface.

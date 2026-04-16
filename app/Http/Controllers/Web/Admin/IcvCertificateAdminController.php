@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\IcvCertificate;
+use App\Services\Procurement\IcvScoringService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -17,7 +18,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * for that certificate number, then approves or rejects with a reason.
  *
  * Verified certificates immediately become eligible for bid scoring;
- * the {@see \App\Services\Procurement\IcvScoringService} picks them up
+ * the {@see IcvScoringService} picks them up
  * on the next compare-bids load (no caching, no migration delay).
  */
 class IcvCertificateAdminController extends Controller
@@ -37,24 +38,24 @@ class IcvCertificateAdminController extends Controller
         if ($q = $request->query('q')) {
             $query->where(function ($w) use ($q) {
                 $w->where('certificate_number', 'like', "%{$q}%")
-                  ->orWhereHas('company', fn ($c) => $c->where('name', 'like', "%{$q}%"));
+                    ->orWhereHas('company', fn ($c) => $c->where('name', 'like', "%{$q}%"));
             });
         }
 
         $certificates = $query->paginate(20)->withQueryString();
 
         $stats = [
-            'pending'  => IcvCertificate::where('status', IcvCertificate::STATUS_PENDING)->count(),
+            'pending' => IcvCertificate::where('status', IcvCertificate::STATUS_PENDING)->count(),
             'verified' => IcvCertificate::where('status', IcvCertificate::STATUS_VERIFIED)->count(),
             'rejected' => IcvCertificate::where('status', IcvCertificate::STATUS_REJECTED)->count(),
-            'expired'  => IcvCertificate::where('status', IcvCertificate::STATUS_EXPIRED)->count(),
+            'expired' => IcvCertificate::where('status', IcvCertificate::STATUS_EXPIRED)->count(),
         ];
 
         return view('dashboard.admin.icv-certificates.index', [
             'certificates' => $certificates,
-            'stats'        => $stats,
-            'filters'      => [
-                'q'      => $request->query('q'),
+            'stats' => $stats,
+            'filters' => [
+                'q' => $request->query('q'),
                 'status' => $request->query('status'),
             ],
         ]);
@@ -71,9 +72,9 @@ class IcvCertificateAdminController extends Controller
         }
 
         $cert->update([
-            'status'           => IcvCertificate::STATUS_VERIFIED,
-            'verified_by'      => $request->user()->id,
-            'verified_at'      => now(),
+            'status' => IcvCertificate::STATUS_VERIFIED,
+            'verified_by' => $request->user()->id,
+            'verified_at' => now(),
             'rejection_reason' => null,
         ]);
 
@@ -95,9 +96,9 @@ class IcvCertificateAdminController extends Controller
         }
 
         $cert->update([
-            'status'           => IcvCertificate::STATUS_REJECTED,
-            'verified_by'      => $request->user()->id,
-            'verified_at'      => now(),
+            'status' => IcvCertificate::STATUS_REJECTED,
+            'verified_by' => $request->user()->id,
+            'verified_at' => now(),
             'rejection_reason' => $data['reason'],
         ]);
 
@@ -110,13 +111,13 @@ class IcvCertificateAdminController extends Controller
 
         $cert = IcvCertificate::findOrFail($id);
 
-        if (!$cert->file_path || !Storage::disk('local')->exists($cert->file_path)) {
+        if (! $cert->file_path || ! Storage::disk('local')->exists($cert->file_path)) {
             return back()->withErrors(['file' => __('icv.file_missing')]);
         }
 
         return Storage::disk('local')->download(
             $cert->file_path,
-            ($cert->original_filename ?: ('icv-' . $cert->id . '.pdf'))
+            ($cert->original_filename ?: ('icv-'.$cert->id.'.pdf'))
         );
     }
 }

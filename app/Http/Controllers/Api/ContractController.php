@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\Contract;
+use App\Models\ContractAmendment;
 use App\Models\ContractVersion;
 use App\Services\ContractService;
 use App\Services\PkiService;
@@ -25,7 +26,7 @@ class ContractController extends Controller
         $filters = $request->only(['status', 'per_page']);
         $user = auth()->user();
 
-        if (!$user->isAdmin() && !$user->isGovernment()) {
+        if (! $user->isAdmin() && ! $user->isGovernment()) {
             $filters['company_id'] = $user->company_id;
         }
 
@@ -35,14 +36,14 @@ class ContractController extends Controller
     public function show(int $id): JsonResponse
     {
         $contract = $this->service->find($id);
-        if (!$contract) {
+        if (! $contract) {
             return $this->notFound();
         }
 
         // Authorization: a contract is visible to its parties only.
         // Parties = the buyer company AND every entry in the parties JSON
         // column. Government and admin roles can read all contracts.
-        if (!$this->userIsContractParty($contract)) {
+        if (! $this->userIsContractParty($contract)) {
             return $this->notFound();
         }
 
@@ -83,24 +84,25 @@ class ContractController extends Controller
         ]);
 
         $contract = Contract::find($id);
-        if (!$contract) {
+        if (! $contract) {
             return $this->notFound();
         }
-        if (!$this->userIsContractParty($contract)) {
+        if (! $this->userIsContractParty($contract)) {
             return $this->notFound();
         }
 
         $contract = $this->service->update($id, $data);
+
         return $contract ? $this->success($contract) : $this->notFound();
     }
 
     public function destroy(int $id): JsonResponse
     {
         $contract = Contract::find($id);
-        if (!$contract) {
+        if (! $contract) {
             return $this->notFound();
         }
-        if (!$this->userIsContractParty($contract)) {
+        if (! $this->userIsContractParty($contract)) {
             return $this->notFound();
         }
 
@@ -117,8 +119,10 @@ class ContractController extends Controller
         ]);
 
         $contract = Contract::find($id);
-        if (!$contract) return $this->notFound();
-        if (!$this->userIsContractParty($contract)) {
+        if (! $contract) {
+            return $this->notFound();
+        }
+        if (! $this->userIsContractParty($contract)) {
             return $this->notFound();
         }
 
@@ -147,8 +151,10 @@ class ContractController extends Controller
     public function verifySignature(Request $request, int $id): JsonResponse
     {
         $contract = Contract::find($id);
-        if (!$contract) return $this->notFound();
-        if (!$this->userIsContractParty($contract)) {
+        if (! $contract) {
+            return $this->notFound();
+        }
+        if (! $this->userIsContractParty($contract)) {
             return $this->notFound();
         }
 
@@ -175,26 +181,29 @@ class ContractController extends Controller
     public function activate(int $id): JsonResponse
     {
         $contract = Contract::find($id);
-        if (!$contract) return $this->notFound();
-        if (!$this->userIsContractParty($contract)) {
+        if (! $contract) {
+            return $this->notFound();
+        }
+        if (! $this->userIsContractParty($contract)) {
             return $this->notFound();
         }
 
-        if (!$contract->allPartiesHaveSigned()) {
+        if (! $contract->allPartiesHaveSigned()) {
             return $this->error('All parties must sign before activation', 422);
         }
 
         $contract->update(['status' => 'active']);
+
         return $this->success($contract->fresh(), 'Contract activated');
     }
 
     public function pdf(int $id): Response
     {
         $contract = Contract::with(['buyerCompany', 'purchaseRequest'])->find($id);
-        if (!$contract) {
+        if (! $contract) {
             return response()->json(['message' => 'Contract not found'], 404);
         }
-        if (!$this->userIsContractParty($contract)) {
+        if (! $this->userIsContractParty($contract)) {
             return response()->json(['message' => 'Contract not found'], 404);
         }
 
@@ -206,10 +215,11 @@ class ContractController extends Controller
         $supplierCompany = $supplierCompanyId ? Company::find($supplierCompanyId) : null;
 
         $pdf = Pdf::loadView('contracts.pdf', [
-            'contract'        => $contract,
-            'buyerCompany'    => $contract->buyerCompany,
+            'contract' => $contract,
+            'buyerCompany' => $contract->buyerCompany,
             'supplierCompany' => $supplierCompany,
         ]);
+
         return $pdf->download("contract-{$contract->contract_number}.pdf");
     }
 
@@ -222,7 +232,7 @@ class ContractController extends Controller
     private function userIsContractParty(Contract $contract): bool
     {
         $user = auth()->user();
-        if (!$user) {
+        if (! $user) {
             return false;
         }
         if ($user->isAdmin() || $user->isGovernment()) {
@@ -252,12 +262,13 @@ class ContractController extends Controller
         ]);
 
         $amendment = $this->service->createAmendment($id, $data);
+
         return $this->created($amendment);
     }
 
     public function showAmendment(int $contractId, int $amendmentId): JsonResponse
     {
-        $amendment = \App\Models\ContractAmendment::where('contract_id', $contractId)
+        $amendment = ContractAmendment::where('contract_id', $contractId)
             ->with('requestedBy')
             ->find($amendmentId);
 
@@ -267,6 +278,7 @@ class ContractController extends Controller
     public function approveAmendment(int $contractId, int $amendmentId): JsonResponse
     {
         $contract = $this->service->approveAmendment($amendmentId);
+
         return $this->success($contract, 'Amendment approved');
     }
 
@@ -302,7 +314,7 @@ class ContractController extends Controller
         $versionB = ContractVersion::where('contract_id', $id)
             ->where('version', $request->version_b)->first();
 
-        if (!$versionA || !$versionB) {
+        if (! $versionA || ! $versionB) {
             return $this->notFound('One or both versions not found');
         }
 

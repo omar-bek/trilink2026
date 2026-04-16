@@ -24,6 +24,7 @@ class AnalyticsController extends Controller
     public function companyStats(Request $request): JsonResponse
     {
         $companyId = $request->input('company_id', auth()->user()->company_id);
+
         return $this->success($this->service->companyStats($companyId));
     }
 

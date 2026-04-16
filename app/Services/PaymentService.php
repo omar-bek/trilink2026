@@ -72,7 +72,7 @@ class PaymentService
             ->firstWhere('role', 'supplier');
         $supplierCompanyId = $supplierParty['company_id'] ?? null;
 
-        if (!$buyerCompanyId || !$supplierCompanyId) {
+        if (! $buyerCompanyId || ! $supplierCompanyId) {
             return 0;
         }
 
@@ -82,7 +82,7 @@ class PaymentService
         $buyerId = $contract->purchaseRequest?->buyer_id
             ?? User::where('company_id', $buyerCompanyId)->value('id');
 
-        if (!$buyerId) {
+        if (! $buyerId) {
             return 0;
         }
 
@@ -99,15 +99,15 @@ class PaymentService
             $vatRate = $milestone['tax_rate'] ?? null;
 
             $payment = Payment::create([
-                'contract_id'          => $contract->id,
-                'company_id'           => $buyerCompanyId,
+                'contract_id' => $contract->id,
+                'company_id' => $buyerCompanyId,
                 'recipient_company_id' => $supplierCompanyId,
-                'buyer_id'             => $buyerId,
-                'status'               => PaymentStatus::PENDING_APPROVAL,
-                'amount'               => $amount,
-                'vat_rate'             => $vatRate,
-                'currency'             => $milestone['currency'] ?? $contract->currency ?? 'AED',
-                'milestone'            => $milestone['milestone'] ?? null,
+                'buyer_id' => $buyerId,
+                'status' => PaymentStatus::PENDING_APPROVAL,
+                'amount' => $amount,
+                'vat_rate' => $vatRate,
+                'currency' => $milestone['currency'] ?? $contract->currency ?? 'AED',
+                'milestone' => $milestone['milestone'] ?? null,
             ]);
 
             // The freshly-created milestone payment is sitting in
@@ -130,13 +130,16 @@ class PaymentService
         $payment = Payment::findOrFail($id);
 
         $payment->update($data);
+
         return $payment->fresh(['contract', 'company']);
     }
 
     public function approve(int $id, int $approverId): ?Payment
     {
         $payment = Payment::find($id);
-        if (!$payment || $payment->status !== PaymentStatus::PENDING_APPROVAL) return null;
+        if (! $payment || $payment->status !== PaymentStatus::PENDING_APPROVAL) {
+            return null;
+        }
 
         // Phase Hardening — UAE Federal Decree-Law 50/2022 Article 5
         // requires both parties to a financial transaction to hold a
@@ -181,20 +184,20 @@ class PaymentService
         $missing = [];
         foreach ($ids as $cid) {
             $company = $companies->get($cid);
-            if (!$company) {
+            if (! $company) {
                 continue;
             }
-            if (!$company->hasValidTradeLicense()) {
+            if (! $company->hasValidTradeLicense()) {
                 $role = ((int) $cid === (int) $payment->company_id) ? 'payer' : 'recipient';
-                $missing[] = $company->name . ' (' . $role . ')';
+                $missing[] = $company->name.' ('.$role.')';
             }
         }
 
         if ($missing !== []) {
             throw new \RuntimeException(
                 'Cannot approve payment — trade license missing, expired or unverified for: '
-                . implode(', ', $missing)
-                . '. Renew the trade license document in the company profile before retrying.'
+                .implode(', ', $missing)
+                .'. Renew the trade license document in the company profile before retrying.'
             );
         }
     }
@@ -202,7 +205,9 @@ class PaymentService
     public function reject(int $id, string $reason): ?Payment
     {
         $payment = Payment::find($id);
-        if (!$payment || $payment->status !== PaymentStatus::PENDING_APPROVAL) return null;
+        if (! $payment || $payment->status !== PaymentStatus::PENDING_APPROVAL) {
+            return null;
+        }
 
         $payment->update([
             'status' => PaymentStatus::REJECTED,
@@ -239,7 +244,9 @@ class PaymentService
     public function process(int $id, string $gateway = 'stripe'): Payment|string
     {
         $payment = Payment::find($id);
-        if (!$payment) return 'Payment not found';
+        if (! $payment) {
+            return 'Payment not found';
+        }
 
         if ($payment->status !== PaymentStatus::APPROVED) {
             return 'Payment must be approved before processing';
@@ -270,14 +277,14 @@ class PaymentService
                 ->filter()
                 ->unique()
                 ->all();
-            if (!empty($companyIds)) {
+            if (! empty($companyIds)) {
                 $recipients = User::whereIn('company_id', $companyIds)->active()->get();
                 if ($recipients->isNotEmpty()) {
                     Notification::send($recipients, new PaymentFailedNotification($payment, $e->getMessage()));
                 }
             }
 
-            return 'Payment processing failed: ' . $e->getMessage();
+            return 'Payment processing failed: '.$e->getMessage();
         }
     }
 }

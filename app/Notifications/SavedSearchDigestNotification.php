@@ -35,16 +35,16 @@ class SavedSearchDigestNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $totalHits = array_sum(array_column($this->bundles, 'count'));
-        $first     = $notifiable->first_name ?? 'there';
+        $first = $notifiable->first_name ?? 'there';
 
         $mail = (new MailMessage)
-            ->subject('Your TriLink digest — ' . $totalHits . ' new matches')
-            ->greeting('Hi ' . $first . ',')
+            ->subject('Your TriLink digest — '.$totalHits.' new matches')
+            ->greeting('Hi '.$first.',')
             ->line("You have {$totalHits} new results across your saved searches today.");
 
         foreach ($this->bundles as $bundle) {
             $mail->line("**{$bundle['label']}** — {$bundle['count']} new")
-                 ->line('[View results](' . $bundle['url'] . ')');
+                ->line('[View results]('.$bundle['url'].')');
         }
 
         return $mail->line('Manage your saved searches from your dashboard.');
@@ -53,15 +53,15 @@ class SavedSearchDigestNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'saved_search_digest',
-            'title'       => 'New matches in your saved searches',
-            'message'     => array_sum(array_column($this->bundles, 'count')) . ' new results',
+            'type' => 'saved_search_digest',
+            'title' => 'New matches in your saved searches',
+            'message' => array_sum(array_column($this->bundles, 'count')).' new results',
             'entity_type' => 'saved_search',
-            'entity_id'   => null,
-            'bundles'     => array_map(fn ($b) => [
+            'entity_id' => null,
+            'bundles' => array_map(fn ($b) => [
                 'label' => $b['label'],
                 'count' => $b['count'],
-                'url'   => $b['url'],
+                'url' => $b['url'],
             ], $this->bundles),
         ];
     }

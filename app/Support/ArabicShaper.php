@@ -30,24 +30,24 @@ class ArabicShaper
      * letters have no initial / medial form).
      */
     private const FORMS = [
-        0x0621 => [0xFE80, null,   null,   null  ], // ء  Hamza
-        0x0622 => [0xFE81, 0xFE82, null,   null  ], // آ  Alef Madda
-        0x0623 => [0xFE83, 0xFE84, null,   null  ], // أ  Alef Hamza Above
-        0x0624 => [0xFE85, 0xFE86, null,   null  ], // ؤ  Waw Hamza Above
-        0x0625 => [0xFE87, 0xFE88, null,   null  ], // إ  Alef Hamza Below
+        0x0621 => [0xFE80, null,   null,   null], // ء  Hamza
+        0x0622 => [0xFE81, 0xFE82, null,   null], // آ  Alef Madda
+        0x0623 => [0xFE83, 0xFE84, null,   null], // أ  Alef Hamza Above
+        0x0624 => [0xFE85, 0xFE86, null,   null], // ؤ  Waw Hamza Above
+        0x0625 => [0xFE87, 0xFE88, null,   null], // إ  Alef Hamza Below
         0x0626 => [0xFE89, 0xFE8A, 0xFE8B, 0xFE8C], // ئ  Yeh Hamza Above
-        0x0627 => [0xFE8D, 0xFE8E, null,   null  ], // ا  Alef
+        0x0627 => [0xFE8D, 0xFE8E, null,   null], // ا  Alef
         0x0628 => [0xFE8F, 0xFE90, 0xFE91, 0xFE92], // ب  Beh
-        0x0629 => [0xFE93, 0xFE94, null,   null  ], // ة  Teh Marbuta
+        0x0629 => [0xFE93, 0xFE94, null,   null], // ة  Teh Marbuta
         0x062A => [0xFE95, 0xFE96, 0xFE97, 0xFE98], // ت  Teh
         0x062B => [0xFE99, 0xFE9A, 0xFE9B, 0xFE9C], // ث  Theh
         0x062C => [0xFE9D, 0xFE9E, 0xFE9F, 0xFEA0], // ج  Jeem
         0x062D => [0xFEA1, 0xFEA2, 0xFEA3, 0xFEA4], // ح  Hah
         0x062E => [0xFEA5, 0xFEA6, 0xFEA7, 0xFEA8], // خ  Khah
-        0x062F => [0xFEA9, 0xFEAA, null,   null  ], // د  Dal
-        0x0630 => [0xFEAB, 0xFEAC, null,   null  ], // ذ  Thal
-        0x0631 => [0xFEAD, 0xFEAE, null,   null  ], // ر  Reh
-        0x0632 => [0xFEAF, 0xFEB0, null,   null  ], // ز  Zain
+        0x062F => [0xFEA9, 0xFEAA, null,   null], // د  Dal
+        0x0630 => [0xFEAB, 0xFEAC, null,   null], // ذ  Thal
+        0x0631 => [0xFEAD, 0xFEAE, null,   null], // ر  Reh
+        0x0632 => [0xFEAF, 0xFEB0, null,   null], // ز  Zain
         0x0633 => [0xFEB1, 0xFEB2, 0xFEB3, 0xFEB4], // س  Seen
         0x0634 => [0xFEB5, 0xFEB6, 0xFEB7, 0xFEB8], // ش  Sheen
         0x0635 => [0xFEB9, 0xFEBA, 0xFEBB, 0xFEBC], // ص  Sad
@@ -63,8 +63,8 @@ class ArabicShaper
         0x0645 => [0xFEE1, 0xFEE2, 0xFEE3, 0xFEE4], // م  Meem
         0x0646 => [0xFEE5, 0xFEE6, 0xFEE7, 0xFEE8], // ن  Noon
         0x0647 => [0xFEE9, 0xFEEA, 0xFEEB, 0xFEEC], // ه  Heh
-        0x0648 => [0xFEED, 0xFEEE, null,   null  ], // و  Waw
-        0x0649 => [0xFEEF, 0xFEF0, null,   null  ], // ى  Alef Maksura
+        0x0648 => [0xFEED, 0xFEEE, null,   null], // و  Waw
+        0x0649 => [0xFEEF, 0xFEF0, null,   null], // ى  Alef Maksura
         0x064A => [0xFEF1, 0xFEF2, 0xFEF3, 0xFEF4], // ي  Yeh
     ];
 
@@ -172,7 +172,7 @@ class ArabicShaper
             }
         }
 
-        if (!$hasArabic) {
+        if (! $hasArabic) {
             return self::codepointsToUtf8($shaped);
         }
 
@@ -196,7 +196,7 @@ class ArabicShaper
                 $i++;
             } else {
                 $start = $i;
-                while ($i < $count && !self::isArabicVisual($shaped[$i]) && !self::isNeutral($shaped[$i])) {
+                while ($i < $count && ! self::isArabicVisual($shaped[$i]) && ! self::isNeutral($shaped[$i])) {
                     $i++;
                 }
                 $runs[] = ['type' => 'L', 'chars' => array_slice($shaped, $start, $i - $start)];
@@ -275,7 +275,7 @@ class ArabicShaper
             if ($word === '') {
                 continue;
             }
-            $candidate = $current === '' ? $word : ($current . ' ' . $word);
+            $candidate = $current === '' ? $word : ($current.' '.$word);
             if (mb_strlen($candidate) > $maxChars && $current !== '') {
                 $lines[] = $current;
                 $current = $word;
@@ -311,6 +311,7 @@ class ArabicShaper
             if ($cp === 0x0644 && $i + 1 < $count && isset(self::LAM_ALEF[$codes[$i + 1]])) {
                 $folded[] = ['lam_alef', $codes[$i + 1]];
                 $i++;
+
                 continue;
             }
             $folded[] = $cp;
@@ -326,18 +327,20 @@ class ArabicShaper
                 $alef = $entry[1];
                 $prevJoinsThis = self::previousJoinsForward($folded, $i);
                 $shaped[] = self::LAM_ALEF[$alef][$prevJoinsThis ? 1 : 0];
+
                 continue;
             }
 
             $cp = $entry;
-            if (!isset(self::FORMS[$cp])) {
+            if (! isset(self::FORMS[$cp])) {
                 $shaped[] = $cp;
+
                 continue;
             }
 
             $prevJoinsThis = self::previousJoinsForward($folded, $i);
-            $nextAccepts   = self::nextAcceptsBackward($folded, $i);
-            $thisExtends   = !in_array($cp, self::RIGHT_JOINING_ONLY, true);
+            $nextAccepts = self::nextAcceptsBackward($folded, $i);
+            $thisExtends = ! in_array($cp, self::RIGHT_JOINING_ONLY, true);
 
             if ($prevJoinsThis && $nextAccepts && $thisExtends) {
                 $form = self::FORMS[$cp][3] ?? self::FORMS[$cp][1] ?? self::FORMS[$cp][0];
@@ -378,7 +381,7 @@ class ArabicShaper
             if (self::isCombiningMark($cp)) {
                 continue;
             }
-            if (!isset(self::FORMS[$cp])) {
+            if (! isset(self::FORMS[$cp])) {
                 return false;
             }
             // Hamza (0x0621) is non-joining; right-joining-only letters do
@@ -386,8 +389,10 @@ class ArabicShaper
             if ($cp === 0x0621) {
                 return false;
             }
-            return !in_array($cp, self::RIGHT_JOINING_ONLY, true);
+
+            return ! in_array($cp, self::RIGHT_JOINING_ONLY, true);
         }
+
         return false;
     }
 
@@ -406,12 +411,14 @@ class ArabicShaper
             if (self::isCombiningMark($cp)) {
                 continue;
             }
-            if (!isset(self::FORMS[$cp])) {
+            if (! isset(self::FORMS[$cp])) {
                 return false;
             }
+
             // Hamza is non-joining and does not accept a join.
             return $cp !== 0x0621;
         }
+
         return false;
     }
 
@@ -422,6 +429,7 @@ class ArabicShaper
                 return true;
             }
         }
+
         return false;
     }
 
@@ -434,20 +442,29 @@ class ArabicShaper
     private static function isArabicVisual(int $cp): bool
     {
         // Arabic + Arabic Supplement
-        if ($cp >= 0x0600 && $cp <= 0x06FF) return true;
-        if ($cp >= 0x0750 && $cp <= 0x077F) return true;
+        if ($cp >= 0x0600 && $cp <= 0x06FF) {
+            return true;
+        }
+        if ($cp >= 0x0750 && $cp <= 0x077F) {
+            return true;
+        }
         // Arabic Presentation Forms-A
-        if ($cp >= 0xFB50 && $cp <= 0xFDFF) return true;
+        if ($cp >= 0xFB50 && $cp <= 0xFDFF) {
+            return true;
+        }
         // Arabic Presentation Forms-B
-        if ($cp >= 0xFE70 && $cp <= 0xFEFF) return true;
+        if ($cp >= 0xFE70 && $cp <= 0xFEFF) {
+            return true;
+        }
+
         return false;
     }
 
     /** Decode a UTF-8 string to an array of codepoints. */
     private static function utf8ToCodepoints(string $text): array
     {
-        $out  = [];
-        $len  = strlen($text);
+        $out = [];
+        $len = strlen($text);
         for ($i = 0; $i < $len;) {
             $c = ord($text[$i]);
             if ($c < 0x80) {
@@ -459,16 +476,17 @@ class ArabicShaper
             } elseif (($c & 0xF0) === 0xE0) {
                 $out[] = (($c & 0x0F) << 12)
                        | ((ord($text[$i + 1]) & 0x3F) << 6)
-                       |  (ord($text[$i + 2]) & 0x3F);
+                       | (ord($text[$i + 2]) & 0x3F);
                 $i += 3;
             } else {
                 $out[] = (($c & 0x07) << 18)
                        | ((ord($text[$i + 1]) & 0x3F) << 12)
                        | ((ord($text[$i + 2]) & 0x3F) << 6)
-                       |  (ord($text[$i + 3]) & 0x3F);
+                       | (ord($text[$i + 3]) & 0x3F);
                 $i += 4;
             }
         }
+
         return $out;
     }
 
@@ -481,18 +499,19 @@ class ArabicShaper
                 $out .= chr($cp);
             } elseif ($cp < 0x800) {
                 $out .= chr(0xC0 | ($cp >> 6))
-                     .  chr(0x80 | ($cp & 0x3F));
+                     .chr(0x80 | ($cp & 0x3F));
             } elseif ($cp < 0x10000) {
                 $out .= chr(0xE0 | ($cp >> 12))
-                     .  chr(0x80 | (($cp >> 6) & 0x3F))
-                     .  chr(0x80 | ($cp & 0x3F));
+                     .chr(0x80 | (($cp >> 6) & 0x3F))
+                     .chr(0x80 | ($cp & 0x3F));
             } else {
                 $out .= chr(0xF0 | ($cp >> 18))
-                     .  chr(0x80 | (($cp >> 12) & 0x3F))
-                     .  chr(0x80 | (($cp >> 6) & 0x3F))
-                     .  chr(0x80 | ($cp & 0x3F));
+                     .chr(0x80 | (($cp >> 12) & 0x3F))
+                     .chr(0x80 | (($cp >> 6) & 0x3F))
+                     .chr(0x80 | ($cp & 0x3F));
             }
         }
+
         return $out;
     }
 }

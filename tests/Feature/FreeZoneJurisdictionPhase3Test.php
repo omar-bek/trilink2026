@@ -2,19 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Enums\BidStatus;
 use App\Enums\CompanyStatus;
 use App\Enums\CompanyType;
 use App\Enums\FreeZoneAuthority;
 use App\Enums\LegalJurisdiction;
-use App\Enums\RfqStatus;
-use App\Enums\RfqType;
-use App\Enums\UserRole;
-use App\Enums\UserStatus;
-use App\Models\Bid;
 use App\Models\Company;
-use App\Models\Rfq;
-use App\Models\User;
 use App\Services\ContractService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -48,19 +40,19 @@ class FreeZoneJurisdictionPhase3Test extends TestCase
         CompanyType $type = CompanyType::BUYER,
     ): Company {
         return Company::create([
-            'name'                => $name,
-            'registration_number' => 'REG-' . uniqid(),
-            'tax_number'          => 'TRN-' . random_int(100000, 999999),
-            'type'                => $type,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $name)) . '@t.test',
-            'address'             => '101 Sheikh Zayed Road',
-            'city'                => 'Dubai',
-            'country'             => 'AE',
-            'is_free_zone'        => $fz !== null,
+            'name' => $name,
+            'registration_number' => 'REG-'.uniqid(),
+            'tax_number' => 'TRN-'.random_int(100000, 999999),
+            'type' => $type,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $name)).'@t.test',
+            'address' => '101 Sheikh Zayed Road',
+            'city' => 'Dubai',
+            'country' => 'AE',
+            'is_free_zone' => $fz !== null,
             'free_zone_authority' => $fz?->value,
-            'is_designated_zone'  => $fz?->isDesignated() ?? false,
-            'legal_jurisdiction'  => ($fz?->jurisdiction() ?? LegalJurisdiction::FEDERAL)->value,
+            'is_designated_zone' => $fz?->isDesignated() ?? false,
+            'legal_jurisdiction' => ($fz?->jurisdiction() ?? LegalJurisdiction::FEDERAL)->value,
         ]);
     }
 
@@ -150,7 +142,7 @@ class FreeZoneJurisdictionPhase3Test extends TestCase
     {
         $service = $this->app->make(ContractService::class);
 
-        $buyer    = $this->makeCompany('DIFC Buyer', FreeZoneAuthority::DIFC, CompanyType::BUYER);
+        $buyer = $this->makeCompany('DIFC Buyer', FreeZoneAuthority::DIFC, CompanyType::BUYER);
         $supplier = $this->makeCompany('DIFC Supplier', FreeZoneAuthority::DIFC, CompanyType::SUPPLIER);
 
         $terms = $service->buildBilingualUaeContractTerms(
@@ -173,7 +165,7 @@ class FreeZoneJurisdictionPhase3Test extends TestCase
     {
         $service = $this->app->make(ContractService::class);
 
-        $buyer    = $this->makeCompany('ADGM Buyer', FreeZoneAuthority::ADGM, CompanyType::BUYER);
+        $buyer = $this->makeCompany('ADGM Buyer', FreeZoneAuthority::ADGM, CompanyType::BUYER);
         $supplier = $this->makeCompany('ADGM Supplier', FreeZoneAuthority::ADGM, CompanyType::SUPPLIER);
 
         $terms = $service->buildBilingualUaeContractTerms(
@@ -195,7 +187,7 @@ class FreeZoneJurisdictionPhase3Test extends TestCase
     {
         $service = $this->app->make(ContractService::class);
 
-        $buyer    = $this->makeCompany('DIFC Buyer', FreeZoneAuthority::DIFC, CompanyType::BUYER);
+        $buyer = $this->makeCompany('DIFC Buyer', FreeZoneAuthority::DIFC, CompanyType::BUYER);
         $supplier = $this->makeCompany('Mainland Supplier', null, CompanyType::SUPPLIER);
 
         $terms = $service->buildBilingualUaeContractTerms(
@@ -233,7 +225,7 @@ class FreeZoneJurisdictionPhase3Test extends TestCase
     {
         $service = $this->app->make(ContractService::class);
 
-        $buyer    = $this->makeCompany('DAFZA Buyer', FreeZoneAuthority::DAFZA, CompanyType::BUYER);
+        $buyer = $this->makeCompany('DAFZA Buyer', FreeZoneAuthority::DAFZA, CompanyType::BUYER);
         $supplier = $this->makeCompany('JAFZA Supplier', FreeZoneAuthority::JAFZA, CompanyType::SUPPLIER);
 
         $terms = $service->buildBilingualUaeContractTerms(
@@ -259,7 +251,7 @@ class FreeZoneJurisdictionPhase3Test extends TestCase
     {
         $service = $this->app->make(ContractService::class);
 
-        $buyer    = $this->makeCompany('Mainland Buyer', null, CompanyType::BUYER);
+        $buyer = $this->makeCompany('Mainland Buyer', null, CompanyType::BUYER);
         $supplier = $this->makeCompany('DAFZA Supplier', FreeZoneAuthority::DAFZA, CompanyType::SUPPLIER);
 
         $terms = $service->buildBilingualUaeContractTerms(
@@ -282,7 +274,7 @@ class FreeZoneJurisdictionPhase3Test extends TestCase
     {
         $service = $this->app->make(ContractService::class);
 
-        $buyer    = $this->makeCompany('Mainland Buyer 1', null, CompanyType::BUYER);
+        $buyer = $this->makeCompany('Mainland Buyer 1', null, CompanyType::BUYER);
         $supplier = $this->makeCompany('Mainland Supplier 1', null, CompanyType::SUPPLIER);
 
         $terms = $service->buildBilingualUaeContractTerms(

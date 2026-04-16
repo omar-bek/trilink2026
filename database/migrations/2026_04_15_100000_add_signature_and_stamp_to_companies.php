@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Schema;
  * is the gate that enforces "signature + stamp must exist before you
  * can sign" — see ContractController::sign().
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('companies', function (Blueprint $table) {

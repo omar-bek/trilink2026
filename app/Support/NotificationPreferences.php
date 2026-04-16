@@ -42,29 +42,28 @@ class NotificationPreferences
      * means the default rules forever.
      */
     public const DEFAULTS = [
-        'rfq_matches'         => true,
-        'bid_updates'         => true,
+        'rfq_matches' => true,
+        'bid_updates' => true,
         'contract_milestones' => true,
-        'payment_updates'     => true,
-        'compliance_alerts'   => true,
-        'privacy_updates'     => true,
-        'messages'            => true,
-        'system_updates'      => true,
-        'marketing'           => false,
+        'payment_updates' => true,
+        'compliance_alerts' => true,
+        'privacy_updates' => true,
+        'messages' => true,
+        'system_updates' => true,
+        'marketing' => false,
     ];
 
     /**
      * Resolve the channel list a notification should actually use,
      * given the user's preferences across BOTH storage layers.
      *
-     * @param  User|null            $user
-     * @param  string               $preferenceKey  one of the DEFAULTS keys
-     * @param  array<int, string>   $channels       channels the notification would use by default
+     * @param  string  $preferenceKey  one of the DEFAULTS keys
+     * @param  array<int, string>  $channels  channels the notification would use by default
      * @return array<int, string>
      */
     public static function channels(?User $user, string $preferenceKey, array $channels): array
     {
-        if (!$user) {
+        if (! $user) {
             return $channels;
         }
 
@@ -74,7 +73,7 @@ class NotificationPreferences
         $jsonPrefs = is_array($user->notification_preferences) ? $user->notification_preferences : null;
         if ($jsonPrefs !== null) {
             $globalChannels = $jsonPrefs['channels'] ?? null;
-            $digestMode     = $jsonPrefs['digest']['mode'] ?? 'realtime';
+            $digestMode = $jsonPrefs['digest']['mode'] ?? 'realtime';
 
             if (is_array($globalChannels)) {
                 $channels = array_values(array_filter(
@@ -101,7 +100,7 @@ class NotificationPreferences
 
         // Layer 2: the legacy category toggle. Only consulted when the
         // user hasn't opted into a per-type override on the new form.
-        if (!self::wantsCategory($user, $preferenceKey)) {
+        if (! self::wantsCategory($user, $preferenceKey)) {
             $channels = array_values(array_filter($channels, fn ($c) => $c === 'database'));
         }
 
@@ -115,11 +114,11 @@ class NotificationPreferences
     public static function wantsCategory(User $user, string $preferenceKey): bool
     {
         $prefs = $user->custom_permissions['notifications'] ?? null;
-        if (!is_array($prefs)) {
+        if (! is_array($prefs)) {
             return self::DEFAULTS[$preferenceKey] ?? true;
         }
 
-        if (!array_key_exists($preferenceKey, $prefs)) {
+        if (! array_key_exists($preferenceKey, $prefs)) {
             return self::DEFAULTS[$preferenceKey] ?? true;
         }
 

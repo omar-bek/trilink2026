@@ -47,14 +47,15 @@ trait FormatsForViews
 
         if (app()->getLocale() === 'ar') {
             $symbol = self::CURRENCY_SYMBOLS_AR[$currency] ?? $currency;
+
             // Narrow no-break space (\u{202F}) keeps the number and
             // symbol visually grouped without allowing a line break
             // between them, and prevents BiDi reordering from swapping
             // the two parts in mixed-direction text.
-            return $formatted . "\u{202F}" . $symbol;
+            return $formatted."\u{202F}".$symbol;
         }
 
-        return $currency . ' ' . $formatted;
+        return $currency.' '.$formatted;
     }
 
     /**
@@ -69,7 +70,7 @@ trait FormatsForViews
      */
     protected function moneyConverted(?float $amount, string $sourceCurrency = 'AED', ?string $displayCurrency = null): string
     {
-        $sourceCurrency  = strtoupper($sourceCurrency);
+        $sourceCurrency = strtoupper($sourceCurrency);
         $displayCurrency = strtoupper($displayCurrency ?? $sourceCurrency);
 
         if ($displayCurrency === $sourceCurrency) {
@@ -141,14 +142,14 @@ trait FormatsForViews
         if (is_array($location)) {
             $parts = array_filter([
                 $location['address'] ?? null,
-                $location['city']    ?? null,
+                $location['city'] ?? null,
                 $location['country'] ?? null,
             ]);
             $joined = trim(implode(', ', $parts));
+
             return $joined !== '' ? $joined : '—';
         }
 
         return $location ? (string) $location : '—';
     }
-
 }

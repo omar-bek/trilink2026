@@ -16,7 +16,7 @@ class ErpConnectorFactory
     public function for(ErpConnector $connector): ErpConnectorInterface
     {
         return match ($connector->type) {
-            ErpConnector::TYPE_ODOO => new OdooConnector(),
+            ErpConnector::TYPE_ODOO => new OdooConnector,
             // Other ERPs ship as stubs for now — they record the call
             // but don't actually hit a remote API. Replace with real
             // adapters when the partnerships land.

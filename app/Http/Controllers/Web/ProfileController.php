@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Support\NotificationPreferences;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -25,9 +27,9 @@ class ProfileController extends Controller
 
         $data = $request->validate([
             'first_name' => ['required', 'string', 'max:100'],
-            'last_name'  => ['nullable', 'string', 'max:100'],
-            'phone'      => ['nullable', 'string', 'max:30'],
-            'email'      => ['required', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'last_name' => ['nullable', 'string', 'max:100'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$user->id],
         ]);
 
         $user->update($data);
@@ -39,12 +41,12 @@ class ProfileController extends Controller
     {
         $data = $request->validate([
             'current_password' => ['required', 'string'],
-            'password'         => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
         $user = $request->user();
 
-        if (!Hash::check($data['current_password'], $user->password)) {
+        if (! Hash::check($data['current_password'], $user->password)) {
             return back()->withErrors(['current_password' => __('auth.incorrect_password')]);
         }
 
@@ -86,20 +88,20 @@ class ProfileController extends Controller
     {
         $data = $request->validate([
             'channel_database' => ['nullable', 'boolean'],
-            'channel_mail'     => ['nullable', 'boolean'],
-            'digest_mode'      => ['required', 'in:realtime,daily,off'],
-            'categories'       => ['nullable', 'array'],
-            'categories.*'     => ['nullable', 'boolean'],
+            'channel_mail' => ['nullable', 'boolean'],
+            'digest_mode' => ['required', 'in:realtime,daily,off'],
+            'categories' => ['nullable', 'array'],
+            'categories.*' => ['nullable', 'boolean'],
         ]);
 
         $user = $request->user();
 
         // Read-modify-write so we don't trample any per-type overrides
         // a future iteration may add via the API.
-        $current = $user->notification_preferences ?? \App\Models\User::defaultNotificationPreferences();
+        $current = $user->notification_preferences ?? User::defaultNotificationPreferences();
         $current['channels'] = [
             'database' => (bool) ($data['channel_database'] ?? false),
-            'mail'     => (bool) ($data['channel_mail'] ?? false),
+            'mail' => (bool) ($data['channel_mail'] ?? false),
         ];
         $current['digest'] = ['mode' => $data['digest_mode']];
 
@@ -107,7 +109,7 @@ class ProfileController extends Controller
         // database channel is the right call here. Losing all channels
         // would mean the user simply never finds out about anything,
         // which is worse than a non-honoured "off" toggle.
-        if (!$current['channels']['database'] && !$current['channels']['mail']) {
+        if (! $current['channels']['database'] && ! $current['channels']['mail']) {
             $current['channels']['database'] = true;
         }
 
@@ -121,7 +123,7 @@ class ProfileController extends Controller
         $cats = $request->input('categories', []);
         $catBag = is_array($cats) ? $cats : [];
 
-        $allCategories = array_keys(\App\Support\NotificationPreferences::DEFAULTS);
+        $allCategories = array_keys(NotificationPreferences::DEFAULTS);
         $normalised = [];
         foreach ($allCategories as $key) {
             $normalised[$key] = (bool) ($catBag[$key] ?? false);

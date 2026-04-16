@@ -69,14 +69,14 @@ class UaePassProvider
 
         $params = [
             'response_type' => 'code',
-            'client_id'     => (string) config('uae_pass.client_id'),
-            'redirect_uri'  => (string) config('uae_pass.redirect_uri'),
-            'scope'         => (string) config('uae_pass.scope', 'urn:uae:digitalid:profile:general'),
-            'state'         => $state,
-            'acr_values'    => (string) config('uae_pass.acr_values'),
+            'client_id' => (string) config('uae_pass.client_id'),
+            'redirect_uri' => (string) config('uae_pass.redirect_uri'),
+            'scope' => (string) config('uae_pass.scope', 'urn:uae:digitalid:profile:general'),
+            'state' => $state,
+            'acr_values' => (string) config('uae_pass.acr_values'),
         ];
 
-        return $authorizeUrl . '?' . http_build_query($params);
+        return $authorizeUrl.'?'.http_build_query($params);
     }
 
     /**
@@ -113,7 +113,7 @@ class UaePassProvider
         if ($code === '' || $state === '') {
             throw new RuntimeException('UAE Pass callback missing code or state.');
         }
-        if (!hash_equals($expectedState, $state)) {
+        if (! hash_equals($expectedState, $state)) {
             throw new RuntimeException('UAE Pass callback state mismatch — possible CSRF attempt.');
         }
 
@@ -145,13 +145,13 @@ class UaePassProvider
 
         return [
             'uae_pass_user_id' => $sub,
-            'full_name'        => (string) ($profile['fullnameEN'] ?? $profile['fullnameAR'] ?? ''),
+            'full_name' => (string) ($profile['fullnameEN'] ?? $profile['fullnameAR'] ?? ''),
             'emirates_id_hash' => $emiratesIdHash,
-            'nationality'      => $profile['nationalityEN'] ?? null,
-            'verified'         => ($profile['userType'] ?? null) === 'SOP3', // SOP3 = fully verified
-            'acr'              => $profile['acr'] ?? null,
-            'raw'              => $profile,
-            'asserted_at'      => CarbonImmutable::now()->toIso8601String(),
+            'nationality' => $profile['nationalityEN'] ?? null,
+            'verified' => ($profile['userType'] ?? null) === 'SOP3', // SOP3 = fully verified
+            'acr' => $profile['acr'] ?? null,
+            'raw' => $profile,
+            'asserted_at' => CarbonImmutable::now()->toIso8601String(),
         ];
     }
 
@@ -166,14 +166,14 @@ class UaePassProvider
                 (string) config('uae_pass.client_secret')
             )
             ->post($tokenUrl, [
-                'grant_type'   => 'authorization_code',
-                'code'         => $code,
+                'grant_type' => 'authorization_code',
+                'code' => $code,
                 'redirect_uri' => (string) config('uae_pass.redirect_uri'),
             ]);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new RuntimeException(
-                'UAE Pass token exchange failed: HTTP ' . $response->status() . ' — ' . $response->body()
+                'UAE Pass token exchange failed: HTTP '.$response->status().' — '.$response->body()
             );
         }
 
@@ -187,9 +187,9 @@ class UaePassProvider
 
         $response = Http::withToken($accessToken)->get($userinfoUrl);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new RuntimeException(
-                'UAE Pass userinfo failed: HTTP ' . $response->status() . ' — ' . $response->body()
+                'UAE Pass userinfo failed: HTTP '.$response->status().' — '.$response->body()
             );
         }
 
@@ -198,7 +198,7 @@ class UaePassProvider
 
     private function assertEnabled(): void
     {
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             throw new RuntimeException(
                 'UAE Pass integration is disabled. Set UAE_PASS_ENABLED=true and configure UAE_PASS_CLIENT_ID / UAE_PASS_CLIENT_SECRET before enabling the redirect flow.'
             );

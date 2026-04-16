@@ -62,7 +62,7 @@ class ScreenCompany implements ShouldQueue
     public function handle(SanctionsScreeningService $service): void
     {
         $company = Company::find($this->companyId);
-        if (!$company) {
+        if (! $company) {
             // Company was deleted between queueing and processing — drop
             // the job silently rather than failing it.
             return;
@@ -82,6 +82,6 @@ class ScreenCompany implements ShouldQueue
      */
     public function uniqueId(): string
     {
-        return 'screen-company-' . $this->companyId;
+        return 'screen-company-'.$this->companyId;
     }
 }

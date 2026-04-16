@@ -26,7 +26,8 @@ use Illuminate\Support\Facades\Schema;
  * in the table with `status = withdrawn` so we can prove to the UAE
  * Data Office that we honoured the right.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('privacy_requests', function (Blueprint $table) {

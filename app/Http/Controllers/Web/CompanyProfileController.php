@@ -8,11 +8,16 @@ use App\Enums\FreeZoneAuthority;
 use App\Enums\LegalJurisdiction;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Web\Admin\CompanyController;
 use App\Models\AuditLog;
+use App\Models\Branch;
 use App\Models\Category;
+use App\Models\CertificateUpload;
 use App\Models\Company;
 use App\Models\CompanyCategoryRequest;
 use App\Models\CompanyDocument;
+use App\Models\CompanyInsurance;
+use App\Models\IcvCertificate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -27,7 +32,7 @@ use Illuminate\View\View;
  * activity counters — all in one place.
  *
  * The same blade view is reused by the admin side via
- * {@see \App\Http\Controllers\Web\Admin\CompanyController::profile()},
+ * {@see CompanyController::profile()},
  * so the visual layout stays in sync between the two surfaces. The
  * controller passes a $mode flag ('manager' or 'admin') and the view
  * conditionally shows the admin-only review controls.
@@ -60,7 +65,7 @@ class CompanyProfileController extends Controller
         abort_unless($user->hasPermission('team.view'), 403);
 
         $company = Company::with([
-            'users'           => fn ($q) => $q->orderBy('id'),
+            'users' => fn ($q) => $q->orderBy('id'),
             'categories',
             'bankDetails',
             'beneficialOwners',
@@ -89,10 +94,10 @@ class CompanyProfileController extends Controller
 
         $data = $request->validate([
             'category_id' => ['required', 'integer', 'exists:categories,id'],
-            'note'        => ['nullable', 'string', 'max:1000'],
+            'note' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $companyId  = $user->company_id;
+        $companyId = $user->company_id;
         $categoryId = (int) $data['category_id'];
 
         if (Company::find($companyId)?->categories()->where('categories.id', $categoryId)->exists()) {
@@ -109,11 +114,11 @@ class CompanyProfileController extends Controller
         }
 
         CompanyCategoryRequest::create([
-            'company_id'   => $companyId,
-            'category_id'  => $categoryId,
+            'company_id' => $companyId,
+            'category_id' => $categoryId,
             'requested_by' => $user->id,
-            'note'         => $data['note'] ?? null,
-            'status'       => CompanyCategoryRequest::STATUS_PENDING,
+            'note' => $data['note'] ?? null,
+            'status' => CompanyCategoryRequest::STATUS_PENDING,
         ]);
 
         return redirect()
@@ -159,24 +164,24 @@ class CompanyProfileController extends Controller
         $company = Company::findOrFail($user->company_id);
 
         $data = $request->validate([
-            'name'                => ['required', 'string', 'max:255'],
-            'name_ar'             => ['nullable', 'string', 'max:255'],
-            'tax_number'          => ['nullable', 'string', 'max:100'],
-            'email'               => ['nullable', 'email', 'max:255'],
-            'phone'               => ['nullable', 'string', 'max:30'],
-            'website'             => ['nullable', 'url', 'max:255'],
-            'address'             => ['nullable', 'string', 'max:1000'],
-            'city'                => ['nullable', 'string', 'max:100'],
-            'country'             => ['nullable', 'string', 'max:100'],
-            'description'         => ['nullable', 'string', 'max:5000'],
+            'name' => ['required', 'string', 'max:255'],
+            'name_ar' => ['nullable', 'string', 'max:255'],
+            'tax_number' => ['nullable', 'string', 'max:100'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'website' => ['nullable', 'url', 'max:255'],
+            'address' => ['nullable', 'string', 'max:1000'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'country' => ['nullable', 'string', 'max:100'],
+            'description' => ['nullable', 'string', 'max:5000'],
 
             // Phase 3 (UAE Compliance Roadmap) free-zone classification.
             // Managers can set their own free-zone authority because
             // it drives downstream VAT and clause selection — keeping
             // it admin-only would block legitimate self-service.
-            'is_free_zone'        => ['nullable', 'boolean'],
+            'is_free_zone' => ['nullable', 'boolean'],
             'free_zone_authority' => ['nullable', 'string', 'max:32'],
-            'legal_jurisdiction'  => ['nullable', 'string', 'max:16'],
+            'legal_jurisdiction' => ['nullable', 'string', 'max:16'],
         ]);
 
         // Snapshot for the audit log so we can show a before/after diff.
@@ -188,18 +193,18 @@ class CompanyProfileController extends Controller
 
         // is_designated_zone is derived from the free zone authority,
         // not set by the user — keeps the two columns in sync.
-        if ($data['is_free_zone'] && !empty($data['free_zone_authority'])) {
+        if ($data['is_free_zone'] && ! empty($data['free_zone_authority'])) {
             $zone = FreeZoneAuthority::tryFrom($data['free_zone_authority']);
             $data['is_designated_zone'] = $zone?->isDesignated() ?? false;
         } else {
             $data['free_zone_authority'] = null;
-            $data['is_designated_zone']  = false;
+            $data['is_designated_zone'] = false;
         }
 
         // Validate the legal jurisdiction against the enum. An unknown
         // value silently falls back to FEDERAL so the column never
         // ends up holding garbage even if the form is tampered with.
-        if (!empty($data['legal_jurisdiction'])) {
+        if (! empty($data['legal_jurisdiction'])) {
             $data['legal_jurisdiction'] = LegalJurisdiction::tryFrom($data['legal_jurisdiction'])?->value
                 ?? LegalJurisdiction::FEDERAL->value;
         } else {
@@ -209,16 +214,16 @@ class CompanyProfileController extends Controller
         $company->update($data);
 
         AuditLog::create([
-            'user_id'       => $user->id,
-            'company_id'    => $company->id,
-            'action'        => AuditAction::UPDATE->value,
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'action' => AuditAction::UPDATE->value,
             'resource_type' => 'Company',
-            'resource_id'   => $company->id,
-            'before'        => $before,
-            'after'         => $company->only(array_keys($before)),
-            'ip_address'    => $request->ip(),
-            'user_agent'    => substr((string) $request->userAgent(), 0, 255),
-            'status'        => 'success',
+            'resource_id' => $company->id,
+            'before' => $before,
+            'after' => $company->only(array_keys($before)),
+            'ip_address' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 255),
+            'status' => 'success',
         ]);
 
         return redirect()
@@ -251,15 +256,15 @@ class CompanyProfileController extends Controller
         abort_unless($user->hasPermission('team.edit'), 403);
 
         $request->validate([
-            'signature'   => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
-            'stamp'       => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+            'signature' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+            'stamp' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
             'redirect_to' => ['nullable', 'string', 'max:500'],
         ]);
 
         // Reject empty submissions — there's nothing to do and a silent
         // success would mislead the user into thinking they uploaded
         // when they didn't.
-        if (!$request->hasFile('signature') && !$request->hasFile('stamp')) {
+        if (! $request->hasFile('signature') && ! $request->hasFile('stamp')) {
             return back()->withErrors([
                 'signature' => __('company_profile.signature_required'),
             ]);
@@ -289,16 +294,16 @@ class CompanyProfileController extends Controller
         $company->update($updates);
 
         AuditLog::create([
-            'user_id'       => $user->id,
-            'company_id'    => $company->id,
-            'action'        => AuditAction::UPDATE->value,
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'action' => AuditAction::UPDATE->value,
             'resource_type' => 'Company',
-            'resource_id'   => $company->id,
-            'before'        => null,
-            'after'         => array_keys($updates),
-            'ip_address'    => $request->ip(),
-            'user_agent'    => substr((string) $request->userAgent(), 0, 255),
-            'status'        => 'success',
+            'resource_id' => $company->id,
+            'before' => null,
+            'after' => array_keys($updates),
+            'ip_address' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 255),
+            'status' => 'success',
         ]);
 
         // Honour the form's redirect_to so the user lands back on the
@@ -375,7 +380,7 @@ class CompanyProfileController extends Controller
         // loaded in public mode so the count is accurate, but the
         // blade gates the actual rendering.
         $company->loadMissing([
-            'users'             => fn ($q) => $q->orderBy('id'),
+            'users' => fn ($q) => $q->orderBy('id'),
             'categories',
             'bankDetails',
             'beneficialOwners',
@@ -393,28 +398,28 @@ class CompanyProfileController extends Controller
         // pulled separately so the page can show one row per policy
         // with its own verify/reject controls (mirrors documents). In
         // public mode only verified policies are exposed.
-        $insurances = \App\Models\CompanyInsurance::query()
+        $insurances = CompanyInsurance::query()
             ->with(['verifiedBy:id,first_name,last_name,email'])
             ->where('company_id', $company->id)
-            ->when($isPublic, fn ($q) => $q->where('status', \App\Models\CompanyInsurance::STATUS_VERIFIED))
+            ->when($isPublic, fn ($q) => $q->where('status', CompanyInsurance::STATUS_VERIFIED))
             ->latest()
             ->get();
 
-        $icvCertificates = \App\Models\IcvCertificate::query()
+        $icvCertificates = IcvCertificate::query()
             ->with(['verifier:id,first_name,last_name,email'])
             ->where('company_id', $company->id)
-            ->when($isPublic, fn ($q) => $q->where('status', \App\Models\IcvCertificate::STATUS_VERIFIED))
+            ->when($isPublic, fn ($q) => $q->where('status', IcvCertificate::STATUS_VERIFIED))
             ->latest()
             ->get();
 
-        $certificateUploads = \App\Models\CertificateUpload::query()
+        $certificateUploads = CertificateUpload::query()
             ->with(['verifier:id,first_name,last_name,email'])
             ->where('company_id', $company->id)
-            ->when($isPublic, fn ($q) => $q->where('status', \App\Models\CertificateUpload::STATUS_VERIFIED))
+            ->when($isPublic, fn ($q) => $q->where('status', CertificateUpload::STATUS_VERIFIED))
             ->latest()
             ->get();
 
-        $branches = \App\Models\Branch::query()
+        $branches = Branch::query()
             ->where('company_id', $company->id)
             ->orderBy('name')
             ->get();
@@ -424,13 +429,13 @@ class CompanyProfileController extends Controller
         $activity = [
             'purchase_requests' => $company->purchase_requests_count
                 ?? $company->purchaseRequests()->count(),
-            'rfqs'              => $company->rfqs_count
+            'rfqs' => $company->rfqs_count
                 ?? $company->rfqs()->count(),
-            'bids'              => $company->bids_count
+            'bids' => $company->bids_count
                 ?? $company->bids()->count(),
-            'contracts'         => $company->buyer_contracts_count
+            'contracts' => $company->buyer_contracts_count
                 ?? $company->buyerContracts()->count(),
-            'payments'          => $company->payments_count
+            'payments' => $company->payments_count
                 ?? $company->payments()->count(),
         ];
 
@@ -439,9 +444,9 @@ class CompanyProfileController extends Controller
         // we collapse pending/rejected/expiring to zero — the public
         // viewer doesn't need (or get) to see them.
         $docStats = [
-            'total'    => $documents->count(),
+            'total' => $documents->count(),
             'verified' => $documents->where('status', CompanyDocument::STATUS_VERIFIED)->count(),
-            'pending'  => $isPublic ? 0 : $documents->where('status', CompanyDocument::STATUS_PENDING)->count(),
+            'pending' => $isPublic ? 0 : $documents->where('status', CompanyDocument::STATUS_PENDING)->count(),
             'rejected' => $isPublic ? 0 : $documents->where('status', CompanyDocument::STATUS_REJECTED)->count(),
             'expiring' => $isPublic ? 0 : $documents->filter(
                 fn (CompanyDocument $d) => $d->status === CompanyDocument::STATUS_VERIFIED && $d->isExpiringSoon()
@@ -477,21 +482,21 @@ class CompanyProfileController extends Controller
             : collect();
 
         return [
-            'mode'             => $mode,
-            'company'          => $company,
-            'manager'          => $manager,
-            'documents'        => $documents,
-            'insurances'       => $insurances,
-            'icvCertificates'      => $icvCertificates,
-            'certificateUploads'   => $certificateUploads,
-            'branches'             => $branches,
-            'activity'         => $activity,
-            'docStats'         => $docStats,
-            'documentTypes'    => DocumentType::cases(),
-            'freeZones'        => FreeZoneAuthority::cases(),
-            'jurisdictions'    => LegalJurisdiction::cases(),
+            'mode' => $mode,
+            'company' => $company,
+            'manager' => $manager,
+            'documents' => $documents,
+            'insurances' => $insurances,
+            'icvCertificates' => $icvCertificates,
+            'certificateUploads' => $certificateUploads,
+            'branches' => $branches,
+            'activity' => $activity,
+            'docStats' => $docStats,
+            'documentTypes' => DocumentType::cases(),
+            'freeZones' => FreeZoneAuthority::cases(),
+            'jurisdictions' => LegalJurisdiction::cases(),
             'pendingCategoryRequests' => $pendingCategoryRequests,
-            'availableCategories'     => $availableCategories,
+            'availableCategories' => $availableCategories,
         ];
     }
 }

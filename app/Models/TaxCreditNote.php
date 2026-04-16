@@ -23,12 +23,17 @@ class TaxCreditNote extends Model
 {
     use HasFactory, SoftDeletes;
 
-    public const REASON_REFUND              = 'refund';
-    public const REASON_CORRECTION          = 'correction';
-    public const REASON_CANCELLATION        = 'cancellation';
-    public const REASON_DISPUTE_SETTLEMENT  = 'dispute_settlement';
+    public const REASON_REFUND = 'refund';
+
+    public const REASON_CORRECTION = 'correction';
+
+    public const REASON_CANCELLATION = 'cancellation';
+
+    public const REASON_DISPUTE_SETTLEMENT = 'dispute_settlement';
+
     public const REASON_POST_SUPPLY_DISCOUNT = 'post_supply_discount';
-    public const REASON_GOODS_RETURNED      = 'goods_returned';
+
+    public const REASON_GOODS_RETURNED = 'goods_returned';
 
     public const REASONS = [
         self::REASON_REFUND,
@@ -60,13 +65,13 @@ class TaxCreditNote extends Model
     protected function casts(): array
     {
         return [
-            'issue_date'        => 'date',
-            'line_items'        => 'array',
+            'issue_date' => 'date',
+            'line_items' => 'array',
             'subtotal_excl_tax' => 'decimal:2',
-            'total_tax'         => 'decimal:2',
-            'total_inclusive'   => 'decimal:2',
-            'issued_at'         => 'datetime',
-            'metadata'          => 'array',
+            'total_tax' => 'decimal:2',
+            'total_inclusive' => 'decimal:2',
+            'issued_at' => 'datetime',
+            'metadata' => 'array',
         ];
     }
 

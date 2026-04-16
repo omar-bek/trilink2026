@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Schema;
  * serialize on the row lock instead of fighting on a unique index. The
  * lock is held for microseconds.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('invoice_number_sequences', function (Blueprint $table) {

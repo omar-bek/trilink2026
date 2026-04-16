@@ -18,19 +18,19 @@ namespace App\Enums;
 enum VerificationLevel: string
 {
     case UNVERIFIED = 'unverified';
-    case BRONZE     = 'bronze';
-    case SILVER     = 'silver';
-    case GOLD       = 'gold';
-    case PLATINUM   = 'platinum';
+    case BRONZE = 'bronze';
+    case SILVER = 'silver';
+    case GOLD = 'gold';
+    case PLATINUM = 'platinum';
 
     public function label(): string
     {
         return match ($this) {
             self::UNVERIFIED => __('trust.level_unverified'),
-            self::BRONZE     => __('trust.level_bronze'),
-            self::SILVER     => __('trust.level_silver'),
-            self::GOLD       => __('trust.level_gold'),
-            self::PLATINUM   => __('trust.level_platinum'),
+            self::BRONZE => __('trust.level_bronze'),
+            self::SILVER => __('trust.level_silver'),
+            self::GOLD => __('trust.level_gold'),
+            self::PLATINUM => __('trust.level_platinum'),
         };
     }
 
@@ -38,10 +38,10 @@ enum VerificationLevel: string
     {
         return match ($this) {
             self::UNVERIFIED => 'zinc',
-            self::BRONZE     => 'amber',
-            self::SILVER     => 'slate',
-            self::GOLD       => 'yellow',
-            self::PLATINUM   => 'violet',
+            self::BRONZE => 'amber',
+            self::SILVER => 'slate',
+            self::GOLD => 'yellow',
+            self::PLATINUM => 'violet',
         };
     }
 
@@ -53,10 +53,10 @@ enum VerificationLevel: string
     {
         return match ($this) {
             self::UNVERIFIED => 0,
-            self::BRONZE     => 1,
-            self::SILVER     => 2,
-            self::GOLD       => 3,
-            self::PLATINUM   => 4,
+            self::BRONZE => 1,
+            self::SILVER => 2,
+            self::GOLD => 3,
+            self::PLATINUM => 4,
         };
     }
 

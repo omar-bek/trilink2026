@@ -53,24 +53,24 @@ class SecurityHardeningTest extends TestCase
     private function makeBuyerUser(string $companyName = 'Buyer Co'): User
     {
         $company = Company::create([
-            'name'                => $companyName,
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => CompanyType::BUYER,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $companyName)) . '@t.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => $companyName,
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => CompanyType::BUYER,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $companyName)).'@t.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         $this->attachValidTradeLicense($company);
 
         return User::create([
             'first_name' => 'Buyer',
-            'last_name'  => 'User',
-            'email'      => 'buyer-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => UserRole::BUYER,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'buyer-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => UserRole::BUYER,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -78,24 +78,24 @@ class SecurityHardeningTest extends TestCase
     private function makeSupplierUser(string $companyName = 'Supplier Co'): User
     {
         $company = Company::create([
-            'name'                => $companyName,
-            'registration_number' => 'TRN-' . uniqid(),
-            'type'                => CompanyType::SUPPLIER,
-            'status'              => CompanyStatus::ACTIVE,
-            'email'               => strtolower(str_replace(' ', '', $companyName)) . '@t.test',
-            'city'                => 'Dubai',
-            'country'             => 'UAE',
+            'name' => $companyName,
+            'registration_number' => 'TRN-'.uniqid(),
+            'type' => CompanyType::SUPPLIER,
+            'status' => CompanyStatus::ACTIVE,
+            'email' => strtolower(str_replace(' ', '', $companyName)).'@t.test',
+            'city' => 'Dubai',
+            'country' => 'UAE',
         ]);
 
         $this->attachValidTradeLicense($company);
 
         return User::create([
             'first_name' => 'Supplier',
-            'last_name'  => 'User',
-            'email'      => 'sup-' . uniqid() . '@t.test',
-            'password'   => 'secret-pass',
-            'role'       => UserRole::SUPPLIER,
-            'status'     => UserStatus::ACTIVE,
+            'last_name' => 'User',
+            'email' => 'sup-'.uniqid().'@t.test',
+            'password' => 'secret-pass',
+            'role' => UserRole::SUPPLIER,
+            'status' => UserStatus::ACTIVE,
             'company_id' => $company->id,
         ]);
     }
@@ -112,11 +112,11 @@ class SecurityHardeningTest extends TestCase
     {
         CompanyDocument::create([
             'company_id' => $company->id,
-            'type'       => DocumentType::TRADE_LICENSE,
-            'label'      => 'Trade License',
-            'file_path'  => 'test/trade-license.pdf',
-            'status'     => CompanyDocument::STATUS_VERIFIED,
-            'issued_at'  => now()->subYear(),
+            'type' => DocumentType::TRADE_LICENSE,
+            'label' => 'Trade License',
+            'file_path' => 'test/trade-license.pdf',
+            'status' => CompanyDocument::STATUS_VERIFIED,
+            'issued_at' => now()->subYear(),
             'expires_at' => now()->addYear(),
         ]);
     }
@@ -128,27 +128,27 @@ class SecurityHardeningTest extends TestCase
     public function test_unrelated_buyer_cannot_view_anothers_payment(): void
     {
         $alice = $this->makeBuyerUser('Alice Buyer');
-        $bob   = $this->makeBuyerUser('Bob Buyer');
+        $bob = $this->makeBuyerUser('Bob Buyer');
         $supplier = $this->makeSupplierUser('Bob Supplier');
 
         // Alice owns the contract and the payment.
         $contract = Contract::create([
-            'title'             => 'Alice Contract',
-            'buyer_company_id'  => $alice->company_id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
+            'title' => 'Alice Contract',
+            'buyer_company_id' => $alice->company_id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $alice->company_id,
+            'contract_id' => $contract->id,
+            'company_id' => $alice->company_id,
             'recipient_company_id' => $supplier->company_id,
-            'buyer_id'             => $alice->id,
-            'status'               => PaymentStatus::PENDING_APPROVAL,
-            'amount'               => 500,
-            'currency'             => 'AED',
+            'buyer_id' => $alice->id,
+            'status' => PaymentStatus::PENDING_APPROVAL,
+            'amount' => 500,
+            'currency' => 'AED',
         ]);
 
         // Bob is unrelated. Should get a 404 (not 403, not 200).
@@ -169,22 +169,22 @@ class SecurityHardeningTest extends TestCase
         $supplier->update(['permissions' => ['payment.view']]);
 
         $contract = Contract::create([
-            'title'             => 'Alice Contract',
-            'buyer_company_id'  => $alice->company_id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
+            'title' => 'Alice Contract',
+            'buyer_company_id' => $alice->company_id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
         ]);
 
         $payment = Payment::create([
-            'contract_id'          => $contract->id,
-            'company_id'           => $alice->company_id,
+            'contract_id' => $contract->id,
+            'company_id' => $alice->company_id,
             'recipient_company_id' => $supplier->company_id,
-            'buyer_id'             => $alice->id,
-            'status'               => PaymentStatus::PENDING_APPROVAL,
-            'amount'               => 500,
-            'currency'             => 'AED',
+            'buyer_id' => $alice->id,
+            'status' => PaymentStatus::PENDING_APPROVAL,
+            'amount' => 500,
+            'currency' => 'AED',
         ]);
 
         // The supplier is the recipient — they MUST be able to read.
@@ -200,16 +200,16 @@ class SecurityHardeningTest extends TestCase
     public function test_unrelated_buyer_cannot_view_anothers_contract(): void
     {
         $alice = $this->makeBuyerUser('Alice Buyer');
-        $bob   = $this->makeBuyerUser('Bob Buyer');
+        $bob = $this->makeBuyerUser('Bob Buyer');
         $supplier = $this->makeSupplierUser('Alice Supplier');
 
         $contract = Contract::create([
-            'title'             => 'Confidential Contract',
-            'buyer_company_id'  => $alice->company_id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 99000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
+            'title' => 'Confidential Contract',
+            'buyer_company_id' => $alice->company_id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 99000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
         ]);
 
         $this->actingAs($bob)
@@ -219,16 +219,16 @@ class SecurityHardeningTest extends TestCase
 
     public function test_party_supplier_can_view_their_contract(): void
     {
-        $alice    = $this->makeBuyerUser('Alice Buyer');
+        $alice = $this->makeBuyerUser('Alice Buyer');
         $supplier = $this->makeSupplierUser('Their Supplier');
 
         $contract = Contract::create([
-            'title'             => 'Joint Contract',
-            'buyer_company_id'  => $alice->company_id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 99000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
+            'title' => 'Joint Contract',
+            'buyer_company_id' => $alice->company_id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 99000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
         ]);
 
         $this->actingAs($supplier)
@@ -242,25 +242,25 @@ class SecurityHardeningTest extends TestCase
 
     public function test_unrelated_user_cannot_view_anothers_shipment(): void
     {
-        $alice    = $this->makeBuyerUser('Alice Buyer');
-        $bob      = $this->makeBuyerUser('Bob Buyer');
+        $alice = $this->makeBuyerUser('Alice Buyer');
+        $bob = $this->makeBuyerUser('Bob Buyer');
         $supplier = $this->makeSupplierUser('Alice Supplier');
 
         $contract = Contract::create([
-            'title'             => 'Contract',
-            'buyer_company_id'  => $alice->company_id,
-            'status'            => ContractStatus::ACTIVE,
-            'total_amount'      => 1000,
-            'currency'          => 'AED',
-            'parties'           => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
+            'title' => 'Contract',
+            'buyer_company_id' => $alice->company_id,
+            'status' => ContractStatus::ACTIVE,
+            'total_amount' => 1000,
+            'currency' => 'AED',
+            'parties' => [['company_id' => $supplier->company_id, 'role' => 'supplier']],
         ]);
 
         $shipment = Shipment::create([
-            'contract_id'       => $contract->id,
-            'company_id'        => $alice->company_id,
-            'status'            => ShipmentStatus::IN_TRANSIT,
-            'origin'            => ['city' => 'Dubai'],
-            'destination'       => ['city' => 'Riyadh'],
+            'contract_id' => $contract->id,
+            'company_id' => $alice->company_id,
+            'status' => ShipmentStatus::IN_TRANSIT,
+            'origin' => ['city' => 'Dubai'],
+            'destination' => ['city' => 'Riyadh'],
         ]);
 
         $this->actingAs($bob)
@@ -274,7 +274,7 @@ class SecurityHardeningTest extends TestCase
 
     public function test_double_bid_accept_yields_409_on_second_call(): void
     {
-        $buyer    = $this->makeBuyerUser('Race Buyer');
+        $buyer = $this->makeBuyerUser('Race Buyer');
         $supplier = $this->makeSupplierUser('Race Supplier');
 
         // Grant the buyer the bid.accept permission via the Spatie role
@@ -282,22 +282,22 @@ class SecurityHardeningTest extends TestCase
         // (the seeder seeds the standard buyer role with bid.accept).
         $rfq = Rfq::create([
             'rfq_number' => 'RFQ-RACE',
-            'title'      => 'Race RFQ',
+            'title' => 'Race RFQ',
             'company_id' => $buyer->company_id,
-            'type'       => RfqType::SUPPLIER,
-            'status'     => RfqStatus::OPEN,
-            'items'      => [['name' => 'Widget', 'qty' => 1]],
-            'budget'     => 1000,
-            'currency'   => 'AED',
+            'type' => RfqType::SUPPLIER,
+            'status' => RfqStatus::OPEN,
+            'items' => [['name' => 'Widget', 'qty' => 1]],
+            'budget' => 1000,
+            'currency' => 'AED',
         ]);
 
         $bid = Bid::create([
-            'rfq_id'      => $rfq->id,
-            'company_id'  => $supplier->company_id,
+            'rfq_id' => $rfq->id,
+            'company_id' => $supplier->company_id,
             'provider_id' => $supplier->id,
-            'status'      => BidStatus::SUBMITTED,
-            'price'       => 900,
-            'currency'    => 'AED',
+            'status' => BidStatus::SUBMITTED,
+            'price' => 900,
+            'currency' => 'AED',
         ]);
 
         // First acceptance — should succeed (303/302 redirect to contract).
@@ -346,15 +346,15 @@ class SecurityHardeningTest extends TestCase
         config()->set('services.paypal.webhook_secret', 'test-secret');
 
         $payload = ['id' => 'EVT-1', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED', 'resource' => []];
-        $body    = json_encode($payload);
-        $sig     = hash_hmac('sha256', $body, 'test-secret');
+        $body = json_encode($payload);
+        $sig = hash_hmac('sha256', $body, 'test-secret');
 
         // Use server() variant so the raw body matches what PayPal sends.
         $this->call(
             method: 'POST',
             uri: '/api/webhooks/paypal',
             server: [
-                'CONTENT_TYPE'             => 'application/json',
+                'CONTENT_TYPE' => 'application/json',
                 'HTTP_PAYPAL_TRANSMISSION_SIG' => $sig,
             ],
             content: $body,
@@ -372,22 +372,22 @@ class SecurityHardeningTest extends TestCase
 
         // Pre-claim the event id so the second call must short-circuit.
         WebhookEvent::create([
-            'provider'     => 'paypal',
-            'event_id'     => 'EVT-REPLAY',
-            'event_type'   => 'PAYMENT.CAPTURE.COMPLETED',
-            'payload'      => [],
+            'provider' => 'paypal',
+            'event_id' => 'EVT-REPLAY',
+            'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+            'payload' => [],
             'processed_at' => now(),
         ]);
 
         $payload = ['id' => 'EVT-REPLAY', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED', 'resource' => []];
-        $body    = json_encode($payload);
-        $sig     = hash_hmac('sha256', $body, 'test-secret');
+        $body = json_encode($payload);
+        $sig = hash_hmac('sha256', $body, 'test-secret');
 
         $this->call(
             method: 'POST',
             uri: '/api/webhooks/paypal',
             server: [
-                'CONTENT_TYPE'             => 'application/json',
+                'CONTENT_TYPE' => 'application/json',
                 'HTTP_PAYPAL_TRANSMISSION_SIG' => $sig,
             ],
             content: $body,

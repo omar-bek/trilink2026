@@ -31,20 +31,20 @@ class SpendAnalyticsService
 
         $now = Carbon::now();
 
-        $total      = (clone $base)->sum('total_amount');
-        $last30     = (clone $base)->where('created_at', '>=', $now->copy()->subDays(30))->sum('total_amount');
-        $last90     = (clone $base)->where('created_at', '>=', $now->copy()->subDays(90))->sum('total_amount');
-        $last365    = (clone $base)->where('created_at', '>=', $now->copy()->subDays(365))->sum('total_amount');
-        $count      = (clone $base)->count();
-        $avgValue   = $count > 0 ? round((float) $total / $count, 2) : 0;
+        $total = (clone $base)->sum('total_amount');
+        $last30 = (clone $base)->where('created_at', '>=', $now->copy()->subDays(30))->sum('total_amount');
+        $last90 = (clone $base)->where('created_at', '>=', $now->copy()->subDays(90))->sum('total_amount');
+        $last365 = (clone $base)->where('created_at', '>=', $now->copy()->subDays(365))->sum('total_amount');
+        $count = (clone $base)->count();
+        $avgValue = $count > 0 ? round((float) $total / $count, 2) : 0;
 
         return [
-            'total_spend'         => (float) $total,
-            'spend_last_30_days'  => (float) $last30,
-            'spend_last_90_days'  => (float) $last90,
+            'total_spend' => (float) $total,
+            'spend_last_30_days' => (float) $last30,
+            'spend_last_90_days' => (float) $last90,
             'spend_last_365_days' => (float) $last365,
-            'contract_count'      => (int) $count,
-            'avg_contract_value'  => $avgValue,
+            'contract_count' => (int) $count,
+            'avg_contract_value' => $avgValue,
         ];
     }
 
@@ -61,22 +61,23 @@ class SpendAnalyticsService
             ->get(['parties', 'total_amount', 'currency'])
             ->flatMap(function (Contract $c) {
                 $supplier = collect($c->parties ?? [])->firstWhere('role', 'supplier');
-                if (!$supplier) {
+                if (! $supplier) {
                     return [];
                 }
+
                 return [[
                     'company_id' => $supplier['company_id'] ?? null,
-                    'name'       => $supplier['name'] ?? '—',
-                    'amount'     => (float) $c->total_amount,
+                    'name' => $supplier['name'] ?? '—',
+                    'amount' => (float) $c->total_amount,
                 ]];
             })
             ->groupBy('company_id')
             ->map(function (Collection $rows, $supplierId) {
                 return [
                     'company_id' => $supplierId,
-                    'name'       => $rows->first()['name'] ?? '—',
-                    'count'      => $rows->count(),
-                    'total'      => round($rows->sum('amount'), 2),
+                    'name' => $rows->first()['name'] ?? '—',
+                    'count' => $rows->count(),
+                    'total' => round($rows->sum('amount'), 2),
                 ];
             })
             ->sortByDesc('total')
@@ -130,8 +131,8 @@ class SpendAnalyticsService
             ->map(function (Collection $rows, $categoryName) {
                 return [
                     'category' => $categoryName,
-                    'count'    => $rows->count(),
-                    'total'    => round($rows->sum('total_amount'), 2),
+                    'count' => $rows->count(),
+                    'total' => round($rows->sum('total_amount'), 2),
                 ];
             })
             ->sortByDesc('total')

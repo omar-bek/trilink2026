@@ -54,6 +54,7 @@ class RescreenAllCompaniesCommand extends Command
 
         if ($total === 0) {
             $this->info('No active companies to re-screen.');
+
             return self::SUCCESS;
         }
 
@@ -69,6 +70,7 @@ class RescreenAllCompaniesCommand extends Command
 
                 if ($isDryRun) {
                     $this->line("  [dry-run] #{$company->id} {$company->name}");
+
                     continue;
                 }
 

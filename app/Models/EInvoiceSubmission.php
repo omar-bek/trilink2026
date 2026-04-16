@@ -22,11 +22,15 @@ class EInvoiceSubmission extends Model
 {
     use HasFactory;
 
-    public const STATUS_QUEUED    = 'queued';
+    public const STATUS_QUEUED = 'queued';
+
     public const STATUS_SUBMITTED = 'submitted';
-    public const STATUS_ACCEPTED  = 'accepted';
-    public const STATUS_REJECTED  = 'rejected';
-    public const STATUS_FAILED    = 'failed';
+
+    public const STATUS_ACCEPTED = 'accepted';
+
+    public const STATUS_REJECTED = 'rejected';
+
+    public const STATUS_FAILED = 'failed';
 
     public const ALL_STATUSES = [
         self::STATUS_QUEUED,
@@ -36,13 +40,15 @@ class EInvoiceSubmission extends Model
         self::STATUS_FAILED,
     ];
 
-    public const ENV_SANDBOX    = 'sandbox';
+    public const ENV_SANDBOX = 'sandbox';
+
     public const ENV_PRODUCTION = 'production';
 
     // Phase 5.5 (UAE Compliance Roadmap — post-implementation hardening) —
     // discriminator between tax invoices and tax credit notes. Both
     // need FTA clearance through the same Peppol pipeline.
-    public const DOC_INVOICE     = 'invoice';
+    public const DOC_INVOICE = 'invoice';
+
     public const DOC_CREDIT_NOTE = 'credit_note';
 
     protected $fillable = [
@@ -69,10 +75,10 @@ class EInvoiceSubmission extends Model
     {
         return [
             'asp_response_raw' => 'array',
-            'submitted_at'     => 'datetime',
-            'acknowledged_at'  => 'datetime',
-            'next_retry_at'    => 'datetime',
-            'retries'          => 'integer',
+            'submitted_at' => 'datetime',
+            'acknowledged_at' => 'datetime',
+            'next_retry_at' => 'datetime',
+            'retries' => 'integer',
         ];
     }
 

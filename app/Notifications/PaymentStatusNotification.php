@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\Payment;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,8 +13,8 @@ use Illuminate\Notifications\Notification;
 
 class PaymentStatusNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly Payment $payment,
@@ -23,8 +25,8 @@ class PaymentStatusNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'payment_updates',
             ['database', 'mail']
         );
@@ -32,15 +34,15 @@ class PaymentStatusNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $ref    = $this->payment->id;
+        $ref = $this->payment->id;
         $status = $this->localisedAction($notifiable);
 
         return $this->baseMail($notifiable, 'notifications.payment.status.subject', [
-                'ref'    => $ref,
-                'status' => $status,
-            ])
+            'ref' => $ref,
+            'status' => $status,
+        ])
             ->line($this->t($notifiable, 'notifications.payment.status.line1', [
-                'ref'    => $ref,
+                'ref' => $ref,
                 'status' => $status,
             ]))
             ->action(
@@ -53,19 +55,19 @@ class PaymentStatusNotification extends Notification implements ShouldQueue
     {
         $type = match ($this->action) {
             'approved', 'completed' => 'success',
-            'rejected'              => 'error',
-            default                 => 'info',
+            'rejected' => 'error',
+            default => 'info',
         };
 
         return [
-            'type'        => $type,
-            'title'       => $this->t($notifiable, 'notifications.payment.status.title'),
-            'message'     => $this->t($notifiable, 'notifications.payment.status.message', [
-                'ref'    => $this->payment->id,
+            'type' => $type,
+            'title' => $this->t($notifiable, 'notifications.payment.status.title'),
+            'message' => $this->t($notifiable, 'notifications.payment.status.message', [
+                'ref' => $this->payment->id,
                 'status' => $this->localisedAction($notifiable),
             ]),
             'entity_type' => 'payment',
-            'entity_id'   => $this->payment->id,
+            'entity_id' => $this->payment->id,
             'contract_id' => $this->payment->contract_id,
         ];
     }
@@ -77,8 +79,9 @@ class PaymentStatusNotification extends Notification implements ShouldQueue
      */
     private function localisedAction(object $notifiable): string
     {
-        $key = 'notifications.payment.actions.' . $this->action;
+        $key = 'notifications.payment.actions.'.$this->action;
         $localised = trans($key, [], $this->localeFor($notifiable));
+
         return $localised === $key ? $this->action : $localised;
     }
 }

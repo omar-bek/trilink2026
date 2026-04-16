@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\EInvoiceSubmission;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -18,8 +20,8 @@ use Illuminate\Notifications\Notification;
  */
 class EInvoiceAcceptedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly EInvoiceSubmission $submission,
@@ -29,8 +31,8 @@ class EInvoiceAcceptedNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'compliance_alerts',
             ['database', 'mail']
         );
@@ -44,18 +46,18 @@ class EInvoiceAcceptedNotification extends Notification implements ShouldQueue
             ->line($this->t($notifiable, 'notifications.einvoice.accepted.line1', ['ref' => $ref]))
             ->when(
                 $this->submission->fta_clearance_id,
-                fn ($mail) => $mail->line('FTA Clearance ID: ' . $this->submission->fta_clearance_id)
+                fn ($mail) => $mail->line('FTA Clearance ID: '.$this->submission->fta_clearance_id)
             );
     }
 
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'success',
-            'title'       => $this->t($notifiable, 'notifications.einvoice.accepted.title'),
-            'message'     => $this->t($notifiable, 'notifications.einvoice.accepted.message', ['ref' => $this->reference()]),
+            'type' => 'success',
+            'title' => $this->t($notifiable, 'notifications.einvoice.accepted.title'),
+            'message' => $this->t($notifiable, 'notifications.einvoice.accepted.message', ['ref' => $this->reference()]),
             'entity_type' => 'einvoice_submission',
-            'entity_id'   => $this->submission->id,
+            'entity_id' => $this->submission->id,
         ];
     }
 
@@ -63,6 +65,6 @@ class EInvoiceAcceptedNotification extends Notification implements ShouldQueue
     {
         return $this->submission->taxInvoice?->invoice_number
             ?? $this->submission->taxCreditNote?->credit_note_number
-            ?? ('#' . $this->submission->id);
+            ?? ('#'.$this->submission->id);
     }
 }

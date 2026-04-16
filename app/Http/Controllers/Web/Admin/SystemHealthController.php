@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Web\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class SystemHealthController extends Controller
@@ -95,11 +95,21 @@ class SystemHealthController extends Controller
 
         // Overall status
         $issues = 0;
-        if ($health['db_status'] !== 'healthy') $issues += 3;
-        if ($health['cache_status'] !== 'healthy') $issues += 2;
-        if ($health['failed_jobs_24h'] > 10) $issues += 2;
-        if ($health['disk_used_pct'] > 90) $issues += 2;
-        if ($health['pending_jobs'] > 1000) $issues += 1;
+        if ($health['db_status'] !== 'healthy') {
+            $issues += 3;
+        }
+        if ($health['cache_status'] !== 'healthy') {
+            $issues += 2;
+        }
+        if ($health['failed_jobs_24h'] > 10) {
+            $issues += 2;
+        }
+        if ($health['disk_used_pct'] > 90) {
+            $issues += 2;
+        }
+        if ($health['pending_jobs'] > 1000) {
+            $issues += 1;
+        }
 
         $health['overall'] = $issues === 0 ? 'healthy' : ($issues <= 2 ? 'warning' : 'critical');
 

@@ -27,9 +27,9 @@ class UserController extends Controller
 {
     public function index(Request $request): View
     {
-        $q       = trim((string) $request->query('q', ''));
-        $role    = $request->query('role');
-        $status  = $request->query('status');
+        $q = trim((string) $request->query('q', ''));
+        $role = $request->query('role');
+        $status = $request->query('status');
         $company = $request->query('company');
 
         $users = User::query()
@@ -43,9 +43,9 @@ class UserController extends Controller
             ->withQueryString();
 
         $stats = [
-            'total'    => User::count(),
-            'active'   => User::where('status', UserStatus::ACTIVE->value)->count(),
-            'pending'  => User::where('status', UserStatus::PENDING->value)->count(),
+            'total' => User::count(),
+            'active' => User::where('status', UserStatus::ACTIVE->value)->count(),
+            'pending' => User::where('status', UserStatus::PENDING->value)->count(),
             'inactive' => User::where('status', UserStatus::INACTIVE->value)->count(),
         ];
 
@@ -67,7 +67,7 @@ class UserController extends Controller
 
         $user = User::create($data + [
             'password' => Hash::make($data['password'] ?? Str::password(14)),
-            'status'   => $data['status'] ?? UserStatus::ACTIVE->value,
+            'status' => $data['status'] ?? UserStatus::ACTIVE->value,
         ]);
 
         $this->audit(AuditAction::CREATE, $user);
@@ -79,7 +79,7 @@ class UserController extends Controller
 
     public function edit(int $id): View
     {
-        $user      = User::findOrFail($id);
+        $user = User::findOrFail($id);
         $companies = Company::orderBy('name')->get(['id', 'name']);
 
         return view('dashboard.admin.users.edit', compact('user', 'companies'));
@@ -87,7 +87,7 @@ class UserController extends Controller
 
     public function update(Request $request, int $id): RedirectResponse
     {
-        $user   = User::findOrFail($id);
+        $user = User::findOrFail($id);
         $before = $user->only(['first_name', 'last_name', 'email', 'phone', 'role', 'status', 'company_id']);
 
         $data = $this->validateUser($request, $user->id);
@@ -97,7 +97,7 @@ class UserController extends Controller
             return back()->withErrors(['role' => __('admin.users.cannot_self_demote')]);
         }
 
-        if (!empty($data['password'])) {
+        if (! empty($data['password'])) {
             $user->password = Hash::make($data['password']);
         }
         unset($data['password']);
@@ -162,29 +162,29 @@ class UserController extends Controller
     {
         return $request->validate([
             'first_name' => ['required', 'string', 'max:100'],
-            'last_name'  => ['nullable', 'string', 'max:100'],
-            'email'      => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($ignoreId)->whereNull('deleted_at')],
-            'phone'      => ['nullable', 'string', 'max:30'],
-            'role'       => ['required', new Enum(UserRole::class)],
-            'status'     => ['nullable', new Enum(UserStatus::class)],
+            'last_name' => ['nullable', 'string', 'max:100'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($ignoreId)->whereNull('deleted_at')],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'role' => ['required', new Enum(UserRole::class)],
+            'status' => ['nullable', new Enum(UserStatus::class)],
             'company_id' => ['nullable', 'exists:companies,id'],
-            'password'   => ['nullable', 'string', 'min:8'],
+            'password' => ['nullable', 'string', 'min:8'],
         ]);
     }
 
     private function audit(AuditAction $action, User $user, ?array $before = null, ?array $after = null): void
     {
         AuditLog::create([
-            'user_id'       => auth()->id(),
-            'company_id'    => auth()->user()?->company_id,
-            'action'        => $action,
+            'user_id' => auth()->id(),
+            'company_id' => auth()->user()?->company_id,
+            'action' => $action,
             'resource_type' => 'User',
-            'resource_id'   => $user->id,
-            'before'        => $before,
-            'after'         => $after,
-            'ip_address'    => request()->ip(),
-            'user_agent'    => substr((string) request()->userAgent(), 0, 255),
-            'status'        => 'success',
+            'resource_id' => $user->id,
+            'before' => $before,
+            'after' => $after,
+            'ip_address' => request()->ip(),
+            'user_agent' => substr((string) request()->userAgent(), 0, 255),
+            'status' => 'success',
         ]);
     }
 }

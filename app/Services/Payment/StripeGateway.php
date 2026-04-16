@@ -4,6 +4,7 @@ namespace App\Services\Payment;
 
 use App\Models\Payment;
 use Stripe\PaymentIntent;
+use Stripe\Refund;
 use Stripe\Stripe;
 
 class StripeGateway implements PaymentGatewayInterface
@@ -34,7 +35,7 @@ class StripeGateway implements PaymentGatewayInterface
 
     public function refund(Payment $payment): array
     {
-        $refund = \Stripe\Refund::create([
+        $refund = Refund::create([
             'payment_intent' => $payment->gateway_payment_id,
         ]);
 

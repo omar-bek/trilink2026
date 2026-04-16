@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\AuditLog;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -36,8 +37,9 @@ class AnchorAuditChainCommand extends Command
     public function handle(): int
     {
         $latest = AuditLog::query()->orderByDesc('id')->first();
-        if (!$latest) {
+        if (! $latest) {
             $this->info('No audit logs to anchor.');
+
             return self::SUCCESS;
         }
 
@@ -52,19 +54,20 @@ class AnchorAuditChainCommand extends Command
         // won't match.
         $anchor = [
             'chain_head_hash' => $chainHead,
-            'chain_head_id'   => $latest->id,
-            'row_count'       => $rowCount,
-            'anchored_at'     => now()->toIso8601String(),
-            'environment'     => config('app.env'),
+            'chain_head_id' => $latest->id,
+            'row_count' => $rowCount,
+            'anchored_at' => now()->toIso8601String(),
+            'environment' => config('app.env'),
         ];
 
         $anchorJson = json_encode($anchor, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        $anchorSha  = hash('sha256', $anchorJson);
+        $anchorSha = hash('sha256', $anchorJson);
 
         if ($this->option('dry-run')) {
             $this->info('DRY RUN — would anchor:');
             $this->line($anchorJson);
             $this->line("SHA-256: {$anchorSha}");
+
             return self::SUCCESS;
         }
 
@@ -74,14 +77,14 @@ class AnchorAuditChainCommand extends Command
 
         // Persist to DB if the table exists (Phase 9 migration adds it)
         try {
-            \Illuminate\Support\Facades\DB::table('audit_chain_anchors')->insert([
+            DB::table('audit_chain_anchors')->insert([
                 'chain_head_hash' => $chainHead,
-                'chain_head_id'   => $latest->id,
-                'row_count'       => $rowCount,
-                'anchor_sha256'   => $anchorSha,
-                'storage_path'    => $path,
-                'anchored_at'     => now(),
-                'created_at'      => now(),
+                'chain_head_id' => $latest->id,
+                'row_count' => $rowCount,
+                'anchor_sha256' => $anchorSha,
+                'storage_path' => $path,
+                'anchored_at' => now(),
+                'created_at' => now(),
             ]);
         } catch (\Throwable) {
             // Table doesn't exist yet — local file is enough.
@@ -102,7 +105,7 @@ class AnchorAuditChainCommand extends Command
             'Audit chain anchored: %d rows, head=#%d, sha=%s',
             $rowCount,
             $latest->id,
-            substr($anchorSha, 0, 16) . '…'
+            substr($anchorSha, 0, 16).'…'
         ));
 
         return self::SUCCESS;

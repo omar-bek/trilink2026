@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Models\PurchaseRequest;
+use App\Models\User;
 use App\Notifications\Concerns\LocalizesNotification;
+use App\Support\NotificationPreferences;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,8 +18,8 @@ use Illuminate\Notifications\Notification;
  */
 class PurchaseRequestApprovedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
     use LocalizesNotification;
+    use Queueable;
 
     public function __construct(
         private readonly PurchaseRequest $pr,
@@ -29,8 +31,8 @@ class PurchaseRequestApprovedNotification extends Notification implements Should
     {
         // PR approval / rejection counts as a "bid update" preference since
         // it's the buyer's procurement workflow status — same toggle.
-        return \App\Support\NotificationPreferences::channels(
-            $notifiable instanceof \App\Models\User ? $notifiable : null,
+        return NotificationPreferences::channels(
+            $notifiable instanceof User ? $notifiable : null,
             'bid_updates',
             ['database', 'mail']
         );
@@ -51,13 +53,13 @@ class PurchaseRequestApprovedNotification extends Notification implements Should
     public function toArray(object $notifiable): array
     {
         return [
-            'type'        => 'success',
-            'title'       => $this->t($notifiable, 'notifications.purchase_request.approved.title'),
-            'message'     => $this->t($notifiable, 'notifications.purchase_request.approved.message', [
+            'type' => 'success',
+            'title' => $this->t($notifiable, 'notifications.purchase_request.approved.title'),
+            'message' => $this->t($notifiable, 'notifications.purchase_request.approved.message', [
                 'ref' => (string) $this->pr->title,
             ]),
             'entity_type' => 'purchase_request',
-            'entity_id'   => $this->pr->id,
+            'entity_id' => $this->pr->id,
         ];
     }
 }

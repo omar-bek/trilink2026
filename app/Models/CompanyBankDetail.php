@@ -42,8 +42,8 @@ class CompanyBankDetail extends Model
             // comparing. That's a tiny perf hit on a small table
             // and an acceptable trade for the compliance gain.
             'holder_name' => 'encrypted',
-            'iban'        => 'encrypted',
-            'swift'       => 'encrypted',
+            'iban' => 'encrypted',
+            'swift' => 'encrypted',
         ];
     }
 

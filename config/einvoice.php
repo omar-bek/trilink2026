@@ -1,5 +1,9 @@
 <?php
 
+use App\Services\EInvoice\AvalaraAspProvider;
+use App\Services\EInvoice\MockAspProvider;
+use App\Services\EInvoice\SovosAspProvider;
+
 return [
 
     /*
@@ -66,22 +70,22 @@ return [
     'providers' => [
 
         'mock' => [
-            'class'   => \App\Services\EInvoice\MockAspProvider::class,
+            'class' => MockAspProvider::class,
             'enabled' => true,
         ],
 
         'avalara' => [
-            'class'    => \App\Services\EInvoice\AvalaraAspProvider::class,
-            'enabled'  => env('EINVOICE_AVALARA_ENABLED', false),
+            'class' => AvalaraAspProvider::class,
+            'enabled' => env('EINVOICE_AVALARA_ENABLED', false),
             'base_url' => env('EINVOICE_AVALARA_BASE_URL', 'https://api.sbx.avalara.com/einvoicing/v1'),
-            'api_key'  => env('EINVOICE_AVALARA_API_KEY'),
+            'api_key' => env('EINVOICE_AVALARA_API_KEY'),
         ],
 
         'sovos' => [
-            'class'    => \App\Services\EInvoice\SovosAspProvider::class,
-            'enabled'  => env('EINVOICE_SOVOS_ENABLED', false),
+            'class' => SovosAspProvider::class,
+            'enabled' => env('EINVOICE_SOVOS_ENABLED', false),
             'base_url' => env('EINVOICE_SOVOS_BASE_URL', 'https://api.sandbox.sovos.com/einvoicing'),
-            'api_key'  => env('EINVOICE_SOVOS_API_KEY'),
+            'api_key' => env('EINVOICE_SOVOS_API_KEY'),
         ],
     ],
 

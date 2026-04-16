@@ -71,20 +71,20 @@ return new class extends Migration
                     }
 
                     // Split #1: active info-request lifecycle row.
-                    $items        = $blob['items']        ?? null;
-                    $note         = $blob['note']         ?? null;
-                    $requestedAt  = $blob['requested_at'] ?? null;
-                    $requestedBy  = $blob['requested_by'] ?? null;
+                    $items = $blob['items'] ?? null;
+                    $note = $blob['note'] ?? null;
+                    $requestedAt = $blob['requested_at'] ?? null;
+                    $requestedBy = $blob['requested_by'] ?? null;
                     if ($items || $note || $requestedAt) {
                         DB::table('company_info_requests')->updateOrInsert(
                             ['company_id' => $row->id],
                             [
-                                'items'        => $items ? json_encode($items) : null,
-                                'note'         => $note,
+                                'items' => $items ? json_encode($items) : null,
+                                'note' => $note,
                                 'requested_at' => $requestedAt,
                                 'requested_by' => $requestedBy,
-                                'created_at'   => now(),
-                                'updated_at'   => now(),
+                                'created_at' => now(),
+                                'updated_at' => now(),
                             ]
                         );
                     }
@@ -96,14 +96,14 @@ return new class extends Migration
                             ['company_id' => $row->id],
                             [
                                 'holder_name' => $bank['holder_name'] ?? $bank['account_holder'] ?? null,
-                                'bank_name'   => $bank['bank_name']   ?? $bank['bank']           ?? null,
-                                'branch'      => $bank['branch']      ?? null,
-                                'iban'        => $bank['iban']        ?? null,
-                                'swift'       => $bank['swift']       ?? $bank['bic']            ?? null,
-                                'currency'    => $bank['currency']    ?? null,
-                                'notes'       => $bank['notes']       ?? null,
-                                'created_at'  => now(),
-                                'updated_at'  => now(),
+                                'bank_name' => $bank['bank_name'] ?? $bank['bank'] ?? null,
+                                'branch' => $bank['branch'] ?? null,
+                                'iban' => $bank['iban'] ?? null,
+                                'swift' => $bank['swift'] ?? $bank['bic'] ?? null,
+                                'currency' => $bank['currency'] ?? null,
+                                'notes' => $bank['notes'] ?? null,
+                                'created_at' => now(),
+                                'updated_at' => now(),
                             ]
                         );
                     }
@@ -137,20 +137,20 @@ return new class extends Migration
 
                 $blob = [];
                 if ($ir) {
-                    $blob['items']        = $ir->items ? $this->decodeJson($ir->items) : [];
-                    $blob['note']         = $ir->note;
+                    $blob['items'] = $ir->items ? $this->decodeJson($ir->items) : [];
+                    $blob['note'] = $ir->note;
                     $blob['requested_at'] = $ir->requested_at;
                     $blob['requested_by'] = $ir->requested_by;
                 }
                 if ($bk) {
                     $blob['bank_details'] = array_filter([
                         'holder_name' => $bk->holder_name,
-                        'bank_name'   => $bk->bank_name,
-                        'branch'      => $bk->branch,
-                        'iban'        => $bk->iban,
-                        'swift'       => $bk->swift,
-                        'currency'    => $bk->currency,
-                        'notes'       => $bk->notes,
+                        'bank_name' => $bk->bank_name,
+                        'branch' => $bk->branch,
+                        'iban' => $bk->iban,
+                        'swift' => $bk->swift,
+                        'currency' => $bk->currency,
+                        'notes' => $bk->notes,
                     ], fn ($v) => $v !== null && $v !== '');
                 }
 
@@ -171,8 +171,10 @@ return new class extends Migration
         }
         if (is_string($value) && $value !== '') {
             $decoded = json_decode($value, true);
+
             return is_array($decoded) ? $decoded : null;
         }
+
         return null;
     }
 };

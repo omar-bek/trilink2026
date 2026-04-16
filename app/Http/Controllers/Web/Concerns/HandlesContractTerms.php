@@ -36,6 +36,7 @@ trait HandlesContractTerms
         if (is_array($terms)) {
             if (isset($terms['en']) || isset($terms['ar'])) {
                 $picked = $terms[$locale] ?? $terms['en'] ?? $terms['ar'] ?? [];
+
                 return $this->parseTermsSections($picked, $locale);
             }
 
@@ -55,6 +56,7 @@ trait HandlesContractTerms
             if (empty($lines)) {
                 return [];
             }
+
             return [[
                 'title' => __('contracts.terms_conditions'),
                 'items' => $lines,
@@ -69,6 +71,7 @@ trait HandlesContractTerms
         if (is_string($terms)) {
             $terms = json_decode($terms, true);
         }
+
         return is_array($terms) && (isset($terms['en']) || isset($terms['ar']));
     }
 
@@ -86,12 +89,14 @@ trait HandlesContractTerms
             [ContractStatus::DRAFT->value, ContractStatus::PENDING_SIGNATURES->value],
             true
         );
-        return $preSignatureStatus && !$contract->allPartiesHaveSigned();
+
+        return $preSignatureStatus && ! $contract->allPartiesHaveSigned();
     }
 
     protected function displayName(User $user): string
     {
-        $name = trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? ''));
+        $name = trim(($user->first_name ?? '').' '.($user->last_name ?? ''));
+
         return $name !== '' ? $name : ($user->email ?? 'A party');
     }
 
@@ -129,9 +134,9 @@ trait HandlesContractTerms
             );
         } catch (\Throwable $e) {
             Log::warning('Amendment notification dispatch failed', [
-                'contract_id'  => $contract->id,
+                'contract_id' => $contract->id,
                 'amendment_id' => $amendment->id,
-                'error'        => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }

@@ -74,7 +74,7 @@ class DutyCalculatorService
         // Rule 1: intra-GCC origin = 0%
         if (in_array($origin, self::GCC_COUNTRIES, true)) {
             return [
-                'rate'  => 0.0,
+                'rate' => 0.0,
                 'basis' => 'GCC Customs Union Agreement — intra-GCC origin, 0% duty.',
             ];
         }
@@ -84,7 +84,7 @@ class DutyCalculatorService
         // Rule 2: exempted HS codes = 0%
         if ($prefix && in_array($prefix, self::EXEMPT_HS_PREFIXES, true)) {
             return [
-                'rate'  => 0.0,
+                'rate' => 0.0,
                 'basis' => "HS {$prefix} is exempt from customs duty under Cabinet Decision 80/2023.",
             ];
         }
@@ -92,15 +92,16 @@ class DutyCalculatorService
         // Rule 3: higher-rate HS codes
         if ($prefix && isset(self::HIGH_RATE_HS[$prefix])) {
             $rate = (float) self::HIGH_RATE_HS[$prefix];
+
             return [
-                'rate'  => $rate,
+                'rate' => $rate,
                 'basis' => "HS {$prefix} is subject to a {$rate}% protective tariff under GCC CCT.",
             ];
         }
 
         // Default: standard 5% GCC CCT
         return [
-            'rate'  => 5.0,
+            'rate' => 5.0,
             'basis' => 'Standard GCC Common Customs Tariff — 5% ad-valorem on non-GCC origin goods.',
         ];
     }

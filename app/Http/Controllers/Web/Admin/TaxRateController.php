@@ -45,7 +45,7 @@ class TaxRateController extends Controller
 
         // Only one default rate can exist at a time. If the new row is the
         // default, demote any prior default first so the lookup is unambiguous.
-        if (!empty($data['is_default'])) {
+        if (! empty($data['is_default'])) {
             TaxRate::where('is_default', true)->update(['is_default' => false]);
         }
 
@@ -69,10 +69,10 @@ class TaxRateController extends Controller
     public function update(Request $request, int $id): RedirectResponse
     {
         $taxRate = TaxRate::findOrFail($id);
-        $before  = $taxRate->toArray();
-        $data    = $this->validateData($request, $id);
+        $before = $taxRate->toArray();
+        $data = $this->validateData($request, $id);
 
-        if (!empty($data['is_default'])) {
+        if (! empty($data['is_default'])) {
             TaxRate::where('is_default', true)->where('id', '!=', $id)->update(['is_default' => false]);
         }
 
@@ -88,7 +88,7 @@ class TaxRateController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         $taxRate = TaxRate::findOrFail($id);
-        $before  = $taxRate->toArray();
+        $before = $taxRate->toArray();
 
         $taxRate->delete();
 
@@ -102,32 +102,32 @@ class TaxRateController extends Controller
     private function validateData(Request $request, ?int $id = null): array
     {
         return $request->validate([
-            'name'           => ['required', 'string', 'max:191'],
-            'code'           => ['required', 'string', 'max:32', 'unique:tax_rates,code' . ($id ? ',' . $id : '')],
-            'rate'           => ['required', 'numeric', 'min:0', 'max:100'],
-            'category_id'    => ['nullable', 'exists:categories,id'],
-            'country'        => ['nullable', 'string', 'size:2'],
-            'is_active'      => ['sometimes', 'boolean'],
-            'is_default'     => ['sometimes', 'boolean'],
+            'name' => ['required', 'string', 'max:191'],
+            'code' => ['required', 'string', 'max:32', 'unique:tax_rates,code'.($id ? ','.$id : '')],
+            'rate' => ['required', 'numeric', 'min:0', 'max:100'],
+            'category_id' => ['nullable', 'exists:categories,id'],
+            'country' => ['nullable', 'string', 'size:2'],
+            'is_active' => ['sometimes', 'boolean'],
+            'is_default' => ['sometimes', 'boolean'],
             'effective_from' => ['nullable', 'date'],
-            'effective_to'   => ['nullable', 'date', 'after_or_equal:effective_from'],
-            'description'    => ['nullable', 'string', 'max:500'],
+            'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
+            'description' => ['nullable', 'string', 'max:500'],
         ]);
     }
 
     private function audit(AuditAction $action, TaxRate $taxRate, ?array $before, ?array $after): void
     {
         AuditLog::create([
-            'user_id'       => auth()->id(),
-            'company_id'    => auth()->user()?->company_id,
-            'action'        => $action,
+            'user_id' => auth()->id(),
+            'company_id' => auth()->user()?->company_id,
+            'action' => $action,
             'resource_type' => 'TaxRate',
-            'resource_id'   => $taxRate->id,
-            'before'        => $before,
-            'after'         => $after,
-            'ip_address'    => request()->ip(),
-            'user_agent'    => substr((string) request()->userAgent(), 0, 255),
-            'status'        => 'success',
+            'resource_id' => $taxRate->id,
+            'before' => $before,
+            'after' => $after,
+            'ip_address' => request()->ip(),
+            'user_agent' => substr((string) request()->userAgent(), 0, 255),
+            'status' => 'success',
         ]);
     }
 }

@@ -6,7 +6,6 @@ use App\Enums\BidStatus;
 use App\Enums\RfqStatus;
 use App\Models\Bid;
 use App\Models\Company;
-use App\Models\CompanySupplier;
 use App\Models\Rfq;
 use App\Models\SanctionsScreening;
 use App\Models\User;
@@ -35,7 +34,7 @@ class BidService
     public function create(array $data): Bid|string
     {
         $rfq = Rfq::find($data['rfq_id']);
-        if (!$rfq || $rfq->status !== RfqStatus::OPEN) {
+        if (! $rfq || $rfq->status !== RfqStatus::OPEN) {
             return 'RFQ is not open for bidding';
         }
 
@@ -84,6 +83,7 @@ class BidService
         $bid = Bid::findOrFail($id);
 
         $bid->update($data);
+
         return $bid->fresh(['rfq', 'company', 'provider']);
     }
 
@@ -107,11 +107,12 @@ class BidService
     public function withdraw(int $id): ?Bid
     {
         $bid = Bid::find($id);
-        if (!$bid || !in_array($bid->status, [BidStatus::DRAFT, BidStatus::SUBMITTED])) {
+        if (! $bid || ! in_array($bid->status, [BidStatus::DRAFT, BidStatus::SUBMITTED])) {
             return null;
         }
 
         $bid->update(['status' => BidStatus::WITHDRAWN]);
+
         return $bid->fresh();
     }
 }

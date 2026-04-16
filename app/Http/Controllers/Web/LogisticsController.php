@@ -34,7 +34,7 @@ class LogisticsController extends Controller
     public function carbonFootprint(int $shipmentId): JsonResponse
     {
         $shipment = $this->authorisedShipment($shipmentId);
-        $result   = $this->footprint->forShipment($shipment);
+        $result = $this->footprint->forShipment($shipment);
 
         return response()->json($result ?? ['error' => 'insufficient_data']);
     }
@@ -42,14 +42,16 @@ class LogisticsController extends Controller
     public function commercialInvoice(int $shipmentId): Response
     {
         $shipment = $this->authorisedShipment($shipmentId);
-        $payload  = $this->customs->commercialInvoice($shipment);
+        $payload = $this->customs->commercialInvoice($shipment);
+
         return $this->customs->renderPdf($payload);
     }
 
     public function packingList(int $shipmentId): Response
     {
         $shipment = $this->authorisedShipment($shipmentId);
-        $payload  = $this->customs->packingList($shipment);
+        $payload = $this->customs->packingList($shipment);
+
         return $this->customs->renderPdf($payload);
     }
 
@@ -61,9 +63,9 @@ class LogisticsController extends Controller
     public function submitToDubaiTrade(int $shipmentId): RedirectResponse
     {
         $shipment = $this->authorisedShipment($shipmentId);
-        $result   = $this->dubaiTrade->submitDeclaration($shipment);
+        $result = $this->dubaiTrade->submitDeclaration($shipment);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return back()->withErrors(['logistics' => $result['error'] ?? 'Dubai Trade submission failed']);
         }
 
