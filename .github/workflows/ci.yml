@@ -56,23 +56,15 @@ jobs:
       - name: Prepare environment
         run: |
           cp .env.example .env || true
-          # Some repos don't ship a .env.example — write a minimal one
-          if [ ! -f .env ]; then
-            cat > .env <<'EOF'
-          APP_NAME=TriLink
-          APP_ENV=testing
-          APP_KEY=
-          APP_DEBUG=true
-          APP_URL=http://localhost
-          DB_CONNECTION=sqlite
-          QUEUE_CONNECTION=sync
-          CACHE_STORE=array
-          SESSION_DRIVER=array
-          MAIL_MAILER=array
-          BROADCAST_CONNECTION=null
-          FILESYSTEM_DISK=local
-          EOF
-          fi
+          # Force sqlite for CI regardless of what .env.example ships.
+          # GitHub Actions doesn't provide a MySQL service by default.
+          sed -i 's/^DB_CONNECTION=.*/DB_CONNECTION=sqlite/' .env
+          sed -i 's/^DB_DATABASE=.*/DB_DATABASE=database\/database.sqlite/' .env
+          # Ensure lightweight drivers for queues/cache/session/mail.
+          grep -q '^QUEUE_CONNECTION=' .env && sed -i 's/^QUEUE_CONNECTION=.*/QUEUE_CONNECTION=sync/' .env || echo 'QUEUE_CONNECTION=sync' >> .env
+          grep -q '^CACHE_STORE=' .env && sed -i 's/^CACHE_STORE=.*/CACHE_STORE=array/' .env || echo 'CACHE_STORE=array' >> .env
+          grep -q '^SESSION_DRIVER=' .env && sed -i 's/^SESSION_DRIVER=.*/SESSION_DRIVER=array/' .env || echo 'SESSION_DRIVER=array' >> .env
+          grep -q '^MAIL_MAILER=' .env && sed -i 's/^MAIL_MAILER=.*/MAIL_MAILER=array/' .env || echo 'MAIL_MAILER=array' >> .env
           mkdir -p database
           touch database/database.sqlite
           php artisan key:generate --ansi
