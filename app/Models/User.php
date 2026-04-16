@@ -5,8 +5,10 @@ namespace App\Models;
 use App\Concerns\Searchable;
 use App\Enums\UserRole;
 use App\Enums\UserStatus;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Support\Permissions;
 use Illuminate\Contracts\Translation\HasLocalePreference;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -17,9 +19,9 @@ use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable implements JWTSubject, HasLocalePreference
+class User extends Authenticatable implements HasLocalePreference, JWTSubject
 {
-    use HasFactory, Notifiable, SoftDeletes, HasRoles, HasApiTokens, Searchable;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable, Searchable, SoftDeletes;
 
     /**
      * Spatie permissions are seeded under BOTH the `web` and `api` guards
@@ -72,14 +74,14 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
             // 2FA: secret + recovery codes are encrypted at rest so a DB
             // leak still protects the second factor. `confirmed_at` is a
             // plain timestamp — its presence is the "enabled" flag.
-            'two_factor_secret'         => 'encrypted',
+            'two_factor_secret' => 'encrypted',
             'two_factor_recovery_codes' => 'encrypted:array',
-            'two_factor_confirmed_at'   => 'datetime',
+            'two_factor_confirmed_at' => 'datetime',
             // Sprint D.17 — per-user notification preferences. Stored
             // as JSON so adding a new notification type doesn't require
             // a schema migration. See defaultNotificationPreferences()
             // and shouldDeliverNotification() for the read recipe.
-            'notification_preferences'  => 'array',
+            'notification_preferences' => 'array',
         ];
     }
 
@@ -96,7 +98,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
         return [
             'channels' => [
                 'database' => true,
-                'mail'     => true,
+                'mail' => true,
             ],
             'digest' => [
                 // realtime: notifications fire immediately as they happen
@@ -165,6 +167,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
     public function preferredLocale(): ?string
     {
         $locale = $this->locale;
+
         return in_array($locale, ['en', 'ar'], true) ? $locale : null;
     }
 
@@ -242,7 +245,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
      * bulk-fetch that feeds notifications or approval lists so inactive,
      * pending, and soft-deleted users are never contacted.
      */
-    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', UserStatus::ACTIVE);
     }
@@ -292,7 +295,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
         }
 
         $primary = $this->role instanceof \BackedEnum ? $this->role->value : (string) $this->role;
-        $extras  = \is_array($this->additional_roles) ? $this->additional_roles : [];
+        $extras = \is_array($this->additional_roles) ? $this->additional_roles : [];
 
         return array_values(array_unique(array_filter(array_merge([$primary], $extras))));
     }
@@ -331,7 +334,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
             return true;
         }
 
-        if (!isset($this->resolvedPermissionKeys)) {
+        if (! isset($this->resolvedPermissionKeys)) {
             $this->resolvedPermissionKeys = $this->resolvePermissionKeys();
         }
 
@@ -348,9 +351,10 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
      */
     public function effectivePermissions(): array
     {
-        if (!isset($this->resolvedPermissionKeys)) {
+        if (! isset($this->resolvedPermissionKeys)) {
             $this->resolvedPermissionKeys = $this->resolvePermissionKeys();
         }
+
         return $this->resolvedPermissionKeys;
     }
 
@@ -364,7 +368,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
     {
         // Step 1: explicit per-user allowlist takes precedence.
         $perUser = is_array($this->permissions) ? array_values(array_filter($this->permissions)) : [];
-        if (!empty($perUser)) {
+        if (! empty($perUser)) {
             return array_values(array_unique($perUser));
         }
 
@@ -372,7 +376,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
         $roleNames = $this->allRoles();
         $keys = [];
         foreach ($roleNames as $role) {
-            foreach (\App\Support\Permissions::defaultsForRole($role) as $k) {
+            foreach (Permissions::defaultsForRole($role) as $k) {
                 $keys[$k] = true;
             }
         }
@@ -388,7 +392,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
     protected static function booted(): void
     {
         static::saved(function (User $user) {
-            if (!$user->wasChanged('role') && !$user->wasRecentlyCreated) {
+            if (! $user->wasChanged('role') && ! $user->wasRecentlyCreated) {
                 return;
             }
 

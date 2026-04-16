@@ -13,49 +13,72 @@ namespace App\Support;
  */
 class Permissions
 {
-    public const PR_VIEW    = 'pr.view';
-    public const PR_CREATE  = 'pr.create';
-    public const PR_EDIT    = 'pr.edit';
-    public const PR_SUBMIT  = 'pr.submit';
+    public const PR_VIEW = 'pr.view';
+
+    public const PR_CREATE = 'pr.create';
+
+    public const PR_EDIT = 'pr.edit';
+
+    public const PR_SUBMIT = 'pr.submit';
+
     public const PR_APPROVE = 'pr.approve';
-    public const PR_DELETE  = 'pr.delete';
 
-    public const RFQ_VIEW    = 'rfq.view';
-    public const RFQ_CREATE  = 'rfq.create';
-    public const RFQ_EDIT    = 'rfq.edit';
+    public const PR_DELETE = 'pr.delete';
+
+    public const RFQ_VIEW = 'rfq.view';
+
+    public const RFQ_CREATE = 'rfq.create';
+
+    public const RFQ_EDIT = 'rfq.edit';
+
     public const RFQ_PUBLISH = 'rfq.publish';
-    public const RFQ_CLOSE   = 'rfq.close';
 
-    public const BID_VIEW     = 'bid.view';
-    public const BID_SUBMIT   = 'bid.submit';
+    public const RFQ_CLOSE = 'rfq.close';
+
+    public const BID_VIEW = 'bid.view';
+
+    public const BID_SUBMIT = 'bid.submit';
+
     public const BID_WITHDRAW = 'bid.withdraw';
-    public const BID_ACCEPT   = 'bid.accept';
-    public const BID_COMPARE  = 'bid.compare';
+
+    public const BID_ACCEPT = 'bid.accept';
+
+    public const BID_COMPARE = 'bid.compare';
 
     public const CONTRACT_VIEW = 'contract.view';
+
     public const CONTRACT_SIGN = 'contract.sign';
-    public const CONTRACT_PDF  = 'contract.pdf';
 
-    public const PAYMENT_VIEW    = 'payment.view';
+    public const CONTRACT_PDF = 'contract.pdf';
+
+    public const PAYMENT_VIEW = 'payment.view';
+
     public const PAYMENT_APPROVE = 'payment.approve';
-    public const PAYMENT_PROCESS = 'payment.process';
-    public const PAYMENT_REJECT  = 'payment.reject';
 
-    public const SHIPMENT_VIEW  = 'shipment.view';
+    public const PAYMENT_PROCESS = 'payment.process';
+
+    public const PAYMENT_REJECT = 'payment.reject';
+
+    public const SHIPMENT_VIEW = 'shipment.view';
+
     public const SHIPMENT_TRACK = 'shipment.track';
 
     // Phase 3 — Trade Finance MVP. Escrow workflow lives behind a tight
     // four-permission set so finance teams can split duties (e.g. one
     // user activates + deposits, a separate user releases).
-    public const ESCROW_VIEW     = 'escrow.view';
+    public const ESCROW_VIEW = 'escrow.view';
+
     public const ESCROW_ACTIVATE = 'escrow.activate';
-    public const ESCROW_DEPOSIT  = 'escrow.deposit';
-    public const ESCROW_RELEASE  = 'escrow.release';
+
+    public const ESCROW_DEPOSIT = 'escrow.deposit';
+
+    public const ESCROW_RELEASE = 'escrow.release';
 
     // Phase 4 — Catalog & Cart. cart.use lets a buyer interact with their
     // own cart (add, update, checkout). cart.checkout is the same gate as
     // PR_SUBMIT effectively — once you can buy, you can settle the cart.
-    public const CART_USE      = 'cart.use';
+    public const CART_USE = 'cart.use';
+
     public const CART_CHECKOUT = 'cart.checkout';
 
     // Phase 5 — single ai.use gate for all AI features (OCR, copilot,
@@ -70,20 +93,28 @@ class Permissions
 
     // Phase 8 — ESG & sustainability. Read for any user, write reserved
     // for the company manager.
-    public const ESG_VIEW   = 'esg.view';
+    public const ESG_VIEW = 'esg.view';
+
     public const ESG_MANAGE = 'esg.manage';
 
-    public const DISPUTE_VIEW     = 'dispute.view';
-    public const DISPUTE_OPEN     = 'dispute.open';
-    public const DISPUTE_ESCALATE = 'dispute.escalate';
-    public const DISPUTE_RESOLVE  = 'dispute.resolve';
+    public const DISPUTE_VIEW = 'dispute.view';
 
-    public const TEAM_VIEW   = 'team.view';
+    public const DISPUTE_OPEN = 'dispute.open';
+
+    public const DISPUTE_ESCALATE = 'dispute.escalate';
+
+    public const DISPUTE_RESOLVE = 'dispute.resolve';
+
+    public const TEAM_VIEW = 'team.view';
+
     public const TEAM_INVITE = 'team.invite';
-    public const TEAM_EDIT   = 'team.edit';
+
+    public const TEAM_EDIT = 'team.edit';
+
     public const TEAM_REMOVE = 'team.remove';
 
-    public const REPORTS_VIEW   = 'reports.view';
+    public const REPORTS_VIEW = 'reports.view';
+
     public const REPORTS_EXPORT = 'reports.export';
 
     /**
