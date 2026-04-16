@@ -345,6 +345,26 @@ class CompanyController extends Controller
     }
 
     /**
+     * Stream a company document file to the admin for review before
+     * approving or rejecting it.
+     */
+    public function downloadDocument(int $documentId): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $document = CompanyDocument::findOrFail($documentId);
+
+        abort_unless(
+            $document->file_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($document->file_path),
+            404,
+            __('trust.file_not_found')
+        );
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->download(
+            $document->file_path,
+            $document->original_filename ?? basename($document->file_path)
+        );
+    }
+
+    /**
      * Mark a single uploaded document as verified or rejected. Verification
      * is a per-document decision because Gold tier needs multiple documents
      * verified — we don't want one bad doc to demote the whole company.

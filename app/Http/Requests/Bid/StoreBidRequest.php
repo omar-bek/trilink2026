@@ -23,7 +23,22 @@ class StoreBidRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return $this->user() !== null && $this->user()->company_id !== null;
+        $user = $this->user();
+        if ($user === null || $user->company_id === null) {
+            return false;
+        }
+
+        $rfqId = $this->route('rfq');
+        if ($rfqId === null) {
+            return false;
+        }
+
+        $rfq = Rfq::find($rfqId);
+        if ($rfq === null) {
+            return false;
+        }
+
+        return $user->can('submitBid', $rfq);
     }
 
     /**
@@ -52,13 +67,13 @@ class StoreBidRequest extends FormRequest
         // source of truth.
         $items = $this->input('items', []);
         if (is_array($items) && !empty($items)) {
-            $sum = 0;
+            $sum = '0';
             $normalized = [];
             foreach ($items as $row) {
                 $qty   = (float) ($row['qty'] ?? $row['quantity'] ?? 0);
                 $unit  = (float) ($row['unit_price'] ?? 0);
-                $total = round($qty * $unit, 2);
-                $sum  += $total;
+                $total = (float) bcmul((string) $qty, (string) $unit, 2);
+                $sum   = bcadd($sum, (string) $total, 2);
                 $normalized[] = [
                     'name'       => (string) ($row['name'] ?? ''),
                     'qty'        => $qty,
@@ -68,9 +83,9 @@ class StoreBidRequest extends FormRequest
                     'spec'       => (string) ($row['spec'] ?? ''),
                 ];
             }
-            if ($sum > 0) {
+            if (bccomp($sum, '0', 2) > 0) {
                 $this->merge([
-                    'price' => $sum,
+                    'price' => (float) $sum,
                     'items' => $normalized,
                 ]);
             }
@@ -102,28 +117,38 @@ class StoreBidRequest extends FormRequest
 
     /**
      * Resolve subtotal / tax / total for a given headline price + treatment.
-     * Returns three already-rounded floats.
+     * Uses bcmath for precision — float arithmetic can produce rounding
+     * errors on invoices (e.g. 0.1 + 0.2 ≠ 0.3 in IEEE 754).
      *
-     * exclusive    → headline price IS the subtotal; tax is added.
-     * inclusive    → headline price IS the total; subtotal is back-derived.
-     * not_applicable → headline price IS the total; tax = 0.
+     * exclusive       → headline price IS the subtotal; tax is added.
+     * inclusive        → headline price IS the total; subtotal is back-derived.
+     * not_applicable  → headline price IS the total; tax = 0.
      */
     private function splitVat(float $price, string $treatment, float $rate): array
     {
         if ($price <= 0) {
             return [0.0, 0.0, 0.0];
         }
+
+        $p = (string) $price;
+        $r = (string) $rate;
+
         return match ($treatment) {
-            'inclusive' => (function () use ($price, $rate) {
-                $subtotal = $rate > 0 ? round($price / (1 + $rate / 100), 2) : $price;
-                $tax      = round($price - $subtotal, 2);
-                return [$subtotal, $tax, $price];
+            'inclusive' => (function () use ($p, $r, $price) {
+                if (bccomp($r, '0', 4) > 0) {
+                    $divisor  = bcadd('1', bcdiv($r, '100', 6), 6);
+                    $subtotal = bcdiv($p, $divisor, 2);
+                } else {
+                    $subtotal = $p;
+                }
+                $tax = bcsub($p, $subtotal, 2);
+                return [(float) $subtotal, (float) $tax, $price];
             })(),
             'not_applicable' => [$price, 0.0, $price],
-            default => (function () use ($price, $rate) {
-                $tax   = round($price * $rate / 100, 2);
-                $total = round($price + $tax, 2);
-                return [$price, $tax, $total];
+            default => (function () use ($p, $r, $price) {
+                $tax   = bcdiv(bcmul($p, $r, 4), '100', 2);
+                $total = bcadd($p, $tax, 2);
+                return [$price, (float) $tax, (float) $total];
             })(),
         };
     }
@@ -152,7 +177,7 @@ class StoreBidRequest extends FormRequest
             // Attachments: supporting documents the supplier uploads with the bid.
             // Stored privately (local disk) since they can contain commercial secrets.
             'attachments'                     => ['nullable', 'array', 'max:10'],
-            'attachments.*'                   => ['file', 'max:10240', 'mimes:pdf,doc,docx,xls,xlsx,png,jpg,jpeg'],
+            'attachments.*'                   => ['file', 'max:10240', ...\App\Rules\SafeUpload::documents()],
             // Optional extra metadata fields the form uses.
             'tech_specs'                      => ['nullable', 'string', 'max:5000'],
             'delivery_terms'                  => ['nullable', 'string', 'max:1000'],
@@ -181,12 +206,12 @@ class StoreBidRequest extends FormRequest
             if (empty($schedule)) {
                 return;
             }
-            $sum = array_sum(array_map(
-                fn ($row) => (float) ($row['percentage'] ?? 0),
-                \is_array($schedule) ? $schedule : []
-            ));
-            if (abs($sum - 100.0) > 0.01) {
-                $v->errors()->add('payment_schedule', 'Payment schedule percentages must add up to 100% (currently ' . rtrim(rtrim(number_format($sum, 2), '0'), '.') . '%).');
+            $sum = '0';
+            foreach (\is_array($schedule) ? $schedule : [] as $row) {
+                $sum = bcadd($sum, (string) ($row['percentage'] ?? 0), 2);
+            }
+            if (bccomp($sum, '100', 2) !== 0) {
+                $v->errors()->add('payment_schedule', 'Payment schedule percentages must add up to 100% (currently ' . rtrim(rtrim($sum, '0'), '.') . '%).');
             }
         });
     }

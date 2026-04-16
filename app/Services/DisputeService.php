@@ -44,8 +44,7 @@ class DisputeService
 
     public function update(int $id, array $data): ?Dispute
     {
-        $dispute = Dispute::find($id);
-        if (!$dispute) return null;
+        $dispute = Dispute::findOrFail($id);
 
         $dispute->update($data);
         return $dispute->fresh(['contract', 'company']);
@@ -53,8 +52,8 @@ class DisputeService
 
     public function escalate(int $id): ?Dispute
     {
-        $dispute = Dispute::find($id);
-        if (!$dispute || $dispute->escalated_to_government) return null;
+        $dispute = Dispute::findOrFail($id);
+        if ($dispute->escalated_to_government) return null;
 
         $dispute->update([
             'escalated_to_government' => true,
@@ -68,8 +67,7 @@ class DisputeService
 
     public function resolve(int $id, string $resolution): ?Dispute
     {
-        $dispute = Dispute::find($id);
-        if (!$dispute) return null;
+        $dispute = Dispute::findOrFail($id);
 
         $dispute->update([
             'status' => DisputeStatus::RESOLVED,
@@ -98,7 +96,7 @@ class DisputeService
             return;
         }
 
-        $recipients = User::whereIn('company_id', $companyIds)->get();
+        $recipients = User::whereIn('company_id', $companyIds)->active()->get();
         if ($recipients->isNotEmpty()) {
             Notification::send($recipients, new DisputeNotification($dispute, $action));
         }

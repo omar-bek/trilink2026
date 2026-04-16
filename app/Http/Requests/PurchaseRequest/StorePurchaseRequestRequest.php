@@ -16,15 +16,18 @@ class StorePurchaseRequestRequest extends FormRequest
         return [
             'title'             => ['required', 'string', 'max:255'],
             'description'       => ['nullable', 'string', 'max:5000'],
-            'category_id'       => ['nullable', 'integer', 'exists:categories,id'],
+            'category_id'       => ['required', 'integer', 'exists:categories,id'],
             'budget'            => ['nullable', 'numeric', 'min:0'],
-            'currency'          => ['nullable', 'string', 'size:3'],
+            'currency'          => ['required', 'string', 'size:3'],
             'required_date'     => ['nullable', 'date', 'after_or_equal:today'],
             'delivery_address'  => ['nullable', 'string', 'max:500'],
             'delivery_city'     => ['nullable', 'string', 'max:100'],
-            'items'             => ['nullable', 'array'],
-            'items.*.name'      => ['required_with:items', 'string', 'max:255'],
-            'items.*.qty'       => ['required_with:items', 'integer', 'min:1'],
+            'delivery_terms'    => ['nullable', 'string', 'max:30'],
+            'needs_logistics'   => ['nullable', 'boolean'],
+            'needs_clearance'   => ['nullable', 'boolean'],
+            'items'             => ['required', 'array', 'min:1', 'max:50'],
+            'items.*.name'      => ['required', 'string', 'max:255'],
+            'items.*.qty'       => ['required', 'integer', 'min:1'],
             'items.*.unit'      => ['nullable', 'string', 'max:30'],
             'items.*.spec'      => ['nullable', 'string', 'max:1000'],
             'items.*.price'     => ['nullable', 'numeric', 'min:0'],
@@ -39,6 +42,7 @@ class StorePurchaseRequestRequest extends FormRequest
         $deliveryLocation = array_filter([
             'address' => $this->input('delivery_address'),
             'city'    => $this->input('delivery_city'),
+            'terms'   => $this->input('delivery_terms'),
         ]);
 
         return [

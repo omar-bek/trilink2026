@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Web;
 
-use App\Enums\CompanyType;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\CompanySupplier;
@@ -36,14 +35,15 @@ class CompanySupplierController extends Controller
         $companyId = auth()->user()->company_id;
         abort_unless($companyId, 403);
 
-        // Show every supplier-type company that isn't already linked to me
-        // and isn't my own company. The dropdown stays manageable on small
-        // installs; on large installs the manager can use the search filter.
+        // Show every supply-capable company that isn't already linked to
+        // me and isn't my own company. "Supply-capable" = has at least one
+        // assigned category, since every company can both buy and sell —
+        // the category list is what marks them as offering something.
         $linkedIds = CompanySupplier::where('company_id', $companyId)->pluck('supplier_company_id');
 
         $suppliers = Company::query()
             ->where('id', '!=', $companyId)
-            ->whereIn('type', [CompanyType::SUPPLIER->value, CompanyType::SERVICE_PROVIDER->value])
+            ->whereHas('categories')
             ->whereNotIn('id', $linkedIds)
             ->when($request->input('q'), fn ($q, $term) => $q->search($term, ['name', 'name_ar']))
             ->orderBy('name')

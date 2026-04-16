@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\CompanyType;
 use App\Enums\ContractStatus;
 use App\Enums\DisputeStatus;
 use App\Enums\PaymentStatus;
@@ -17,6 +16,7 @@ use App\Models\Cart;
 use App\Models\Category;
 use App\Models\Company;
 use App\Models\CompanyDocument;
+use App\Models\CompanyCategoryRequest;
 use App\Models\CompanyInsurance;
 use App\Models\CompanySupplier;
 use App\Models\Contract;
@@ -168,60 +168,38 @@ class SidebarBadgeService
         $badges = $this->empty();
         $cid    = $user->company_id;
 
-        // Supplier-side detection mirrors FormatsForViews::isSupplierSideUser():
-        // a user is supplier-side if EITHER their role is a pure supplier
-        // role OR their company TYPE is supplier/logistics/clearance/
-        // service_provider. The role-only check this method used to do
-        // sent every company_manager (and finance/sales) of a supplier
-        // company down the buyer branch, where the RFQ count then queried
-        // "RFQs OUR company published" and returned 0 because suppliers
-        // don't publish RFQs — the badge was silently zero.
-        $isSupplierSide = $this->isSupplierSideUser($user, $role);
-
         // Procurement workflow ────────────────────────────────────────
         //
         // Badge convention: every badge here MUST equal the total number
         // of rows the user will see when they click into the matching
-        // index page. Status / freshness filters used to live here, but
-        // they made the badge smaller than the index — users would see
-        // "RFQs (7)" in the sidebar then click in and find 10 rows on
-        // the page, which felt buggy. The actionable-subset counts
-        // (e.g. "pending-requests") are surfaced as their own dedicated
-        // badges instead.
-        $this->safe(function () use (&$badges, $cid, $isSupplierSide) {
-            if (! $isSupplierSide) {
-                // Buyer side — every PR / RFQ this company OWNS, no
-                // status filter, so the badge matches the "all" tab on
-                // the index page.
-                $badges['purchase-requests'] = PurchaseRequest::where('company_id', $cid)->count();
-                // Actionable subset stays separate — this is the "needs
-                // attention" pill the manager sees in the sidebar.
-                $badges['pending-requests']  = PurchaseRequest::where('company_id', $cid)
-                    ->where('status', PurchaseRequestStatus::PENDING_APPROVAL->value)
-                    ->count();
-                $badges['rfqs'] = Rfq::where('company_id', $cid)->count();
-            } else {
-                // Supplier side — every OPEN RFQ from another company is
-                // a row on the marketplace tab. No created_at filter so
-                // the badge matches what supplierIndex() returns.
-                $badges['rfqs'] = Rfq::query()
-                    ->where('status', RfqStatus::OPEN->value)
-                    ->where('company_id', '!=', $cid)
-                    ->count();
-            }
+        // index page. The unified index pages now show BOTH tabs
+        // (received + submitted for bids; mine + marketplace for RFQs),
+        // so the badges count the DEFAULT tab for the company — whichever
+        // side has more activity. PRs and pending-requests are always
+        // buyer-side (only the company that created them sees them).
+        $this->safe(function () use (&$badges, $cid) {
+            $badges['purchase-requests'] = PurchaseRequest::where('company_id', $cid)->count();
+            $badges['pending-requests']  = PurchaseRequest::where('company_id', $cid)
+                ->where('status', PurchaseRequestStatus::PENDING_APPROVAL->value)
+                ->count();
+
+            // RFQs: show the count for the default tab. Whichever side
+            // has more rows wins the badge — consistent with the unified
+            // index default-tab logic.
+            $mineCount        = Rfq::where('company_id', $cid)->count();
+            $marketplaceCount = Rfq::query()
+                ->where('status', RfqStatus::OPEN->value)
+                ->where('company_id', '!=', $cid)
+                ->count();
+            $badges['rfqs'] = max($mineCount, $marketplaceCount);
         });
 
-        $this->safe(function () use (&$badges, $cid, $isSupplierSide, $role) {
-            // Bids that the company SUBMITTED vs bids it RECEIVED.
-            // Supplier-side users (and sales / sales_manager on the
-            // buyer side, who author offers) see their submissions;
-            // everyone else gets "received on our RFQs". No status
-            // filter — matches the bid index "total" column exactly.
-            if ($isSupplierSide || in_array($role, ['sales', 'sales_manager'], true)) {
-                $badges['bids'] = Bid::where('company_id', $cid)->count();
-            } else {
-                $badges['bids'] = Bid::whereHas('rfq', fn ($q) => $q->where('company_id', $cid))->count();
-            }
+        $this->safe(function () use (&$badges, $cid) {
+            // Bids: show the count for the default tab. Same logic as
+            // BidController::index() — whichever side is "busier".
+            $receivedCount  = Bid::whereHas('rfq', fn ($q) => $q->where('company_id', $cid))->count();
+            $submittedCount = Bid::where('company_id', $cid)->count();
+            $badges['bids'] = max($receivedCount, $submittedCount);
         });
 
         // Contracts — counted via buyer_company_id OR parties JSON, no
@@ -430,6 +408,7 @@ class SidebarBadgeService
             $badges['admin-verification']= CompanyDocument::where('status', CompanyDocument::STATUS_PENDING)->count()
                                          + SanctionsScreening::query()->where('status', 'review')->count();
             $badges['admin-categories']  = Category::query()->count();
+            $badges['admin-category-requests'] = CompanyCategoryRequest::where('status', CompanyCategoryRequest::STATUS_PENDING)->count();
             $badges['admin-tax-rates']   = TaxRate::query()->count();
             $badges['admin-settings']    = Setting::query()->count();
             $badges['admin-audit']       = AuditLog::query()->where('created_at', '>=', now()->subDay())->count();
@@ -452,37 +431,4 @@ class SidebarBadgeService
         }
     }
 
-    /**
-     * Whether the given user should be treated as supplier-side for the
-     * purposes of badge counting. Mirrors
-     * {@see \App\Http\Controllers\Web\Concerns\FormatsForViews::isSupplierSideUser()}
-     * — a user is supplier-side if EITHER their role is a pure supplier
-     * role OR their company type is one of the supplier-side types.
-     *
-     * Kept inline (instead of taking the controller trait as a dependency)
-     * because this service is also used by background workers / jobs that
-     * have no controller around them.
-     */
-    private function isSupplierSideUser(User $user, string $role): bool
-    {
-        // Pure supplier-side roles short-circuit immediately so the
-        // company lookup is skipped entirely for the common case.
-        if (in_array($role, ['supplier', 'service_provider', 'logistics', 'clearance'], true)) {
-            return true;
-        }
-
-        if (!$user->company_id) {
-            return false;
-        }
-
-        // Single-column lookup keeps the query cheap; the parent for() call
-        // is already inside Cache::remember so this only fires on cache miss.
-        $type = Company::query()
-            ->whereKey($user->company_id)
-            ->value('type');
-
-        $typeValue = $type instanceof CompanyType ? $type->value : (string) $type;
-
-        return in_array($typeValue, ['supplier', 'service_provider', 'logistics', 'clearance'], true);
-    }
 }

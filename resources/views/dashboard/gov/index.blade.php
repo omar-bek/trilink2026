@@ -102,4 +102,55 @@
     </div>
 </div>
 
+{{-- Quick links to reports --}}
+<div class="mt-8">
+    <div class="flex items-center gap-3 mb-4">
+        <span class="w-1 h-4 rounded-full bg-accent"></span>
+        <h3 class="text-[12px] font-bold uppercase tracking-wider text-faint">{{ __('gov.intelligence') }}</h3>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        @php
+        $govLinks = [
+            ['route' => 'gov.contracts',       'label' => __('gov.contracts_title'),   'icon' => 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z', 'color' => '#4f7cff'],
+            ['route' => 'gov.payments',        'label' => __('gov.payments_title'),    'icon' => 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z', 'color' => '#00d9b5'],
+            ['route' => 'gov.competition',     'label' => __('gov.competition_title'), 'icon' => 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z', 'color' => '#8B5CF6'],
+            ['route' => 'gov.disputes',        'label' => __('gov.disputes_title'),    'icon' => 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 17.25h.007v.008H12v-.008z', 'color' => '#ff4d7f'],
+            ['route' => 'gov.icv-report',      'label' => __('gov.icv_title'),         'icon' => 'M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12', 'color' => '#ffb020'],
+            ['route' => 'gov.esg-report',      'label' => __('gov.esg_title'),         'icon' => 'M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z', 'color' => '#00d9b5'],
+            ['route' => 'gov.sanctions-report', 'label' => __('gov.sanctions_title'),  'icon' => 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z', 'color' => '#ef4444'],
+            ['route' => 'gov.sme-report',      'label' => __('gov.sme_title'),         'icon' => 'M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349', 'color' => '#4f7cff'],
+            ['route' => 'gov.collusion-report', 'label' => __('gov.collusion_title'),  'icon' => 'M12 9v3.75m0 0h.008v.008H12v-.008zM21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'color' => '#ff4d7f'],
+        ];
+        @endphp
+        @foreach($govLinks as $gl)
+        <a href="{{ route($gl['route']) }}" class="bg-surface border border-th-border rounded-[12px] p-4 hover:bg-surface-2 transition-colors group">
+            <div class="w-9 h-9 rounded-[10px] flex items-center justify-center mb-3" style="background: {{ $gl['color'] }}15; border: 1px solid {{ $gl['color'] }}30;">
+                <svg class="w-[18px] h-[18px]" style="color: {{ $gl['color'] }}" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $gl['icon'] }}"/></svg>
+            </div>
+            <p class="text-[13px] font-semibold text-primary group-hover:text-accent transition-colors">{{ $gl['label'] }}</p>
+        </a>
+        @endforeach
+    </div>
+</div>
+
+{{-- Monthly GMV trend --}}
+@if(isset($gmvTrend) && $gmvTrend->count() > 0)
+<div class="mt-8 bg-surface border border-th-border rounded-[16px] p-5">
+    <h3 class="text-[15px] font-bold text-primary mb-4">{{ __('admin.reports.monthly_trend') }}</h3>
+    <div class="overflow-x-auto">
+        <div class="flex items-end gap-2 h-[180px] min-w-[600px]">
+            @php $maxGmv = $gmvTrend->max('value') ?: 1; @endphp
+            @foreach($gmvTrend as $m)
+                @php $pct = ($m->value / $maxGmv) * 100; @endphp
+                <div class="flex-1 flex flex-col items-center gap-1">
+                    <span class="text-[9px] text-muted font-mono">{{ number_format($m->value / 1000) }}k</span>
+                    <div class="w-full rounded-t-lg bg-accent/50" style="height: {{ max($pct, 2) }}%"></div>
+                    <span class="text-[10px] text-muted">{{ \Carbon\Carbon::parse($m->month . '-01')->format('M') }}</span>
+                </div>
+            @endforeach
+        </div>
+    </div>
+</div>
+@endif
+
 @endsection

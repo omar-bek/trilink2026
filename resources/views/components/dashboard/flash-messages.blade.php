@@ -30,7 +30,7 @@
                 <p class="flex-1 text-[14px] font-medium leading-snug">{{ $status }}</p>
                 <button type="button"
                         aria-label="{{ __('common.dismiss') }}"
-                        onclick="this.closest('[data-flash]').remove()"
+                        data-dismiss-flash
                         class="text-[#10B981]/70 hover:text-[#10B981] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10B981] rounded">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -50,7 +50,7 @@
                 <p class="flex-1 text-[14px] font-medium leading-snug">{{ $error }}</p>
                 <button type="button"
                         aria-label="{{ __('common.dismiss') }}"
-                        onclick="this.closest('[data-flash]').remove()"
+                        data-dismiss-flash
                         class="text-[#EF4444]/70 hover:text-[#EF4444] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#EF4444] rounded">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -70,7 +70,7 @@
                 <p class="flex-1 text-[14px] font-medium leading-snug">{{ $warning }}</p>
                 <button type="button"
                         aria-label="{{ __('common.dismiss') }}"
-                        onclick="this.closest('[data-flash]').remove()"
+                        data-dismiss-flash
                         class="text-[#F59E0B]/70 hover:text-[#F59E0B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F59E0B] rounded">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -80,18 +80,33 @@
         @endif
     </div>
 
-    {{-- Auto-dismiss success toasts after 6s. Errors and warnings stay
+    {{-- Auto-dismiss success toasts after 5s. Errors and warnings stay
          visible until the user dismisses them — they may carry actionable
-         information the user needs time to read. --}}
+         information the user needs time to read. Manual dismiss (click X)
+         also fades out smoothly instead of popping instantly. --}}
     @push('scripts')
     <script>
-    setTimeout(function () {
-        document.querySelectorAll('[data-flash="status"]').forEach(function (el) {
-            el.style.transition = 'opacity 0.4s';
+    (function () {
+        function dismissFlash(el) {
+            el.style.transition = 'opacity 0.35s ease, transform 0.35s ease, margin 0.35s ease';
             el.style.opacity = '0';
-            setTimeout(function () { el.remove(); }, 400);
+            el.style.transform = 'translateY(-8px)';
+            el.style.marginBottom = '-' + el.offsetHeight + 'px';
+            el.style.overflow = 'hidden';
+            setTimeout(function () { el.remove(); }, 360);
+        }
+        // Manual dismiss — any flash toast.
+        document.querySelectorAll('[data-dismiss-flash]').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                dismissFlash(btn.closest('[data-flash]'));
+            });
         });
-    }, 6000);
+        // Auto-dismiss success after 5s.
+        setTimeout(function () {
+            document.querySelectorAll('[data-flash="status"]').forEach(dismissFlash);
+        }, 5000);
+    })();
     </script>
     @endpush
 @endif

@@ -56,7 +56,7 @@ class CompanyDocumentController extends Controller
         $data = $request->validate([
             'type'       => ['required', 'string', new \Illuminate\Validation\Rules\Enum(DocumentType::class)],
             'label'      => ['nullable', 'string', 'max:191'],
-            'file'       => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'file'       => ['required', 'file', 'max:10240', ...\App\Rules\SafeUpload::pdfOrImage()],
             'issued_at'  => ['nullable', 'date'],
             'expires_at' => ['nullable', 'date', 'after:today'],
         ]);
@@ -83,6 +83,23 @@ class CompanyDocumentController extends Controller
         return redirect()
             ->route('dashboard.documents.index')
             ->with('status', __('trust.uploaded_successfully'));
+    }
+
+    public function download(int $id): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $user = auth()->user();
+        $doc  = CompanyDocument::where('company_id', $user->company_id)->findOrFail($id);
+
+        abort_unless(
+            $doc->file_path && Storage::disk('local')->exists($doc->file_path),
+            404,
+            __('trust.file_not_found')
+        );
+
+        return Storage::disk('local')->download(
+            $doc->file_path,
+            $doc->original_filename ?? basename($doc->file_path)
+        );
     }
 
     public function destroy(int $id): RedirectResponse
@@ -118,7 +135,7 @@ class CompanyDocumentController extends Controller
         $doc = CompanyDocument::where('company_id', $user->company_id)->findOrFail($id);
 
         $data = $request->validate([
-            'file'       => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'file'       => ['required', 'file', 'max:10240', ...\App\Rules\SafeUpload::pdfOrImage()],
             'issued_at'  => ['nullable', 'date'],
             'expires_at' => ['nullable', 'date', 'after:today'],
         ]);

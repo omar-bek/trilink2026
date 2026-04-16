@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Web\Admin\AuditLogController as AdminAuditLogController;
 use App\Http\Controllers\Web\Admin\EInvoiceController as AdminEInvoiceController;
+use App\Http\Controllers\Web\Admin\CertificateUploadAdminController as AdminCertificateUploadController;
 use App\Http\Controllers\Web\Admin\IcvCertificateAdminController as AdminIcvCertificateController;
 use App\Http\Controllers\Web\Admin\CategoryController as AdminCategoryController;
+use App\Http\Controllers\Web\Admin\CompanyCategoryRequestController as AdminCompanyCategoryRequestController;
 use App\Http\Controllers\Web\Admin\CompanyController as AdminCompanyController;
 use App\Http\Controllers\Web\Admin\OversightController as AdminOversightController;
 use App\Http\Controllers\Web\Admin\SettingController as AdminSettingController;
@@ -11,6 +13,13 @@ use App\Http\Controllers\Web\Admin\TaxInvoiceController as AdminTaxInvoiceContro
 use App\Http\Controllers\Web\Admin\TaxRateController as AdminTaxRateController;
 use App\Http\Controllers\Web\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Web\Admin\VerificationQueueController as AdminVerificationQueueController;
+use App\Http\Controllers\Web\Admin\ReportsController as AdminReportsController;
+use App\Http\Controllers\Web\Admin\SystemHealthController as AdminSystemHealthController;
+use App\Http\Controllers\Web\Admin\DisputeManagementController as AdminDisputeManagementController;
+use App\Http\Controllers\Web\Admin\BlacklistController as AdminBlacklistController;
+use App\Http\Controllers\Web\Admin\FeeController as AdminFeeController;
+use App\Http\Controllers\Web\Admin\ExchangeRateController as AdminExchangeRateController;
+use App\Http\Controllers\Web\Admin\WebhookManagementController as AdminWebhookManagementController;
 use App\Http\Controllers\Web\AdminController;
 use App\Http\Controllers\Web\AIController;
 use App\Http\Controllers\Web\Auth\AuthController as WebAuthController;
@@ -54,6 +63,7 @@ use App\Http\Controllers\Web\SupplierProfileController;
 use App\Http\Controllers\Web\TwoFactorController;
 use App\Http\Controllers\Web\ShippingQuoteController;
 use App\Http\Controllers\Web\SpendAnalyticsController;
+use App\Http\Controllers\Web\ContactController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -67,6 +77,12 @@ Route::get('/',      [HomeController::class, 'index'])->name('home');
 // No auth required; linked from the landing navbar.
 Route::view('/demo', 'public.demo')->name('public.demo');
 
+// Health probes for load balancers / k8s / uptime monitors. Must be
+// unauthenticated and NOT behind any middleware that touches DB/session
+// (the whole point is to answer even when the app is degraded).
+Route::get('/health',       [\App\Http\Controllers\HealthController::class, 'liveness'])->name('health.live');
+Route::get('/health/ready', [\App\Http\Controllers\HealthController::class, 'readiness'])->name('health.ready');
+
 // Phase 1 / task 1.14 — public "Browse Suppliers" landing page (no auth).
 // SEO + lead generation. Cards link to the gated profile page; clicking
 // pops the visitor into the login flow with `?intended=` set.
@@ -74,7 +90,7 @@ Route::get('/suppliers', [SupplierProfileController::class, 'publicDirectory'])-
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [WebAuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [WebAuthController::class, 'login'])->name('login.attempt');
+    Route::post('/login', [WebAuthController::class, 'login'])->middleware('throttle:5,15')->name('login.attempt');
 });
 
 // Register form + submission are guest-only. After Auth::login() at the end
@@ -84,7 +100,7 @@ Route::middleware('guest')->group(function () {
 // success page avoids that whole class of error.
 Route::middleware('guest')->group(function () {
     Route::get('/register',  [RegisterController::class, 'showForm'])->name('register');
-    Route::post('/register', [RegisterController::class, 'register'])->name('register.submit');
+    Route::post('/register', [RegisterController::class, 'register'])->middleware('throttle:5,60')->name('register.submit');
 });
 Route::get('/register/success', [RegisterController::class, 'showSuccess'])->name('register.success');
 // Submit additional info that an admin asked for after the initial submission.
@@ -102,6 +118,19 @@ Route::get('/privacy', [PrivacyController::class, 'showPolicy'])->name('public.p
 Route::get('/data-processing-agreement', [PrivacyController::class, 'showDpa'])->name('public.dpa');
 Route::post('/privacy/cookies', [PrivacyController::class, 'recordCookieConsent'])->name('public.privacy.cookies');
 
+// ──── Public legal & info pages ─────────────────────────────────────────
+Route::view('/terms',   'public.terms')->name('public.terms');
+Route::view('/cookies', 'public.cookies')->name('public.cookies');
+Route::view('/about',   'public.about')->name('public.about');
+Route::get('/contact',  fn () => view('public.contact'))->name('public.contact');
+Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:3,10')->name('contact.store');
+
+// ──── 2FA challenge (post-login TOTP verification) ──────────────────────
+Route::middleware('guest')->group(function () {
+    Route::get('/two-factor-challenge',  fn () => view('auth.two-factor-challenge'))->name('two-factor.challenge');
+    Route::post('/two-factor-challenge', [WebAuthController::class, 'twoFactorChallenge'])->middleware('throttle:5,5')->name('two-factor.challenge.verify');
+});
+
 // Phase 6 (UAE Compliance Roadmap) — public signature verification.
 // Anyone holding the contract URL (an inspector, court clerk, opposing
 // counsel) can recompute the canonical hash and inspect the signature
@@ -114,9 +143,9 @@ Route::get('/contracts/{id}/verify', [\App\Http\Controllers\Public\SignatureVeri
 // Password reset (Laravel default broker uses these route names)
 Route::middleware('guest')->group(function () {
     Route::get('/forgot-password',          [PasswordResetController::class, 'showForgot'])->name('password.request');
-    Route::post('/forgot-password',         [PasswordResetController::class, 'sendResetLink'])->name('password.email');
+    Route::post('/forgot-password',         [PasswordResetController::class, 'sendResetLink'])->middleware('throttle:3,15')->name('password.email');
     Route::get('/reset-password/{token}',   [PasswordResetController::class, 'showReset'])->name('password.reset');
-    Route::post('/reset-password',          [PasswordResetController::class, 'reset'])->name('password.update');
+    Route::post('/reset-password',          [PasswordResetController::class, 'reset'])->middleware('throttle:5,15')->name('password.update');
 });
 
 // Profile (any authenticated user). Also gated by company.approved so a
@@ -131,7 +160,7 @@ Route::middleware(['auth', 'company.approved'])->group(function () {
 
     Route::get('/profile',            [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile',          [ProfileController::class, 'update'])->name('profile.update');
-    Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password');
+    Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])->middleware('throttle:5,15')->name('profile.password');
     Route::post('/profile/company-logo', [ProfileController::class, 'updateCompanyLogo'])->name('profile.company-logo');
     Route::patch('/profile/notifications', [ProfileController::class, 'updateNotificationPreferences'])->name('profile.notifications');
 
@@ -176,7 +205,17 @@ Route::middleware(['auth', 'company.approved'])->group(function () {
 
 // Government console (top-level so the URL is /gov, not /dashboard/gov)
 Route::middleware(['auth', 'web.role:government,admin'])->prefix('gov')->name('gov.')->group(function () {
-    Route::get('/', [GovernmentController::class, 'index'])->name('index');
+    Route::get('/',                [GovernmentController::class, 'index'])->name('index');
+    Route::get('/contracts',       [GovernmentController::class, 'contracts'])->name('contracts');
+    Route::get('/payments',        [GovernmentController::class, 'payments'])->name('payments');
+    Route::get('/icv-report',      [GovernmentController::class, 'icvReport'])->name('icv-report');
+    Route::get('/competition',     [GovernmentController::class, 'competition'])->name('competition');
+    Route::get('/collusion-report',[GovernmentController::class, 'collusionReport'])->name('collusion-report');
+    Route::get('/esg-report',      [GovernmentController::class, 'esgReport'])->name('esg-report');
+    Route::get('/sanctions-report',[GovernmentController::class, 'sanctionsReport'])->name('sanctions-report');
+    Route::get('/sme-report',      [GovernmentController::class, 'smeReport'])->name('sme-report');
+    Route::get('/disputes',        [GovernmentController::class, 'disputes'])->name('disputes');
+    Route::get('/export',          [GovernmentController::class, 'export'])->name('export');
 });
 
 /*
@@ -213,6 +252,10 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     // pushes users here via an inline modal when either is missing.
     Route::post('/company/profile/signature',     [\App\Http\Controllers\Web\CompanyProfileController::class, 'uploadSignature'])->name('dashboard.company.profile.signature');
 
+    // Category assignment requests — manager proposes, admin approves.
+    Route::post('/company/profile/categories/request',        [\App\Http\Controllers\Web\CompanyProfileController::class, 'requestCategory'])->name('dashboard.company.profile.categories.request');
+    Route::delete('/company/profile/categories/request/{id}', [\App\Http\Controllers\Web\CompanyProfileController::class, 'cancelCategoryRequest'])->name('dashboard.company.profile.categories.cancel');
+
     // ---- Admin ---------------------------------------------------------------
     Route::middleware('web.role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('/', [AdminController::class, 'index'])->name('index');
@@ -247,7 +290,8 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         Route::post('/companies/{id}/reactivate', [AdminCompanyController::class, 'reactivate'])->name('companies.reactivate');
         Route::post('/companies/{id}/verification', [AdminCompanyController::class, 'setVerificationLevel'])->name('companies.set-verification');
         Route::post('/companies/{id}/rescreen',     [AdminCompanyController::class, 'rescreenSanctions'])->name('companies.rescreen');
-        Route::post('/documents/{document}/review', [AdminCompanyController::class, 'verifyDocument'])->name('documents.review');
+        Route::post('/documents/{document}/review',   [AdminCompanyController::class, 'verifyDocument'])->name('documents.review');
+        Route::get('/documents/{document}/download',  [AdminCompanyController::class, 'downloadDocument'])->name('documents.download');
         // Phase 2 / Sprint 10 / task 2.14 — admin verify/reject an uploaded
         // insurance policy. Same review modal pattern as documents above.
         Route::post('/insurances/{insurance}/review', [AdminCompanyController::class, 'verifyInsurance'])->name('insurances.review');
@@ -258,6 +302,11 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         // promotion eligibility) ranked by urgency.
         Route::get('/verification',                  [AdminVerificationQueueController::class, 'index'])->name('verification.index');
         Route::post('/verification/{id}/auto-promote', [AdminVerificationQueueController::class, 'autoPromote'])->name('verification.auto-promote');
+
+        // Category-assignment requests submitted by company managers.
+        Route::get('/category-requests',                   [AdminCompanyCategoryRequestController::class, 'index'])->name('category-requests.index');
+        Route::post('/category-requests/{id}/approve',     [AdminCompanyCategoryRequestController::class, 'approve'])->name('category-requests.approve');
+        Route::post('/category-requests/{id}/reject',      [AdminCompanyCategoryRequestController::class, 'reject'])->name('category-requests.reject');
 
         // Categories
         Route::get('/categories',          [AdminCategoryController::class, 'index'])->name('categories.index');
@@ -307,6 +356,21 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         Route::post('/icv-certificates/{id}/approve',       [AdminIcvCertificateController::class, 'approve'])->name('icv-certificates.approve');
         Route::post('/icv-certificates/{id}/reject',        [AdminIcvCertificateController::class, 'reject'])->name('icv-certificates.reject');
 
+        // Phase 8 (UAE Compliance Roadmap) — Tier 3 compliance certificate
+        // uploads (CoO, ECAS, Halal, GSO, ISO). Same review pattern as ICV.
+        Route::get('/certificate-uploads',                [AdminCertificateUploadController::class, 'index'])->name('certificate-uploads.index');
+        Route::get('/certificate-uploads/{id}/download',  [AdminCertificateUploadController::class, 'download'])->name('certificate-uploads.download');
+        Route::post('/certificate-uploads/{id}/approve',  [AdminCertificateUploadController::class, 'approve'])->name('certificate-uploads.approve');
+        Route::post('/certificate-uploads/{id}/reject',   [AdminCertificateUploadController::class, 'reject'])->name('certificate-uploads.reject');
+
+        // Phase 7 (UAE Compliance Roadmap) — Anti-Collusion alerts.
+        // Admin triage queue for bid-rigging / collusion pattern
+        // detections from AnalyzeRfqForCollusionJob. Federal
+        // Decree-Law 36/2023 Article 13 — the platform must
+        // demonstrate it acted on credible indications.
+        Route::get('/anti-collusion',             [\App\Http\Controllers\Web\Admin\AntiCollusionController::class, 'index'])->name('anti-collusion.index');
+        Route::post('/anti-collusion/{id}/status', [\App\Http\Controllers\Web\Admin\AntiCollusionController::class, 'updateStatus'])->name('anti-collusion.update');
+
         // Phase 5 (UAE Compliance Roadmap) — e-invoice transmission queue.
         // Read-only listing of every Peppol PINT-AE submission with a
         // retry button for failed/rejected rows. Mocked locally until
@@ -321,6 +385,38 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         // write still flows through the existing role-gated dashboards so
         // the audit trail keeps a single source of truth.
         Route::get('/oversight', [AdminOversightController::class, 'index'])->name('oversight.index');
+
+        // Reports & Analytics — platform-wide KPIs, supplier scorecard,
+        // cycle time, savings analysis, and CSV exports.
+        Route::get('/reports',        [AdminReportsController::class, 'index'])->name('reports.index');
+        Route::get('/reports/export', [AdminReportsController::class, 'export'])->name('reports.export');
+
+        // System Health — DB, cache, queue, disk, memory monitoring.
+        Route::get('/system-health', [AdminSystemHealthController::class, 'index'])->name('system-health.index');
+
+        // Dispute Management — assign investigators, track SLA, intervene.
+        Route::get('/disputes',              [AdminDisputeManagementController::class, 'index'])->name('disputes.index');
+        Route::post('/disputes/{id}/assign', [AdminDisputeManagementController::class, 'assign'])->name('disputes.assign');
+
+        // Blacklist — block companies from participating on the platform.
+        Route::get('/blacklist',         [AdminBlacklistController::class, 'index'])->name('blacklist.index');
+        Route::post('/blacklist',        [AdminBlacklistController::class, 'store'])->name('blacklist.store');
+        Route::delete('/blacklist/{id}', [AdminBlacklistController::class, 'destroy'])->name('blacklist.remove');
+
+        // Platform Fees / Commissions — manage service charges.
+        Route::get('/fees',           [AdminFeeController::class, 'index'])->name('fees.index');
+        Route::post('/fees',          [AdminFeeController::class, 'store'])->name('fees.store');
+        Route::patch('/fees/{id}',    [AdminFeeController::class, 'update'])->name('fees.update');
+        Route::delete('/fees/{id}',   [AdminFeeController::class, 'destroy'])->name('fees.destroy');
+
+        // Exchange Rates — manage currency rates for multi-currency support.
+        Route::get('/exchange-rates',         [AdminExchangeRateController::class, 'index'])->name('exchange-rates.index');
+        Route::post('/exchange-rates',        [AdminExchangeRateController::class, 'store'])->name('exchange-rates.store');
+        Route::delete('/exchange-rates/{id}', [AdminExchangeRateController::class, 'destroy'])->name('exchange-rates.destroy');
+
+        // Webhook Management — monitor all webhook endpoints and deliveries.
+        Route::get('/webhooks',                   [AdminWebhookManagementController::class, 'index'])->name('webhooks.index');
+        Route::get('/webhooks/{id}/deliveries',   [AdminWebhookManagementController::class, 'deliveries'])->name('webhooks.deliveries');
     });
 
     // ---- Purchase Requests --------------------------------------------------
@@ -335,15 +431,17 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         Route::post('/purchase-requests/{id}/submit', [PurchaseRequestController::class, 'submit'])->name('dashboard.purchase-requests.submit');
         Route::delete('/purchase-requests/{id}',      [PurchaseRequestController::class, 'destroy'])->name('dashboard.purchase-requests.destroy');
     });
-    // Manager (or anyone with pr.approve permission) can approve / reject
-    // pending PRs from the show page. Approval auto-creates an RFQ.
-    Route::middleware('web.role:company_manager')->group(function () {
-        // Bulk route MUST be declared before the parameterised {id}/approve
-        // route — otherwise Laravel captures "bulk" as the id.
-        Route::post('/purchase-requests/bulk/approve', [PurchaseRequestController::class, 'bulkApprove'])->name('dashboard.purchase-requests.bulk-approve');
-        Route::post('/purchase-requests/{id}/approve', [PurchaseRequestController::class, 'approve'])->name('dashboard.purchase-requests.approve');
-        Route::post('/purchase-requests/{id}/reject',  [PurchaseRequestController::class, 'reject'])->name('dashboard.purchase-requests.reject');
-    });
+    // PR approval / rejection — anyone with pr.approve permission can act.
+    // The controller enforces company_id matching, branch scoping, and the
+    // self-approval ban (buyer_id ≠ user.id) internally — no route-level
+    // role gate needed. The old `web.role:company_manager` middleware was
+    // too narrow: it blocked branch_managers and buyers who'd been granted
+    // pr.approve by their company manager.
+    // Bulk route MUST be declared before the parameterised {id}/approve
+    // route — otherwise Laravel captures "bulk" as the id.
+    Route::post('/purchase-requests/bulk/approve', [PurchaseRequestController::class, 'bulkApprove'])->name('dashboard.purchase-requests.bulk-approve');
+    Route::post('/purchase-requests/{id}/approve', [PurchaseRequestController::class, 'approve'])->name('dashboard.purchase-requests.approve');
+    Route::post('/purchase-requests/{id}/reject',  [PurchaseRequestController::class, 'reject'])->name('dashboard.purchase-requests.reject');
 
     // ---- Supplier Directory (Phase 1 / task 1.1) ----------------------------
     // Buyer-facing browse view of every active supplier on the platform.
@@ -409,9 +507,10 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     // Manager uploads + lists company documents (trade license, ISO, etc).
     // Admin verification happens in the admin namespace below.
     Route::middleware('web.role:company_manager')->group(function () {
-        Route::get('/documents',       [CompanyDocumentController::class, 'index'])->name('dashboard.documents.index');
-        Route::post('/documents',      [CompanyDocumentController::class, 'store'])->name('dashboard.documents.store');
-        Route::delete('/documents/{id}', [CompanyDocumentController::class, 'destroy'])->name('dashboard.documents.destroy');
+        Route::get('/documents',              [CompanyDocumentController::class, 'index'])->name('dashboard.documents.index');
+        Route::post('/documents',             [CompanyDocumentController::class, 'store'])->name('dashboard.documents.store');
+        Route::get('/documents/{id}/download', [CompanyDocumentController::class, 'download'])->name('dashboard.documents.download');
+        Route::delete('/documents/{id}',      [CompanyDocumentController::class, 'destroy'])->name('dashboard.documents.destroy');
 
         // Phase 2 / Sprint 9 / task 2.9 — compliance-branded alias for the
         // same vault page. Lives under /dashboard/compliance/documents so
@@ -501,8 +600,12 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     Route::get('/bids/{id}', [BidController::class, 'show'])->name('dashboard.bids.show');
     Route::get('/bids/{id}/pdf', [BidController::class, 'download'])->name('dashboard.bids.pdf');
     Route::get('/bids/{id}/attachments/{idx}', [BidController::class, 'downloadAttachment'])->name('dashboard.bids.attachment.download');
-    // Suppliers/logistics/clearance/service providers submit & withdraw bids.
-    Route::middleware('web.role:supplier,logistics,clearance,service_provider')->group(function () {
+    // Bid submission: suppliers bid on purchase RFQs, buyers bid on sales-offer
+    // RFQs. Sales roles + company_manager also have bid.submit by default, and
+    // the controller re-checks the per-permission grant (bid.submit) plus the
+    // self-RFQ / company / status rules, so the middleware here just gates out
+    // clearly unrelated roles (admin/government/finance/...).
+    Route::middleware('web.role:supplier,logistics,clearance,service_provider,buyer,sales,sales_manager,company_manager,branch_manager')->group(function () {
         Route::post('/rfqs/{rfq}/bids',    [BidController::class, 'store'])->name('dashboard.bids.store');
         Route::post('/bids/{id}/withdraw', [BidController::class, 'withdraw'])->name('dashboard.bids.withdraw');
     });
@@ -526,7 +629,7 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     Route::get('/contracts',              [ContractController::class, 'index'])->name('dashboard.contracts');
     // Spend analytics dashboard — declared BEFORE /{id} so the
     // /analytics literal isn't captured as a contract id.
-    Route::get('/contracts/analytics',    [ContractController::class, 'analytics'])->name('dashboard.contracts.analytics');
+    Route::get('/contracts/analytics',    \App\Http\Controllers\Web\Contract\AnalyticsController::class)->name('dashboard.contracts.analytics');
     // Export must be declared before /{id} so "export" isn't captured as an id.
     Route::get('/contracts/export/csv',   [ContractController::class, 'exportCsv'])->name('dashboard.contracts.export-csv');
     Route::get('/contracts/{id}',         [ContractController::class, 'show'])->name('dashboard.contracts.show');
@@ -535,7 +638,7 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     // the controller. Rate-limited to 5 attempts/minute per
     // (user, contract) pair so a leaked password can't be brute-forced
     // through the step-up auth check.
-    Route::post('/contracts/{id}/sign', [ContractController::class, 'sign'])
+    Route::post('/contracts/{id}/sign', [\App\Http\Controllers\Web\Contract\SigningController::class, 'sign'])
         ->middleware('throttle:contract.sign')
         ->name('dashboard.contracts.sign');
 
@@ -547,28 +650,28 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     // Both routes are under the same auth middleware as the regular
     // sign endpoint — UAE Pass is a stronger authentication, not a
     // bypass for the contract-party check.
-    Route::get('/contracts/{id}/sign/uae-pass',          [ContractController::class, 'uaePassRedirect'])->name('dashboard.contracts.sign.uae-pass');
-    Route::get('/contracts/{id}/sign/uae-pass/callback', [ContractController::class, 'uaePassCallback'])->name('dashboard.contracts.sign.uae-pass.callback');
+    Route::get('/contracts/{id}/sign/uae-pass',          [\App\Http\Controllers\Web\Contract\SigningController::class, 'uaePassRedirect'])->name('dashboard.contracts.sign.uae-pass');
+    Route::get('/contracts/{id}/sign/uae-pass/callback', [\App\Http\Controllers\Web\Contract\SigningController::class, 'uaePassCallback'])->name('dashboard.contracts.sign.uae-pass.callback');
     // Bilateral amendment of contract terms — either party proposes, the
     // other party approves or rejects. All three handlers re-authorise the
     // caller as a contract party and enforce the cross-company rule.
-    Route::post('/contracts/{id}/amendments',                          [ContractController::class, 'proposeAmendment'])->name('dashboard.contracts.amendments.propose');
-    Route::post('/contracts/{id}/amendments/{amendmentId}/approve',    [ContractController::class, 'approveAmendment'])->name('dashboard.contracts.amendments.approve');
-    Route::post('/contracts/{id}/amendments/{amendmentId}/reject',     [ContractController::class, 'rejectAmendment'])->name('dashboard.contracts.amendments.reject');
+    Route::post('/contracts/{id}/amendments',                          [\App\Http\Controllers\Web\Contract\AmendmentController::class, 'propose'])->name('dashboard.contracts.amendments.propose');
+    Route::post('/contracts/{id}/amendments/{amendmentId}/approve',    [\App\Http\Controllers\Web\Contract\AmendmentController::class, 'approve'])->name('dashboard.contracts.amendments.approve');
+    Route::post('/contracts/{id}/amendments/{amendmentId}/reject',     [\App\Http\Controllers\Web\Contract\AmendmentController::class, 'reject'])->name('dashboard.contracts.amendments.reject');
     // Proposer can withdraw their own pending amendment before the
     // counter-party decides on it. Strict ownership check inside the
     // controller — only the user who proposed it (not just any user
     // from the same company) can cancel.
-    Route::post('/contracts/{id}/amendments/{amendmentId}/cancel',     [ContractController::class, 'cancelAmendment'])->name('dashboard.contracts.amendments.cancel');
+    Route::post('/contracts/{id}/amendments/{amendmentId}/cancel',     [\App\Http\Controllers\Web\Contract\AmendmentController::class, 'cancel'])->name('dashboard.contracts.amendments.cancel');
     // Per-amendment discussion thread — append-only conversation that
     // either party can post into to negotiate the wording before the
     // formal approve/reject decision is made.
-    Route::post('/contracts/{id}/amendments/{amendmentId}/messages',   [ContractController::class, 'postAmendmentMessage'])->name('dashboard.contracts.amendments.messages.store');
+    Route::post('/contracts/{id}/amendments/{amendmentId}/messages',   [\App\Http\Controllers\Web\Contract\AmendmentController::class, 'postMessage'])->name('dashboard.contracts.amendments.messages.store');
     // Polling endpoint for the negotiation thread — returns JSON for
     // the messages created STRICTLY AFTER the ?since= timestamp so the
     // blade view can refresh in near real-time without reloading the
     // whole contract page.
-    Route::get('/contracts/{id}/amendments/{amendmentId}/messages',    [ContractController::class, 'pollAmendmentMessages'])->name('dashboard.contracts.amendments.messages.poll');
+    Route::get('/contracts/{id}/amendments/{amendmentId}/messages',    [\App\Http\Controllers\Web\Contract\AmendmentController::class, 'pollMessages'])->name('dashboard.contracts.amendments.messages.poll');
     // Pre-signature decline: either party can refuse the contract
     // before any signature is collected. Post-signature termination:
     // either active party may end the contract early by mutual

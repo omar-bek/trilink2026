@@ -114,7 +114,7 @@ class PaymentService
             // PENDING_APPROVAL — finance approvers in the buyer's
             // company need to act on it before any value moves. Notify
             // them so the row doesn't sit silently in the inbox.
-            $approvers = User::where('company_id', $buyerCompanyId)->get();
+            $approvers = User::where('company_id', $buyerCompanyId)->active()->get();
             if ($approvers->isNotEmpty()) {
                 Notification::send($approvers, new PaymentRequestedNotification($payment));
             }
@@ -127,8 +127,7 @@ class PaymentService
 
     public function update(int $id, array $data): ?Payment
     {
-        $payment = Payment::find($id);
-        if (!$payment) return null;
+        $payment = Payment::findOrFail($id);
 
         $payment->update($data);
         return $payment->fresh(['contract', 'company']);
@@ -231,7 +230,7 @@ class PaymentService
             return;
         }
 
-        $recipients = User::whereIn('company_id', $companyIds)->get();
+        $recipients = User::whereIn('company_id', $companyIds)->active()->get();
         if ($recipients->isNotEmpty()) {
             Notification::send($recipients, new PaymentStatusNotification($payment, $action));
         }
@@ -272,7 +271,7 @@ class PaymentService
                 ->unique()
                 ->all();
             if (!empty($companyIds)) {
-                $recipients = User::whereIn('company_id', $companyIds)->get();
+                $recipients = User::whereIn('company_id', $companyIds)->active()->get();
                 if ($recipients->isNotEmpty()) {
                     Notification::send($recipients, new PaymentFailedNotification($payment, $e->getMessage()));
                 }

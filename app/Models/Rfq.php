@@ -55,6 +55,11 @@ class Rfq extends Model
             'status' => RfqStatus::class,
             'target_company_ids' => 'array',
             'items' => 'array',
+            // delivery_location is a TEXT column holding a JSON blob
+            // ({address, city, country, terms}). Cast so the marketplace
+            // card and the RFQ detail page get a real array instead of
+            // leaking the raw JSON string into the UI.
+            'delivery_location' => 'array',
             'budget' => 'decimal:2',
             'deadline' => 'datetime',
             'is_anonymous' => 'boolean',
@@ -110,6 +115,11 @@ class Rfq extends Model
     public function bids(): HasMany
     {
         return $this->hasMany(Bid::class);
+    }
+
+    public function isOpen(): bool
+    {
+        return $this->status === \App\Enums\RfqStatus::OPEN;
     }
 
     /**

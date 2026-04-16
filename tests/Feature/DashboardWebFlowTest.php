@@ -198,9 +198,13 @@ class DashboardWebFlowTest extends TestCase
     {
         $this->loginAsBuyer();
 
+        // StorePurchaseRequestRequest requires category_id (exists check).
+        $category = Category::create(['name' => 'Office Furniture', 'slug' => 'office-furniture-' . uniqid()]);
+
         $payload = [
             'title'       => 'Office Chairs',
             'description' => 'Ergonomic chairs for new branch',
+            'category_id' => $category->id,
             'budget'      => 25000,
             'currency'    => 'AED',
             'required_date' => now()->addDays(45)->format('Y-m-d'),

@@ -241,7 +241,7 @@ class EInvoiceDispatcher
             return new \Illuminate\Database\Eloquent\Collection();
         }
 
-        return User::where('company_id', $companyId)->get();
+        return User::where('company_id', $companyId)->active()->get();
     }
 
     /**

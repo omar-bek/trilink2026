@@ -32,6 +32,9 @@
     // direct PDF previews via tinker may not, so default to null and let
     // the @if guards in the body handle the absent case.
     $qrDataUri = $qrDataUri ?? null;
+    // Phase 7 — Corporate Tax annotation. Null when the supplier's CT
+    // status is standard or unknown (no annotation needed).
+    $ctAnnotation = $ctAnnotation ?? null;
 
     // Phase 1.5 (UAE Compliance Roadmap — post-implementation hardening).
     // Cabinet Decision 52/2017 Article 59(1)(j) requires the VAT
@@ -296,6 +299,18 @@
             </td>
         </tr>
     </table>
+
+    {{-- Phase 7 (UAE Compliance Roadmap) — Corporate Tax annotation.
+         Shows the supplier's CT status when it's QFZP or exempt. This
+         lets the buyer know the supply carries 0% CT treatment on the
+         supplier's books — relevant for transfer pricing documentation
+         under Federal Decree-Law 47/2022. --}}
+    @if($ctAnnotation)
+        <div style="background: #f0fdf4; border: 1px solid #86efac; padding: 6px 10px; margin: 6px 0; border-radius: 3px; font-size: 9px;">
+            <strong style="color: #166534;">Corporate Tax / ضريبة الشركات:</strong>
+            <span style="color: #166534;">{{ $ctAnnotation }}</span>
+        </div>
+    @endif
 
     {{-- Phase 1.5 (UAE Compliance Roadmap — post-implementation hardening).
          VAT treatment banner. Cabinet Decision 52/2017 Article 59(1)(j)

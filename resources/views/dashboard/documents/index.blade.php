@@ -74,10 +74,14 @@
                         <p class="mt-2 text-[12px] text-[#ff4d7f]">{{ __('trust.reason') }}: {{ $doc->rejection_reason }}</p>
                     @endif
                 </div>
-                <form method="POST" action="{{ route('dashboard.documents.destroy', $doc->id) }}" onsubmit="return confirm('{{ __('trust.confirm_delete') }}');">
-                    @csrf @method('DELETE')
-                    <button type="submit" class="text-[#ff4d7f] hover:underline text-[12px] font-semibold">{{ __('common.delete') }}</button>
-                </form>
+                <div class="flex items-center gap-3 flex-shrink-0">
+                    <a href="{{ route('dashboard.documents.download', $doc->id) }}"
+                       class="text-accent hover:underline text-[12px] font-semibold">{{ __('common.download') }}</a>
+                    <form method="POST" action="{{ route('dashboard.documents.destroy', $doc->id) }}" onsubmit="return confirm('{{ __('trust.confirm_delete') }}');">
+                        @csrf @method('DELETE')
+                        <button type="submit" class="text-[#ff4d7f] hover:underline text-[12px] font-semibold">{{ __('common.delete') }}</button>
+                    </form>
+                </div>
             </div>
         </div>
         @empty

@@ -194,26 +194,22 @@ class EscrowController extends Controller
         abort_unless($user?->hasPermission('escrow.view'), 403);
 
         $companyId  = $this->currentCompanyId();
-        // role + company-type aware — see FormatsForViews::isSupplierSideUser()
-        $isSupplier = $this->isSupplierSideUser();
 
         // Pull every escrow account whose contract has the current company
-        // as a party — buyer side OR supplier side. Eager-load the contract
-        // + its parties so the table can render names without N+1.
+        // as a party — buyer side OR supplier side. A dual-role company
+        // sees ALL escrow accounts it's involved in, regardless of which
+        // side of the trade it's on. The old isSupplierSideUser() dispatch
+        // hid buyer-side accounts from supplier-typed companies.
         $accounts = EscrowAccount::query()
             ->with(['contract:id,contract_number,title,buyer_company_id,parties,currency,total_amount', 'releases'])
-            ->whereHas('contract', function ($q) use ($companyId, $isSupplier) {
+            ->whereHas('contract', function ($q) use ($companyId) {
                 if (!$companyId) {
                     return;
                 }
-                if ($isSupplier) {
-                    $q->where(function ($q2) use ($companyId) {
-                        $q2->whereJsonContains('parties', ['company_id' => $companyId])
-                            ->orWhere('buyer_company_id', $companyId);
-                    });
-                } else {
-                    $q->where('buyer_company_id', $companyId);
-                }
+                $q->where(function ($q2) use ($companyId) {
+                    $q2->where('buyer_company_id', $companyId)
+                        ->orWhereJsonContains('parties', ['company_id' => $companyId]);
+                });
             })
             ->latest()
             ->get();
@@ -239,7 +235,7 @@ class EscrowController extends Controller
         return view('dashboard.escrow.index', [
             'accounts'    => $accounts,
             'kpis'        => $kpis,
-            'is_supplier' => $isSupplier,
+            'company_id'  => $companyId,
         ]);
     }
 

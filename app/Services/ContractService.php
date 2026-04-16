@@ -103,8 +103,7 @@ class ContractService
 
     public function update(int $id, array $data): ?Contract
     {
-        $contract = Contract::find($id);
-        if (!$contract) return null;
+        $contract = Contract::findOrFail($id);
 
         $contract->update($data);
         return $contract->fresh('buyerCompany');
@@ -112,8 +111,7 @@ class ContractService
 
     public function delete(int $id): bool
     {
-        $contract = Contract::find($id);
-        return $contract ? $contract->delete() : false;
+        return Contract::findOrFail($id)->delete();
     }
 
     public function sign(int $id, int $userId, int $companyId, ?string $signature = null, array $auditContext = []): Contract|string
@@ -240,7 +238,7 @@ class ContractService
             ->all();
 
         if (!empty($partyCompanyIds)) {
-            $recipients = User::whereIn('company_id', $partyCompanyIds)->get();
+            $recipients = User::whereIn('company_id', $partyCompanyIds)->active()->get();
             if ($recipients->isNotEmpty()) {
                 Notification::send($recipients, new ContractSignedNotification($contract, $signerName ?: 'A party'));
             }

@@ -237,6 +237,16 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
         return $this->status === UserStatus::ACTIVE;
     }
 
+    /**
+     * Query scope: only users whose status is active. Use this on every
+     * bulk-fetch that feeds notifications or approval lists so inactive,
+     * pending, and soft-deleted users are never contacted.
+     */
+    public function scopeActive(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where('status', UserStatus::ACTIVE);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === UserRole::ADMIN;
@@ -245,6 +255,18 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
     public function isGovernment(): bool
     {
         return $this->role === UserRole::GOVERNMENT;
+    }
+
+    /**
+     * Company manager = tenant-level super-user. Runs their company end to
+     * end: team, RFQs, bids, contracts, payments, escrow, disputes, ESG,
+     * integrations. Treated like admin INSIDE their own company scope —
+     * policies still enforce cross-company isolation, so a manager cannot
+     * read another company's records even with the permission bypass.
+     */
+    public function isCompanyManager(): bool
+    {
+        return $this->role === UserRole::COMPANY_MANAGER;
     }
 
     /**
@@ -257,8 +279,20 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
      */
     public function allRoles(): array
     {
+        // Company manager wears every hat inside the tenant — the web.role
+        // middleware accepts them for buyer/supplier/finance/etc. routes so
+        // they can act on behalf of any teammate without juggling secondary
+        // role assignments. Cross-company boundaries are still enforced by
+        // policies that key on company_id.
+        if ($this->isCompanyManager()) {
+            return array_map(
+                fn (UserRole $r) => $r->value,
+                UserRole::cases()
+            );
+        }
+
         $primary = $this->role instanceof \BackedEnum ? $this->role->value : (string) $this->role;
-        $extras  = is_array($this->additional_roles) ? $this->additional_roles : [];
+        $extras  = \is_array($this->additional_roles) ? $this->additional_roles : [];
 
         return array_values(array_unique(array_filter(array_merge([$primary], $extras))));
     }
@@ -288,7 +322,12 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
      */
     public function hasPermission(string $key): bool
     {
-        if ($this->isAdmin()) {
+        // Platform admin + tenant-level company manager both short-circuit
+        // to true. Admin is a global bypass; company_manager is a
+        // *within-company* bypass — cross-company isolation is still
+        // enforced by the policies (RfqPolicy / ContractPolicy / etc.)
+        // which check `$user->company_id === $resource->company_id`.
+        if ($this->isAdmin() || $this->isCompanyManager()) {
             return true;
         }
 
@@ -296,7 +335,7 @@ class User extends Authenticatable implements JWTSubject, HasLocalePreference
             $this->resolvedPermissionKeys = $this->resolvePermissionKeys();
         }
 
-        return in_array($key, $this->resolvedPermissionKeys, true);
+        return \in_array($key, $this->resolvedPermissionKeys, true);
     }
 
     /**

@@ -29,10 +29,19 @@ use App\Services\Sanctions\OpenSanctionsProvider;
 use App\Services\Sanctions\SanctionsProviderInterface;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use App\Models\Company;
+use App\Policies\BidPolicy;
+use App\Policies\CompanyPolicy;
+use App\Policies\ContractPolicy;
+use App\Policies\PaymentPolicy;
+use App\Policies\RfqPolicy;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -100,6 +109,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ── Model Policies ──────────────────────────────────────────
+        Gate::policy(Contract::class, ContractPolicy::class);
+        Gate::policy(Bid::class, BidPolicy::class);
+        Gate::policy(Payment::class, PaymentPolicy::class);
+        Gate::policy(Rfq::class, RfqPolicy::class);
+        Gate::policy(Company::class, CompanyPolicy::class);
+
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
@@ -170,6 +186,26 @@ class AppServiceProvider extends ServiceProvider
         // immediately and the bank API call happens asynchronously.
         Event::listen(ContractSigned::class, ReleaseEscrowOnSignature::class);
         Event::listen(ShipmentDelivered::class, ReleaseEscrowOnDelivery::class);
+
+        // Failed-job surfacing: every permanently-failed job (all retries
+        // exhausted) writes an ERROR-level structured log line so our
+        // aggregator / Sentry / oncall alert picks it up. The Laravel
+        // default only persists the row into failed_jobs — without this,
+        // a silent queue outage could rot for hours before anyone noticed.
+        Queue::failing(function (JobFailed $event) {
+            Log::error('queue.job.failed', [
+                'connection' => $event->connectionName,
+                'queue'      => $event->job->getQueue(),
+                'job'        => $event->job->resolveName(),
+                'payload'    => $event->job->getRawBody(),
+                'exception'  => [
+                    'class'   => get_class($event->exception),
+                    'message' => $event->exception->getMessage(),
+                    'file'    => $event->exception->getFile(),
+                    'line'    => $event->exception->getLine(),
+                ],
+            ]);
+        });
 
         /*
         |--------------------------------------------------------------------------

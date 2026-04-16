@@ -19,6 +19,7 @@
         "livewire/livewire": "^4.2",
         "maatwebsite/excel": "^3.1",
         "predis/predis": "^3.4",
+        "sentry/sentry-laravel": "^4.25",
         "spatie/laravel-medialibrary": "^11.21",
         "spatie/laravel-permission": "^6.25",
         "srmklive/paypal": "^3.0",

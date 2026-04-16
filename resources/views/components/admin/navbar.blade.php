@@ -61,6 +61,13 @@ $tabs = [
         'icon'  => '<path d="M3 7h18M3 12h18M3 17h18"/>',
     ],
     [
+        'key'   => 'category-requests',
+        'label' => __('admin.tabs.category_requests'),
+        'route' => 'admin.category-requests.index',
+        'badge' => 'admin-category-requests',
+        'icon'  => '<path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>',
+    ],
+    [
         'key'   => 'tax-rates',
         'label' => __('admin.tabs.tax_rates'),
         'route' => 'admin.tax-rates.index',
@@ -80,6 +87,48 @@ $tabs = [
         'route' => 'admin.audit.index',
         'badge' => 'admin-audit',
         'icon'  => '<path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>',
+    ],
+    [
+        'key'   => 'reports',
+        'label' => __('admin.tabs.reports'),
+        'route' => 'admin.reports.index',
+        'icon'  => '<path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/>',
+    ],
+    [
+        'key'   => 'health',
+        'label' => __('admin.tabs.health'),
+        'route' => 'admin.system-health.index',
+        'icon'  => '<path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/>',
+    ],
+    [
+        'key'   => 'disputes',
+        'label' => __('admin.tabs.disputes'),
+        'route' => 'admin.disputes.index',
+        'icon'  => '<path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 17.25h.007v.008H12v-.008z"/>',
+    ],
+    [
+        'key'   => 'blacklist',
+        'label' => __('admin.tabs.blacklist'),
+        'route' => 'admin.blacklist.index',
+        'icon'  => '<path d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>',
+    ],
+    [
+        'key'   => 'fees',
+        'label' => __('admin.tabs.fees'),
+        'route' => 'admin.fees.index',
+        'icon'  => '<path d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4"/>',
+    ],
+    [
+        'key'   => 'exchange-rates',
+        'label' => __('admin.tabs.exchange_rates'),
+        'route' => 'admin.exchange-rates.index',
+        'icon'  => '<path d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5"/>',
+    ],
+    [
+        'key'   => 'webhooks',
+        'label' => __('admin.tabs.webhooks'),
+        'route' => 'admin.webhooks.index',
+        'icon'  => '<path d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-6.818l4.5-4.5a4.5 4.5 0 016.364 6.364l-1.757 1.757"/>',
     ],
 ];
 

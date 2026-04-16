@@ -160,7 +160,7 @@ class EscrowService
                 throw new BankPartnerException('Escrow account no longer exists.');
             }
 
-            if ($amount > $locked->availableBalance() + 0.01) {
+            if (bccomp((string) $amount, (string) $locked->availableBalance(), 2) > 0) {
                 throw new BankPartnerException(\sprintf(
                     'Insufficient escrow balance: requested %.2f %s, available %.2f.',
                     $amount,
@@ -201,7 +201,7 @@ class EscrowService
             }
 
             // Auto-close the account once everything has been released.
-            if ($locked->fresh()->availableBalance() <= 0.01 && (float) $locked->total_deposited > 0) {
+            if (bccomp((string) $locked->fresh()->availableBalance(), '0', 2) <= 0 && bccomp((string) $locked->total_deposited, '0', 2) > 0) {
                 $locked->update([
                     'status'    => EscrowAccount::STATUS_CLOSED,
                     'closed_at' => now(),
@@ -240,7 +240,7 @@ class EscrowService
                 throw new BankPartnerException('Escrow account no longer exists.');
             }
 
-            if ($amount > $locked->availableBalance() + 0.01) {
+            if (bccomp((string) $amount, (string) $locked->availableBalance(), 2) > 0) {
                 throw new BankPartnerException('Insufficient escrow balance for refund.');
             }
 
@@ -260,7 +260,7 @@ class EscrowService
 
             $locked->increment('total_released', $amount);
 
-            if ($locked->fresh()->availableBalance() <= 0.01) {
+            if (bccomp((string) $locked->fresh()->availableBalance(), '0', 2) <= 0) {
                 $locked->update([
                     'status'    => EscrowAccount::STATUS_REFUNDED,
                     'closed_at' => now(),
@@ -352,20 +352,17 @@ class EscrowService
             return [];
         }
 
-        // Return any payment whose milestone label contains one of the
-        // matching keys AND which hasn't already been marked completed.
+        // Return any payment whose milestone label exactly matches one of
+        // the matching keys AND which hasn't already been marked completed.
+        // Previous str_contains() was dangerous: "delivery" would match
+        // "pre-delivery", causing premature escrow release.
         $payments = $contract->payments()
             ->whereNotIn('status', [PaymentStatus::COMPLETED->value, PaymentStatus::REFUNDED->value, PaymentStatus::CANCELLED->value])
             ->get();
 
         return $payments->filter(function (Payment $payment) use ($matchingMilestoneKeys) {
-            $label = strtolower((string) $payment->milestone);
-            foreach ($matchingMilestoneKeys as $key) {
-                if ($key !== '' && str_contains($label, $key)) {
-                    return true;
-                }
-            }
-            return false;
+            $label = strtolower(trim((string) $payment->milestone));
+            return $label !== '' && in_array($label, $matchingMilestoneKeys, true);
         })->values()->all();
     }
 
@@ -376,7 +373,7 @@ class EscrowService
 
     private function guardAmount(float $amount): void
     {
-        if ($amount <= 0) {
+        if (bccomp((string) $amount, '0', 2) <= 0) {
             throw new BankPartnerException('Amount must be greater than zero.');
         }
     }
@@ -447,7 +444,7 @@ class EscrowService
             return;
         }
 
-        $recipients = User::whereIn('company_id', $partyIds)->get();
+        $recipients = User::whereIn('company_id', $partyIds)->active()->get();
         if ($recipients->isEmpty()) {
             return;
         }

@@ -248,6 +248,8 @@ class V1Controller extends Controller
 
         $rfq = Rfq::findOrFail($rfqId);
 
+        $user->can('submitBid', $rfq) || abort(403, 'Not allowed to submit a bid on this RFQ');
+
         $data = $request->validate([
             'price'              => ['required', 'numeric', 'min:0.01'],
             'currency'           => ['nullable', 'string', 'size:3'],

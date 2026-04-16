@@ -9,7 +9,9 @@ use App\Enums\LegalJurisdiction;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Category;
 use App\Models\Company;
+use App\Models\CompanyCategoryRequest;
 use App\Models\CompanyDocument;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -68,6 +70,77 @@ class CompanyProfileController extends Controller
             ->findOrFail($user->company_id);
 
         return view('dashboard.company.profile', $this->buildViewData($company, mode: 'manager'));
+    }
+
+    /**
+     * Manager submits a request to add a new category to their company.
+     * The request lands in admin's review queue; on approval, the
+     * category is attached to the company via the company_category pivot.
+     *
+     * Reason for the approval loop: categories drive RFQ visibility for
+     * suppliers — letting any manager self-assign arbitrary categories
+     * would let a company spam itself into every RFQ feed.
+     */
+    public function requestCategory(Request $request): RedirectResponse
+    {
+        $user = auth()->user();
+        abort_unless($user?->company_id, 403);
+        abort_unless($user->hasPermission('team.edit'), 403);
+
+        $data = $request->validate([
+            'category_id' => ['required', 'integer', 'exists:categories,id'],
+            'note'        => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $companyId  = $user->company_id;
+        $categoryId = (int) $data['category_id'];
+
+        if (Company::find($companyId)?->categories()->where('categories.id', $categoryId)->exists()) {
+            return back()->withErrors(['category_id' => __('company_profile.category_already_assigned')]);
+        }
+
+        $alreadyPending = CompanyCategoryRequest::where('company_id', $companyId)
+            ->where('category_id', $categoryId)
+            ->where('status', CompanyCategoryRequest::STATUS_PENDING)
+            ->exists();
+
+        if ($alreadyPending) {
+            return back()->withErrors(['category_id' => __('company_profile.category_request_already_pending')]);
+        }
+
+        CompanyCategoryRequest::create([
+            'company_id'   => $companyId,
+            'category_id'  => $categoryId,
+            'requested_by' => $user->id,
+            'note'         => $data['note'] ?? null,
+            'status'       => CompanyCategoryRequest::STATUS_PENDING,
+        ]);
+
+        return redirect()
+            ->route('dashboard.company.profile')
+            ->with('status', __('company_profile.category_request_submitted'));
+    }
+
+    /**
+     * Manager cancels their own still-pending category request. Only
+     * allowed while the request is pending — approved / rejected
+     * requests stay in history for audit.
+     */
+    public function cancelCategoryRequest(int $id): RedirectResponse
+    {
+        $user = auth()->user();
+        abort_unless($user?->company_id, 403);
+        abort_unless($user->hasPermission('team.edit'), 403);
+
+        $req = CompanyCategoryRequest::where('company_id', $user->company_id)
+            ->where('status', CompanyCategoryRequest::STATUS_PENDING)
+            ->findOrFail($id);
+
+        $req->delete();
+
+        return redirect()
+            ->route('dashboard.company.profile')
+            ->with('status', __('company_profile.category_request_cancelled'));
     }
 
     /**
@@ -334,6 +407,13 @@ class CompanyProfileController extends Controller
             ->latest()
             ->get();
 
+        $certificateUploads = \App\Models\CertificateUpload::query()
+            ->with(['verifier:id,first_name,last_name,email'])
+            ->where('company_id', $company->id)
+            ->when($isPublic, fn ($q) => $q->where('status', \App\Models\CertificateUpload::STATUS_VERIFIED))
+            ->latest()
+            ->get();
+
         $branches = \App\Models\Branch::query()
             ->where('company_id', $company->id)
             ->orderBy('name')
@@ -370,19 +450,48 @@ class CompanyProfileController extends Controller
 
         $manager = $company->users->firstWhere('role', UserRole::COMPANY_MANAGER);
 
+        $assignedCategoryIds = $company->categories->pluck('id')->all();
+
+        $pendingCategoryRequests = $isPublic
+            ? collect()
+            : CompanyCategoryRequest::with('category')
+                ->where('company_id', $company->id)
+                ->whereIn('status', [
+                    CompanyCategoryRequest::STATUS_PENDING,
+                    CompanyCategoryRequest::STATUS_REJECTED,
+                ])
+                ->latest()
+                ->get();
+
+        $pendingCategoryIds = $pendingCategoryRequests
+            ->where('status', CompanyCategoryRequest::STATUS_PENDING)
+            ->pluck('category_id')
+            ->all();
+
+        $availableCategories = ($mode === 'manager')
+            ? Category::query()
+                ->where('is_active', true)
+                ->whereNotIn('id', array_merge($assignedCategoryIds, $pendingCategoryIds))
+                ->orderBy('path')
+                ->get()
+            : collect();
+
         return [
             'mode'             => $mode,
             'company'          => $company,
             'manager'          => $manager,
             'documents'        => $documents,
             'insurances'       => $insurances,
-            'icvCertificates'  => $icvCertificates,
-            'branches'         => $branches,
+            'icvCertificates'      => $icvCertificates,
+            'certificateUploads'   => $certificateUploads,
+            'branches'             => $branches,
             'activity'         => $activity,
             'docStats'         => $docStats,
             'documentTypes'    => DocumentType::cases(),
             'freeZones'        => FreeZoneAuthority::cases(),
             'jurisdictions'    => LegalJurisdiction::cases(),
+            'pendingCategoryRequests' => $pendingCategoryRequests,
+            'availableCategories'     => $availableCategories,
         ];
     }
 }

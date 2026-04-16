@@ -310,6 +310,105 @@
             @endif
         </div>
 
+        {{-- ─────────────── Categories (admin-approved) ─────────────── --}}
+        <div class="bg-surface border border-th-border rounded-[16px] p-[25px]">
+            <div class="flex items-center justify-between gap-3 mb-5 flex-wrap">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-[10px] bg-[#14B8A6]/10 border border-[#14B8A6]/20 flex items-center justify-center">
+                        <svg class="w-[16px] h-[16px] text-[#14B8A6]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5a2 2 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg>
+                    </div>
+                    <h3 class="text-[15px] font-bold text-primary">
+                        {{ __('company_profile.section_categories') }}
+                        <span class="text-muted text-[12px] font-medium">({{ $company->categories->count() }})</span>
+                    </h3>
+                </div>
+            </div>
+
+            <p class="text-[12px] text-muted mb-4 leading-relaxed">{{ __('company_profile.categories_help') }}</p>
+
+            @if($company->categories->isEmpty())
+                <div class="rounded-[12px] border border-dashed border-th-border px-4 py-6 text-center mb-5">
+                    <p class="text-[13px] text-muted">{{ __('company_profile.no_categories') }}</p>
+                </div>
+            @else
+                <div class="flex flex-wrap gap-2 mb-5">
+                    @foreach($company->categories as $cat)
+                        <span class="inline-flex items-center gap-1.5 px-3 h-8 rounded-full bg-[#14B8A6]/10 border border-[#14B8A6]/25 text-[#14B8A6] text-[12px] font-semibold">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            {{ app()->getLocale() === 'ar' && $cat->name_ar ? $cat->name_ar : $cat->name }}
+                        </span>
+                    @endforeach
+                </div>
+            @endif
+
+            @if($isManager && isset($pendingCategoryRequests) && $pendingCategoryRequests->isNotEmpty())
+                <div class="space-y-2 mb-5">
+                    @foreach($pendingCategoryRequests as $req)
+                        @php
+                            $catLabel = $req->category ? (app()->getLocale() === 'ar' && $req->category->name_ar ? $req->category->name_ar : $req->category->name) : '—';
+                            $isPending = $req->status === \App\Models\CompanyCategoryRequest::STATUS_PENDING;
+                            $pillBg   = $isPending ? 'bg-[#ffb020]/10 border-[#ffb020]/25 text-[#ffb020]' : 'bg-[#ff4d7f]/10 border-[#ff4d7f]/25 text-[#ff4d7f]';
+                        @endphp
+                        <div class="flex items-center justify-between gap-3 rounded-[12px] border border-th-border bg-surface-2 px-3 py-2.5">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <span class="inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full border text-[10px] font-bold uppercase tracking-wider {{ $pillBg }}">
+                                    {{ __('company_profile.category_status_' . $req->status) }}
+                                </span>
+                                <span class="text-[13px] font-semibold text-primary truncate">{{ $catLabel }}</span>
+                                @if($req->rejection_reason)
+                                    <span class="text-[11px] text-muted italic truncate">— {{ $req->rejection_reason }}</span>
+                                @endif
+                            </div>
+                            @if($isPending && $canEdit)
+                                <form method="POST" action="{{ route('dashboard.company.profile.categories.cancel', $req->id) }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit"
+                                            class="text-[11px] font-semibold text-muted hover:text-[#ff4d7f] transition-colors">
+                                        {{ __('company_profile.category_request_cancel') }}
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            @if($canEdit && isset($availableCategories) && $availableCategories->isNotEmpty())
+                <form method="POST" action="{{ route('dashboard.company.profile.categories.request') }}"
+                      class="rounded-[12px] border border-th-border bg-surface-2 p-4 space-y-3">
+                    @csrf
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase tracking-wider text-faint mb-2">
+                            {{ __('company_profile.category_request_label') }} <span class="text-[#ff4d7f] normal-case">*</span>
+                        </label>
+                        <select name="category_id" required
+                                class="w-full bg-surface border border-th-border rounded-[10px] px-3 h-11 text-[13px] text-primary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20">
+                            <option value="">— {{ __('company_profile.category_request_placeholder') }} —</option>
+                            @foreach($availableCategories as $cat)
+                                <option value="{{ $cat->id }}">
+                                    {{ str_repeat('— ', (int) $cat->level) }}{{ app()->getLocale() === 'ar' && $cat->name_ar ? $cat->name_ar : $cat->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold uppercase tracking-wider text-faint mb-2">
+                            {{ __('company_profile.category_request_note') }}
+                        </label>
+                        <textarea name="note" rows="2" maxlength="1000"
+                                  placeholder="{{ __('company_profile.category_request_note_placeholder') }}"
+                                  class="w-full bg-surface border border-th-border rounded-[10px] px-3 py-2.5 text-[13px] text-primary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none"></textarea>
+                    </div>
+                    <button type="submit"
+                            class="inline-flex items-center gap-2 h-10 px-4 bg-accent text-white rounded-[10px] text-[12px] font-bold hover:bg-accent-h transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        {{ __('company_profile.category_request_submit') }}
+                    </button>
+                </form>
+            @endif
+        </div>
+
         {{-- ─────────────── Documents vault ─────────────── --}}
         <div class="bg-surface border border-th-border rounded-[16px] p-[25px]">
             <div class="flex items-center justify-between gap-3 mb-5 flex-wrap">
@@ -363,6 +462,13 @@
                         </div>
 
                         <div class="flex items-center gap-2 flex-shrink-0">
+                            @if($isAdmin && $doc->file_path)
+                                <a href="{{ route('admin.documents.download', $doc->id) }}"
+                                   class="inline-flex items-center gap-1 h-8 px-3 rounded-[8px] bg-accent/10 border border-accent/30 text-accent text-[11px] font-bold hover:bg-accent/20 transition-colors">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                    {{ __('common.download') }}
+                                </a>
+                            @endif
                             @if($isAdmin && $doc->status === 'pending')
                                 <form method="POST" action="{{ route('admin.documents.review', $doc->id) }}" class="inline">
                                     @csrf
@@ -503,6 +609,88 @@
                             {{ __('company_profile.cert_number') }}: <span class="font-mono">{{ $cert->certificate_number }}</span>
                             · {{ __('company_profile.expires_on') }} {{ $cert->expires_date?->format('M j, Y') }}
                         </p>
+                    </div>
+                </div>
+                @endforeach
+            </div>
+            @endif
+        </div>
+        @endif
+
+        {{-- ─────────────── Compliance certificates (Phase 8 — Tier 3) ─────────────── --}}
+        @if(isset($certificateUploads) && ($certificateUploads->isNotEmpty() || $isAdmin))
+        <div class="bg-surface border border-th-border rounded-[16px] p-[25px]">
+            <div class="flex items-center justify-between gap-3 mb-5 flex-wrap">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-[10px] bg-[#14B8A6]/10 border border-[#14B8A6]/20 flex items-center justify-center">
+                        <svg class="w-[16px] h-[16px] text-[#14B8A6]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.623 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+                    </div>
+                    <h3 class="text-[15px] font-bold text-primary">{{ __('admin.tabs.certificate_uploads') }} <span class="text-muted text-[12px] font-medium">({{ $certificateUploads->count() }})</span></h3>
+                </div>
+                @if($isAdmin)
+                <a href="{{ route('admin.certificate-uploads.index') }}"
+                   class="inline-flex items-center gap-2 h-9 px-3 rounded-[10px] bg-accent/10 border border-accent/20 text-accent text-[12px] font-bold hover:bg-accent/20 transition-colors">
+                    {{ __('common.manage') }}
+                </a>
+                @endif
+            </div>
+
+            @if($certificateUploads->isEmpty())
+            <div class="rounded-[12px] border border-dashed border-th-border bg-page/40 px-6 py-10 text-center">
+                <p class="text-[13px] text-muted">{{ __('cert_upload.empty_admin') }}</p>
+            </div>
+            @else
+            <div class="space-y-2.5">
+                @foreach($certificateUploads as $cu)
+                @php $pill = $statusPills[$cu->status] ?? $statusPills['pending']; @endphp
+                <div class="bg-page border border-th-border rounded-[12px] p-4 flex items-start gap-3 flex-wrap">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap mb-1">
+                            <span class="inline-flex items-center h-[22px] px-2 rounded-full text-[10px] font-bold bg-accent/10 border border-accent/20 text-accent uppercase">
+                                {{ __('cert_upload.type_' . $cu->certificate_type) }}
+                            </span>
+                            <p class="text-[13px] font-semibold text-primary truncate">{{ $cu->issuer ?? $cu->certificate_number }}</p>
+                            <span class="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold rounded-full px-2 py-0.5 border {{ $pill['bg'] }} {{ $pill['border'] }} {{ $pill['text'] }}">
+                                {{ $pill['label'] }}
+                            </span>
+                        </div>
+                        <p class="text-[11px] text-faint">
+                            @if($cu->certificate_number){{ __('company_profile.cert_number') }}: <span class="font-mono">{{ $cu->certificate_number }}</span> · @endif
+                            @if($cu->expires_date){{ __('company_profile.expires_on') }} {{ $cu->expires_date->format('M j, Y') }} · @endif
+                            @if($cu->issued_date){{ __('cert_upload.col_issuer') }}: {{ $cu->issued_date->format('M j, Y') }}@endif
+                        </p>
+                        @if($cu->status === 'rejected' && $cu->rejection_reason)
+                        <p class="text-[11px] text-[#ff4d7f] mt-1">{{ __('company_profile.rejection_reason') }}: {{ $cu->rejection_reason }}</p>
+                        @endif
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        @if($isAdmin && $cu->file_path)
+                            <a href="{{ route('admin.certificate-uploads.download', $cu->id) }}"
+                               class="inline-flex items-center gap-1 h-8 px-3 rounded-[8px] bg-accent/10 border border-accent/30 text-accent text-[11px] font-bold hover:bg-accent/20 transition-colors">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                {{ __('common.download') }}
+                            </a>
+                        @endif
+                        @if($isAdmin && $cu->status === 'pending')
+                            <form method="POST" action="{{ route('admin.certificate-uploads.approve', $cu->id) }}" class="inline">
+                                @csrf
+                                <button type="submit"
+                                        class="inline-flex items-center gap-1 h-8 px-3 rounded-[8px] bg-[#00d9b5]/10 border border-[#00d9b5]/30 text-[#00d9b5] text-[11px] font-bold hover:bg-[#00d9b5]/20 transition-colors">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                    {{ __('cert_upload.approve') }}
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ route('admin.certificate-uploads.reject', $cu->id) }}" class="inline"
+                                  onsubmit="const r = prompt('{{ __('cert_upload.rejection_prompt') }}'); if (!r) return false; this.reason.value = r;">
+                                @csrf
+                                <input type="hidden" name="reason">
+                                <button type="submit"
+                                        class="inline-flex items-center gap-1 h-8 px-3 rounded-[8px] bg-[#ff4d7f]/10 border border-[#ff4d7f]/30 text-[#ff4d7f] text-[11px] font-bold hover:bg-[#ff4d7f]/20 transition-colors">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    {{ __('cert_upload.reject') }}
+                                </button>
+                            </form>
+                        @endif
                     </div>
                 </div>
                 @endforeach

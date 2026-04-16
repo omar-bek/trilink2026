@@ -66,7 +66,7 @@ class IcvCertificateController extends Controller
             'score'              => ['required', 'numeric', 'min:0', 'max:100'],
             'issued_date'        => ['required', 'date', 'before_or_equal:today'],
             'expires_date'       => ['required', 'date', 'after:issued_date'],
-            'file'               => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'file'               => ['required', 'file', 'max:10240', ...\App\Rules\SafeUpload::pdfOrImage()],
         ]);
 
         // Reject duplicate uploads of the same certificate (same

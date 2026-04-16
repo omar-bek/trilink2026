@@ -16,10 +16,10 @@
     };
 
     $statusBadge = [
-        'added'     => ['text' => 'text-[#00d9b5]', 'bg' => 'bg-[#00d9b5]/10', 'border' => 'border-[#00d9b5]/20', 'label' => __('contracts.diff_added')],
-        'removed'   => ['text' => 'text-[#ef4444]', 'bg' => 'bg-[#ef4444]/10', 'border' => 'border-[#ef4444]/20', 'label' => __('contracts.diff_removed')],
-        'modified'  => ['text' => 'text-[#ffb020]', 'bg' => 'bg-[#ffb020]/10', 'border' => 'border-[#ffb020]/20', 'label' => __('contracts.diff_modified')],
-        'unchanged' => ['text' => 'text-muted',     'bg' => 'bg-surface-2',    'border' => 'border-th-border',     'label' => __('contracts.diff_unchanged')],
+        'added'     => ['text' => 'text-accent-success', 'bg' => 'bg-accent-success/10', 'border' => 'border-accent-success/20', 'label' => __('contracts.diff_added')],
+        'removed'   => ['text' => 'text-accent-danger',  'bg' => 'bg-accent-danger/10',  'border' => 'border-accent-danger/20',  'label' => __('contracts.diff_removed')],
+        'modified'  => ['text' => 'text-accent-warning', 'bg' => 'bg-accent-warning/10', 'border' => 'border-accent-warning/20', 'label' => __('contracts.diff_modified')],
+        'unchanged' => ['text' => 'text-muted',          'bg' => 'bg-surface-2',         'border' => 'border-th-border',          'label' => __('contracts.diff_unchanged')],
     ];
 
     $totals = [
@@ -43,7 +43,9 @@
             <svg class="w-4 h-4 rtl:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5m0 0l7 7m-7-7l7-7"/></svg>
             {{ __('contracts.back_to_contract') }}
         </a>
-        <p class="text-[12px] font-mono text-muted mb-1">{{ $contract->contract_number }}</p>
+        {{-- dir="ltr" prevents RTL from reversing the alphanumeric
+             contract ID (e.g. "CTR-12345" → "54321-RTC"). --}}
+        <p class="text-[12px] font-mono text-muted mb-1" dir="ltr">{{ $contract->contract_number }}</p>
         <h1 class="text-[28px] sm:text-[32px] font-bold text-primary leading-tight tracking-[-0.02em]">{{ __('contracts.diff_title') }}</h1>
         <p class="text-[13px] text-muted mt-1">{{ __('contracts.diff_subtitle') }}</p>
     </div>
@@ -74,12 +76,12 @@
 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
     <div class="bg-surface border border-th-border rounded-2xl p-5">
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-[#00d9b5]/10 text-[#00d9b5] flex items-center justify-center flex-shrink-0">
+            <div class="w-10 h-10 rounded-lg bg-accent-success/10 text-accent-success flex items-center justify-center flex-shrink-0">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m8-8H4"/></svg>
             </div>
             <div>
                 <p class="text-[11px] uppercase tracking-wider text-muted">{{ __('contracts.diff_added') }}</p>
-                <p class="text-[22px] font-bold text-[#00d9b5] leading-none">{{ $totals['added'] }}</p>
+                <p class="text-[22px] font-bold text-accent-success leading-none">{{ $totals['added'] }}</p>
             </div>
         </div>
     </div>
@@ -96,12 +98,12 @@
     </div>
     <div class="bg-surface border border-th-border rounded-2xl p-5">
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-[#ef4444]/10 text-[#ef4444] flex items-center justify-center flex-shrink-0">
+            <div class="w-10 h-10 rounded-lg bg-accent-danger/10 text-accent-danger flex items-center justify-center flex-shrink-0">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H4"/></svg>
             </div>
             <div>
                 <p class="text-[11px] uppercase tracking-wider text-muted">{{ __('contracts.diff_removed') }}</p>
-                <p class="text-[22px] font-bold text-[#ef4444] leading-none">{{ $totals['removed'] }}</p>
+                <p class="text-[22px] font-bold text-accent-danger leading-none">{{ $totals['removed'] }}</p>
             </div>
         </div>
     </div>
@@ -127,23 +129,23 @@
                             <p class="text-[13px] text-body">{{ $item['from'] }}</p>
                         </div>
                     @elseif($item['status'] === 'added')
-                        <div class="flex items-start gap-3 p-3 rounded-lg bg-[#00d9b5]/5 border border-[#00d9b5]/20">
-                            <span class="text-[14px] font-bold text-[#00d9b5] flex-shrink-0">+</span>
+                        <div class="flex items-start gap-3 p-3 rounded-lg bg-accent-success/5 border border-accent-success/20">
+                            <span class="text-[14px] font-bold text-accent-success flex-shrink-0">+</span>
                             <p class="text-[13px] text-primary">{{ $item['to'] }}</p>
                         </div>
                     @elseif($item['status'] === 'removed')
-                        <div class="flex items-start gap-3 p-3 rounded-lg bg-[#ef4444]/5 border border-[#ef4444]/20">
-                            <span class="text-[14px] font-bold text-[#ef4444] flex-shrink-0">−</span>
+                        <div class="flex items-start gap-3 p-3 rounded-lg bg-accent-danger/5 border border-accent-danger/20">
+                            <span class="text-[14px] font-bold text-accent-danger flex-shrink-0">−</span>
                             <p class="text-[13px] text-primary line-through opacity-80">{{ $item['from'] }}</p>
                         </div>
                     @elseif($item['status'] === 'modified')
                         <div class="rounded-lg overflow-hidden border border-[#ffb020]/30">
-                            <div class="flex items-start gap-3 p-3 bg-[#ef4444]/5 border-b border-[#ffb020]/20">
-                                <span class="text-[14px] font-bold text-[#ef4444] flex-shrink-0">−</span>
+                            <div class="flex items-start gap-3 p-3 bg-accent-danger/5 border-b border-[#ffb020]/20">
+                                <span class="text-[14px] font-bold text-accent-danger flex-shrink-0">−</span>
                                 <p class="text-[13px] text-body line-through opacity-80">{{ $item['from'] }}</p>
                             </div>
-                            <div class="flex items-start gap-3 p-3 bg-[#00d9b5]/5">
-                                <span class="text-[14px] font-bold text-[#00d9b5] flex-shrink-0">+</span>
+                            <div class="flex items-start gap-3 p-3 bg-accent-success/5">
+                                <span class="text-[14px] font-bold text-accent-success flex-shrink-0">+</span>
                                 <p class="text-[13px] text-primary">{{ $item['to'] }}</p>
                             </div>
                         </div>

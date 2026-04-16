@@ -8,6 +8,7 @@ use App\Http\Controllers\Web\Concerns\ExportsCsv;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Http\Requests\Bid\StoreBidRequest;
 use App\Models\Bid;
+use App\Models\CompanySupplier;
 use App\Models\NegotiationMessage;
 use App\Models\Rfq;
 use App\Services\BidService;
@@ -803,6 +804,12 @@ class BidController extends Controller
             'competition'    => $competition,
             'buyer'          => $buyerInfo,
             'can_withdraw'   => $myRole === 'supplier' && in_array($statusKey, ['submitted', 'under_review'], true),
+            // True when the bidder is in the buyer's registered-supplier list.
+            // Soft signal — no longer blocks the bid, but the buyer sees a
+            // badge and the supplier saw a notice at submit time.
+            'is_registered_supplier' => $bid->rfq && $bid->company_id
+                ? CompanySupplier::isLocked((int) $bid->company_id, (int) $bid->rfq->company_id)
+                : false,
         ];
 
         return view('dashboard.bids.show', ['bid' => $bidData]);
@@ -980,9 +987,28 @@ class BidController extends Controller
             ],
             'can_withdraw' => in_array($statusKey, ['submitted', 'under_review'], true),
             'negotiation'  => $this->negotiationViewModel($bid),
+
+            // Buyer-view-compatible keys. The unified show.blade.php was
+            // written for the buyer surface first, so we populate every
+            // key it reads with safe defaults — the view still renders
+            // correctly for the supplier because the accept / reject
+            // controls are policy-gated (@can) and hide automatically.
+            'supplier'      => $bid->company?->name ?? '—',
+            'supplier_info' => [
+                'id'                 => $bid->company_id,
+                'rating'             => null,
+                'reviews'            => 0,
+                'verification_level' => $bid->company?->verification_level?->value ?? null,
+                'category'           => $bid->rfq?->category?->name ?? '—',
+            ],
+            'old_amount'  => $this->money($price, $currency),
+            'savings'     => $this->money(0, $currency),
+            'diff'        => 0,
+            'price_up'    => false,
+            'shortlisted' => false,
         ];
 
-        return view('dashboard.bids.show-supplier', ['bid' => $data]);
+        return view('dashboard.bids.show', ['bid' => $data]);
     }
 
     public function store(StoreBidRequest $request, int $rfq): RedirectResponse
@@ -991,6 +1017,7 @@ class BidController extends Controller
         $user     = $request->user();
 
         abort_unless($user?->hasPermission('bid.submit'), 403, 'Forbidden: missing bids.create permission.');
+        abort_if($user->isAdmin() || !$user->company_id, 403, 'Only supplier/buyer accounts can submit bids.');
 
         // Normalize payment schedule: compute each milestone's amount from the
         // total price + percentage so downstream consumers (contract creation,
@@ -1005,63 +1032,102 @@ class BidController extends Controller
             ->values()
             ->all();
 
-        $result = $this->service->create([
-            'rfq_id'             => $rfqModel->id,
-            'company_id'         => $user->company_id,
-            'provider_id'        => $user->id,
-            'status'             => BidStatus::SUBMITTED,
-            'price'              => $price,
-            'currency'           => $request->input('currency', $rfqModel->currency ?? 'AED'),
-            'delivery_time_days' => $request->input('delivery_time_days'),
-            'payment_terms'      => $request->input('payment_terms'),
-            'payment_schedule'   => $schedule,
-            'validity_date'      => $request->input('validity_date'),
-            'notes'              => $request->input('notes'),
-            'items'              => $request->input('items', []),
-            // Phase 2 trade fields. The StoreBidRequest::prepareForValidation
-            // already computed and merged subtotal/tax/total based on the
-            // supplier's chosen treatment, so we just pass them through.
-            'incoterm'             => $request->input('incoterm'),
-            'country_of_origin'    => $request->input('country_of_origin'),
-            'hs_code'              => $request->input('hs_code'),
-            'tax_treatment'        => $request->input('tax_treatment'),
-            'tax_exemption_reason' => $request->input('tax_exemption_reason'),
-            'tax_rate_snapshot'    => $request->input('tax_rate_snapshot'),
-            'subtotal_excl_tax'    => $request->input('subtotal_excl_tax'),
-            'tax_amount'           => $request->input('tax_amount'),
-            'total_incl_tax'       => $request->input('total_incl_tax'),
-        ]);
-
-        if (is_string($result)) {
-            return back()->withErrors(['bid' => $result])->withInput();
-        }
-
-        // Bid was created — persist uploaded supporting documents. Files live
-        // on the private `local` disk because they can contain commercial
-        // secrets (BOMs, financials). The URL stored on the bid points to a
-        // controller action that streams the file back to authorized users.
+        // Pre-stage uploads BEFORE opening the transaction: file writes to the
+        // local disk aren't rolled back by DB::rollBack, so if we wrote them
+        // inside the transaction and a later DB error triggered a rollback,
+        // the bid row would vanish but the files would leak on disk. Staging
+        // first and only persisting paths after the DB commit keeps both
+        // sides consistent, and on failure we clean up the staged files.
+        $stagedAttachments = [];
         if ($request->hasFile('attachments')) {
-            $storedAttachments = [];
             foreach ($request->file('attachments') as $file) {
                 if (!$file || !$file->isValid()) {
                     continue;
                 }
-                $path = $file->store("bid-attachments/{$result->id}", 'local');
-                $storedAttachments[] = [
+                $path = $file->store('bid-attachments/staging', 'local');
+                $stagedAttachments[] = [
                     'name' => $file->getClientOriginalName(),
                     'path' => $path,
                     'size' => $file->getSize(),
                     'mime' => $file->getClientMimeType(),
                 ];
             }
-            if (!empty($storedAttachments)) {
-                $result->update(['attachments' => $storedAttachments]);
-            }
         }
 
-        return redirect()
+        try {
+            $result = DB::transaction(function () use ($request, $rfqModel, $user, $price, $schedule, $stagedAttachments) {
+                $created = $this->service->create([
+                    'rfq_id'             => $rfqModel->id,
+                    'company_id'         => $user->company_id,
+                    'provider_id'        => $user->id,
+                    'status'             => BidStatus::SUBMITTED,
+                    'price'              => $price,
+                    'currency'           => $request->input('currency', $rfqModel->currency ?? 'AED'),
+                    'delivery_time_days' => $request->input('delivery_time_days'),
+                    'payment_terms'      => $request->input('payment_terms'),
+                    'payment_schedule'   => $schedule,
+                    'validity_date'      => $request->input('validity_date'),
+                    'notes'              => $request->input('notes'),
+                    'items'              => $request->input('items', []),
+                    // Phase 2 trade fields. The StoreBidRequest::prepareForValidation
+                    // already computed and merged subtotal/tax/total based on the
+                    // supplier's chosen treatment, so we just pass them through.
+                    'incoterm'             => $request->input('incoterm'),
+                    'country_of_origin'    => $request->input('country_of_origin'),
+                    'hs_code'              => $request->input('hs_code'),
+                    'tax_treatment'        => $request->input('tax_treatment'),
+                    'tax_exemption_reason' => $request->input('tax_exemption_reason'),
+                    'tax_rate_snapshot'    => $request->input('tax_rate_snapshot'),
+                    'subtotal_excl_tax'    => $request->input('subtotal_excl_tax'),
+                    'tax_amount'           => $request->input('tax_amount'),
+                    'total_incl_tax'       => $request->input('total_incl_tax'),
+                ]);
+
+                // Business rule violation from the service — abort the
+                // transaction so the caller can surface the string error.
+                if (is_string($created)) {
+                    return $created;
+                }
+
+                if (!empty($stagedAttachments)) {
+                    $moved = [];
+                    foreach ($stagedAttachments as $att) {
+                        $finalPath = "bid-attachments/{$created->id}/" . basename($att['path']);
+                        Storage::disk('local')->move($att['path'], $finalPath);
+                        $moved[] = array_merge($att, ['path' => $finalPath]);
+                    }
+                    $created->update(['attachments' => $moved]);
+                }
+
+                return $created;
+            });
+        } catch (\Throwable $e) {
+            // DB rolled back; staged files never made it to a bid folder.
+            foreach ($stagedAttachments as $att) {
+                Storage::disk('local')->delete($att['path']);
+            }
+            throw $e;
+        }
+
+        if (is_string($result)) {
+            foreach ($stagedAttachments as $att) {
+                Storage::disk('local')->delete($att['path']);
+            }
+            return back()->withErrors(['bid' => $result])->withInput();
+        }
+
+        $redirect = redirect()
             ->route('dashboard.rfqs.show', ['id' => $rfqModel->id])
             ->with('status', __('bids.submitted_successfully'));
+
+        // Soft note: if the bidder is a registered supplier of the buyer's
+        // company, the bid is still accepted but we flag it so the supplier
+        // knows the buyer will see a "registered supplier" badge on their bid.
+        if (CompanySupplier::isLocked((int) $user->company_id, (int) $rfqModel->company_id)) {
+            $redirect->with('warning', __('bids.registered_supplier_notice'));
+        }
+
+        return $redirect;
     }
 
     public function accept(string $id): RedirectResponse

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Web;
 
 use App\Enums\CompanyStatus;
-use App\Enums\CompanyType;
 use App\Enums\VerificationLevel;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
@@ -53,8 +52,13 @@ class SupplierProfileController extends Controller
         // with a usable in-country value score above a chosen threshold.
         $icvMin        = (int) $request->query('icv_min', 0);
 
+        // Any active company that has registered at least one category is
+        // surfaced as supply-capable — company.type is no longer the gate
+        // because every company can both buy AND sell. The category
+        // assignment (admin-approved) is what marks a company as offering
+        // something in this taxonomy.
         $base = Company::query()
-            ->whereIn('type', [CompanyType::SUPPLIER->value, CompanyType::SERVICE_PROVIDER->value])
+            ->whereHas('categories')
             ->where('status', CompanyStatus::ACTIVE->value)
             // Public view shows Bronze+ only — Unverified profiles stay
             // private until they prove they're real.
@@ -188,8 +192,12 @@ class SupplierProfileController extends Controller
         $minRating     = (float) $request->query('rating', 0);
         $hasCerts      = $request->boolean('has_certs');
 
+        // See publicDirectory() — any active company with at least one
+        // assigned category is treated as supply-capable. Removing the
+        // company.type filter so buyer-typed companies that also sell
+        // become visible to other buyers in the directory.
         $base = Company::query()
-            ->whereIn('type', [CompanyType::SUPPLIER->value, CompanyType::SERVICE_PROVIDER->value])
+            ->whereHas('categories')
             ->where('status', CompanyStatus::ACTIVE->value);
 
         if ($q !== '') {

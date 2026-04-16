@@ -31,10 +31,32 @@ class PerformanceController extends Controller
 
         $companyId = $this->currentCompanyId();
 
-        // Routes by role + company type so a company_manager (or any other
-        // cross-cutting role) attached to a supplier company sees the
-        // supplier KPIs instead of the empty buyer dashboard.
-        return $this->isSupplierSideUser()
+        // Per-company activity detection (replaces isSupplierSideUser).
+        // A dual-role company sees whichever side has more activity; both
+        // sides are valid — the user can navigate to the other via the
+        // sidebar. The previous role-only dispatch hid supplier KPIs from
+        // cross-cutting roles (company_manager) of dual-role companies.
+        $hasSupplierBids = $companyId
+            ? Bid::where('company_id', $companyId)->exists()
+            : false;
+        $hasBuyerRfqs = $companyId
+            ? Rfq::where('company_id', $companyId)->exists()
+            : false;
+
+        // Prefer the side with activity. When both sides are empty (new
+        // account, no data yet) fall back to the user's declared role so a
+        // supplier seat still sees supplier KPIs on day one. When both
+        // sides have activity, keep buyer as the safer default — contracts
+        // + spend are meaningful to any company.
+        if ($hasSupplierBids && !$hasBuyerRfqs) {
+            $showSupplier = true;
+        } elseif (!$hasSupplierBids && !$hasBuyerRfqs) {
+            $showSupplier = auth()->user()?->role?->value === 'supplier';
+        } else {
+            $showSupplier = false;
+        }
+
+        return $showSupplier
             ? $this->supplierPerformance($companyId)
             : $this->buyerPerformance($companyId);
     }

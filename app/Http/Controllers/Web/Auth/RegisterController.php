@@ -197,7 +197,12 @@ class RegisterController extends Controller
         $data = $request->validate([
             'company_name_en' => ['required', 'string', 'max:255'],
             'company_name_ar' => ['nullable', 'string', 'max:255'],
-            'company_type'    => ['required', 'string', \Illuminate\Validation\Rule::in($allowedTypes)],
+            // Optional — picks the primary descriptor for the company's
+            // business activity. Every company can both BUY and SELL on
+            // the platform regardless of this value (it is a profile
+            // descriptor, not an authorization gate). Defaults to BUYER
+            // when not provided so the column stays populated.
+            'company_type'    => ['nullable', 'string', \Illuminate\Validation\Rule::in($allowedTypes)],
             'trade_license'   => ['required', 'string', 'max:100', 'unique:companies,registration_number'],
             'tax_number'      => ['nullable', 'string', 'max:100'],
             'country'         => ['required', 'string', 'max:10'],
@@ -214,9 +219,9 @@ class RegisterController extends Controller
             'establishment_type'  => ['required', 'in:mainland,free_zone'],
             'free_zone_authority' => ['required_if:establishment_type,free_zone', 'nullable', 'string', \Illuminate\Validation\Rule::in(array_map(fn ($c) => $c->value, \App\Enums\FreeZoneAuthority::cases()))],
 
-            'trade_license_file'    => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
-            'tax_certificate_file'  => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
-            'company_profile_file'  => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'trade_license_file'    => ['nullable', 'file', 'max:5120', ...\App\Rules\SafeUpload::pdfOrImage()],
+            'tax_certificate_file'  => ['nullable', 'file', 'max:5120', ...\App\Rules\SafeUpload::pdfOrImage()],
+            'company_profile_file'  => ['nullable', 'file', 'max:5120', ...\App\Rules\SafeUpload::pdfOrImage()],
 
             'manager_name'     => ['required', 'string', 'max:255'],
             'manager_email'    => ['required', 'email', 'max:255', 'unique:users,email'],
@@ -259,7 +264,7 @@ class RegisterController extends Controller
             'company_name_ar'     => $data['company_name_ar'] ?? null,
             'registration_number' => $data['trade_license'],
             'tax_number'          => $data['tax_number'] ?? null,
-            'company_type'        => CompanyType::from($data['company_type']),
+            'company_type'        => CompanyType::from($data['company_type'] ?? CompanyType::BUYER->value),
             'company_email'       => $data['email'],
             'company_phone'       => $data['phone'],
             'website'             => $data['website'] ?? null,

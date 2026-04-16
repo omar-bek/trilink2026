@@ -106,6 +106,22 @@ class DashboardController extends Controller
             ),
         ];
 
+        // Dual-role: when this company also submits bids, surface supplier
+        // KPIs so a buyer-role user sees both sides without switching pages.
+        $supplierBidCount = $companyId
+            ? Bid::where('company_id', $companyId)
+                ->whereIn('status', [BidStatus::SUBMITTED->value, BidStatus::UNDER_REVIEW->value])
+                ->count()
+            : 0;
+        if ($supplierBidCount > 0) {
+            $wonCount  = Bid::where('company_id', $companyId)->where('status', BidStatus::ACCEPTED->value)->count();
+            $totalBids = Bid::where('company_id', $companyId)->count();
+            $winRate   = $totalBids > 0 ? round(($wonCount / $totalBids) * 100, 1) : 0;
+
+            $stats[] = $this->stat($supplierBidCount, __('supplier.active_bids'), 'purple', 'M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25');
+            $stats[] = $this->stat($winRate . '%', __('supplier.win_rate'), 'green', 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22');
+        }
+
         // Active RFQs (primary list)
         $rfqs = Rfq::query()
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
@@ -953,6 +969,22 @@ class DashboardController extends Controller
             $this->stat($teamSize, __('manager.team_size'), 'blue', 'M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952'),
             $this->stat($this->shortMoney($monthGmv), __('manager.month_gmv'), 'green', 'M2.25 18L9 11.25l4.306 4.307'),
         ];
+
+        // Dual-role: when this company also submits bids, surface supplier
+        // KPIs so the manager sees both sides without switching pages.
+        $supplierBidCount = $companyId
+            ? Bid::where('company_id', $companyId)
+                ->whereIn('status', [BidStatus::SUBMITTED->value, BidStatus::UNDER_REVIEW->value])
+                ->count()
+            : 0;
+        if ($supplierBidCount > 0) {
+            $wonCount  = Bid::where('company_id', $companyId)->where('status', BidStatus::ACCEPTED->value)->count();
+            $totalBids = Bid::where('company_id', $companyId)->count();
+            $winRate   = $totalBids > 0 ? round(($wonCount / $totalBids) * 100, 1) : 0;
+
+            $stats[] = $this->stat($supplierBidCount, __('supplier.active_bids'), 'purple', 'M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25');
+            $stats[] = $this->stat($winRate . '%', __('supplier.win_rate'), 'green', 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22');
+        }
 
         $primaryList = [
             'title'          => __('manager.prs_awaiting_approval'),

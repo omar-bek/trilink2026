@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(append: [
             \App\Http\Middleware\SetLocale::class,
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
 
         // When the `guest` middleware blocks an already-authenticated user,
@@ -57,6 +58,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        // Forward every reported exception to Sentry. The SDK auto-skips
+        // when SENTRY_LARAVEL_DSN is empty, so local and CI runs are
+        // unaffected — only production with a real DSN sends events.
+        \Sentry\Laravel\Integration::handles($exceptions);
+
         $exceptions->shouldRenderJsonWhen(function ($request) {
             return $request->is('api/*') || $request->expectsJson();
         });

@@ -40,26 +40,12 @@ class RfqController extends Controller
         //   - tab=mine        → RFQs OUR company published
         //   - tab=marketplace → RFQs from OTHER companies we can bid on
         //
-        // Default tab is driven by isSupplierSideUser() which combines the
-        // user's role AND their company type — pure supplier-side roles
-        // land on the marketplace, AND so does any cross-cutting role
-        // (company_manager, finance, sales, …) attached to a supplier
-        // company. Both tabs are always reachable via the explicit ?tab=
-        // query string regardless, and the buyer-side index renders both
-        // counts so the user always sees the alternative pivot.
-        $tab = $request->query('tab');
-        if (! in_array($tab, ['mine', 'marketplace'], true)) {
-            // Backwards compatibility: ?marketplace=1 still routes to marketplace.
-            if ($request->boolean('marketplace')) {
-                $tab = 'marketplace';
-            } else {
-                $tab = $this->isSupplierSideUser() ? 'marketplace' : 'mine';
-            }
-        }
-
-        // Headline counts for the view-switcher tabs. Computed once here so
-        // both branches can pass them to their respective views without
-        // duplicating the SQL.
+        // Default tab is whichever side the company has more activity on,
+        // so a dual-role tenant lands on the busier side but can always
+        // switch with one click. The previous role-based dispatch
+        // (isSupplierSideUser) hid the other side from cross-cutting
+        // roles attached to dual-role companies — now both sides are
+        // always reachable from a single, unified index page.
         $tabCounts = [
             'mine'        => $companyId
                 ? Rfq::query()->where('company_id', $companyId)->count()
@@ -71,6 +57,16 @@ class RfqController extends Controller
                     ->count()
                 : Rfq::query()->where('status', RfqStatus::OPEN->value)->count(),
         ];
+
+        $tab = $request->query('tab');
+        if (! in_array($tab, ['mine', 'marketplace'], true)) {
+            // Backwards compatibility: ?marketplace=1 still routes to marketplace.
+            if ($request->boolean('marketplace')) {
+                $tab = 'marketplace';
+            } else {
+                $tab = $tabCounts['marketplace'] > $tabCounts['mine'] ? 'marketplace' : 'mine';
+            }
+        }
 
         if ($tab === 'marketplace') {
             return $this->supplierIndex($request, $user, $companyId, $tabCounts);
@@ -253,14 +249,7 @@ class RfqController extends Controller
                 $deadline = $rfq->deadline;
                 $daysLeft = $deadline ? max(0, (int) now()->startOfDay()->diffInDays($deadline->startOfDay(), false)) : null;
 
-                $location = $rfq->delivery_location;
-                if (is_array($location)) {
-                    $location = trim(implode(', ', array_filter([
-                        $location['city'] ?? null,
-                        $location['country'] ?? null,
-                    ]))) ?: '—';
-                }
-                $location = $location ?: '—';
+                $location = $this->formatLocation($rfq->delivery_location);
 
                 $quantity = collect($rfq->items ?? [])->sum(fn ($i) => (float) ($i['qty'] ?? $i['quantity'] ?? 0));
                 $unit     = collect($rfq->items ?? [])->first()['unit'] ?? '';
@@ -318,12 +307,8 @@ class RfqController extends Controller
             'filter'      => $filter,
             'query'       => $query,
             'new_this_week' => $newThisWeek,
-            // Headline counts for the view-switcher tabs at the top of the
-            // page. When supplierIndex() is reached without going through
-            // index() (legacy callers), tabCounts is null and the view hides
-            // the switcher, falling back to the original supplier-only UI.
-            'tab_counts'  => $tabCounts,
-            'active_tab'  => 'marketplace',
+            'tabCounts'   => $tabCounts,
+            'activeTab'   => 'marketplace',
         ]);
     }
 
@@ -333,25 +318,32 @@ class RfqController extends Controller
 
         $user = auth()->user();
 
-        // Suppliers see a bid-preparation view, not the buyer's manage-bids
-        // panel. The supplier-side check covers both pure supplier roles
-        // and cross-cutting roles (company_manager, finance, …) attached to
-        // a supplier company.
-        if ($this->isSupplierSideUser()) {
-            return $this->supplierShow($id, $user);
-        }
-
+        // Per-RFQ role resolution (replaces the old isSupplierSideUser
+        // dispatch). We are the BUYER when we own this RFQ; the SUPPLIER
+        // when we don't (we're browsing the marketplace). A dual-role
+        // company sees the right layout per RFQ automatically.
         $rfq = $this->findOrFail($id);
+        $rfq->loadMissing(['bids.company', 'category', 'company']);
+
+        $myCompanyId = $user?->company_id;
+        $isRfqOwner  = $myCompanyId && (int) $rfq->company_id === (int) $myCompanyId;
+
+        // Admin / government users always get the owner (buyer) view.
+        $userRole = $user?->role?->value ?? '';
+        if (in_array($userRole, ['admin', 'government'], true)) {
+            $isRfqOwner = true;
+        }
 
         // IDOR guard: the buyer-side manage-bids panel exposes every
         // competitor bid (price, supplier identity, payment terms, AI
         // scores). Only the RFQ owner company OR admin / government may
         // see it. Without this any user with rfq.view could enumerate
         // RFQ IDs and harvest competitive intelligence.
-        $this->authorizeRfqOwner($rfq, $user);
+        if ($isRfqOwner) {
+            $this->authorizeRfqOwner($rfq, $user);
+        }
 
-        $rfq->loadMissing(['bids.company']);
-
+        $currency = $rfq->currency ?: 'AED';
         $items = collect($rfq->items ?? []);
         $totalQty = $items->sum(fn ($i) => (float) ($i['qty'] ?? $i['quantity'] ?? 0));
         $unit = $items->first()['unit'] ?? __('rfq.unit_default');
@@ -364,114 +356,10 @@ class RfqController extends Controller
             return is_array($specs) ? array_values(array_filter($specs)) : [];
         })->all();
 
-        $bidsAmounts = $rfq->bids->map(fn ($b) => (float) $b->price)->filter();
+        $bidsAmounts    = $rfq->bids->map(fn ($b) => (float) $b->price)->filter();
         $bidsDeliveries = $rfq->bids->map(fn ($b) => (int) $b->delivery_time_days)->filter();
 
-        $bids = $rfq->bids->sortByDesc(function ($b) {
-            $score = $b->ai_score['overall'] ?? null;
-            return $score ?? 0;
-        })->values()->map(function ($bid, $idx) use ($rfq) {
-            $name = $bid->company?->name ?? __('common.anonymous');
-            $aiScore = $bid->ai_score['overall'] ?? null;
-            $compliance = $bid->ai_score['compliance'] ?? $aiScore;
-            $rating = $bid->ai_score['rating'] ?? null;
-
-            return [
-                'id'          => $bid->id,
-                'code'        => $this->initials($name),
-                'name'        => $name,
-                'rating'      => $rating ? number_format($rating, 1) : '—',
-                'compliance'  => $compliance !== null ? (int) $compliance : null,
-                'price'       => $this->money((float) $bid->price, $bid->currency ?? 'AED'),
-                'days'        => (int) $bid->delivery_time_days,
-                'recommended' => $idx === 0 && $aiScore !== null,
-            ];
-        })->all();
-
-        $deadline = $rfq->deadline;
-
-        $rfqData = [
-            'id'                  => $rfq->rfq_number,
-            'numeric_id'          => $rfq->id,
-            'title'               => $rfq->title,
-            'status'              => $this->mapRfqStatus($rfq),
-            'published'           => $this->longDate($rfq->created_at),
-            'bids_count'          => $rfq->bids->count(),
-            'description'         => $rfq->description ?? '',
-            'category'            => $rfq->category?->name ?? __('rfq.category_general'),
-            'quantity'            => $totalQty > 0
-                ? rtrim(rtrim(number_format($totalQty, 2), '0'), '.') . ' ' . $unit
-                : '—',
-            'location'            => $rfq->delivery_location ?? '—',
-            'deadline'            => $this->longDate($deadline),
-            'tech_specs'          => $techSpecs,
-            'bids'                => $bids,
-            'budget'              => $rfq->budget ? $this->money((float) $rfq->budget, $rfq->currency ?? 'AED') : null,
-            'budget_min'          => $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->min(), $rfq->currency ?? 'AED') : null,
-            'budget_max'          => $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->max(), $rfq->currency ?? 'AED') : null,
-            'avg_market_price'    => $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->avg(), $rfq->currency ?? 'AED') : null,
-            'typical_delivery'    => $bidsDeliveries->isNotEmpty()
-                ? $bidsDeliveries->min() . '-' . $bidsDeliveries->max() . ' ' . __('rfq.days')
-                : null,
-            'target_role'         => $rfq->target_role ?? 'supplier',
-            'attachments'         => [],
-            'created_at'          => $rfq->created_at,
-            'deadline_raw'        => $deadline,
-            'is_auction'          => (bool) ($rfq->is_auction ?? false),
-            'is_owner'            => (bool) ($user && $user->company_id && $user->company_id === $rfq->company_id),
-            'can_enable_auction'  => (bool) ($user && $user->hasPermission('rfq.edit') && $user->company_id === $rfq->company_id && ! ($rfq->is_auction ?? false)),
-        ];
-
-        return view('dashboard.rfqs.show', ['rfq' => $rfqData]);
-    }
-
-    /**
-     * Supplier-side RFQ detail page: hides the "manage bids" panel the buyer
-     * sees and shows instead (a) a Submit Bid CTA, (b) a Buyer Information
-     * card in the sidebar, (c) a Competition summary (bid count + avg/lowest)
-     * and (d) whether the supplier already submitted a bid on this RFQ.
-     */
-    private function supplierShow(string $id, $user): View
-    {
-        $rfq = $this->findOrFail($id);
-        $rfq->loadMissing(['bids.company', 'category', 'company']);
-
-        $items = collect($rfq->items ?? []);
-        $totalQty = $items->sum(fn ($i) => (float) ($i['qty'] ?? $i['quantity'] ?? 0));
-        $unit = $items->first()['unit'] ?? __('rfq.unit_default');
-
-        $currency = $rfq->currency ?: 'AED';
-        $bidsAmounts = $rfq->bids->map(fn ($b) => (float) $b->price)->filter();
-
-        // Competition numbers, safe to show without leaking bidder identities.
-        $myBid = $rfq->bids->firstWhere('company_id', $user->company_id);
-        $myPosition = null;
-        if ($myBid) {
-            $sorted = $rfq->bids->sortBy('price')->values();
-            $myPosition = $sorted->search(fn ($b) => $b->id === $myBid->id) + 1;
-        }
-
-        $deadline    = $rfq->deadline;
-        $daysLeft    = $deadline ? max(0, (int) now()->startOfDay()->diffInDays($deadline->startOfDay(), false)) : null;
-
-        // Real category-based match score (Phase 0 / task 0.4). Loads the
-        // viewing supplier's company once with categories eager-loaded so the
-        // scoring method doesn't pay an N+1 on the pivot.
-        $supplierCompany = $user->company_id
-            ? \App\Models\Company::with('categories:id,parent_id')->find($user->company_id)
-            : null;
-        $matchScore = $supplierCompany ? $rfq->matchScoreFor($supplierCompany) : 0;
-
-        $location = $rfq->delivery_location;
-        if (is_array($location)) {
-            $location = trim(implode(', ', array_filter([
-                $location['address'] ?? null,
-                $location['city'] ?? null,
-                $location['country'] ?? null,
-            ]))) ?: '—';
-        }
-
-        // Line items with per-row totals for the Details tab.
+        // Per-line rows rendered in the Details tab for both sides.
         $lineItems = $items->values()->map(function ($item) use ($currency) {
             $qty   = (float) ($item['qty'] ?? $item['quantity'] ?? 0);
             $price = isset($item['price']) ? (float) $item['price'] : 0;
@@ -486,40 +374,133 @@ class RfqController extends Controller
             ];
         })->all();
 
-        $data = [
-            'id'             => $rfq->rfq_number,
-            'numeric_id'     => $rfq->id,
-            'title'          => $rfq->title,
-            'status'         => $this->mapRfqStatus($rfq),
-            'match'          => $matchScore,
-            'description'    => $rfq->description ?? '',
-            'category'       => $rfq->category?->name ?? __('rfq.category_general'),
-            'budget'         => $this->money((float) $rfq->budget, $currency),
-            'deadline'       => $this->longDate($deadline),
-            'deadline_time'  => $deadline?->format('h:i A') . ' GST',
-            'days_left'      => $daysLeft,
-            'location'       => $location,
-            'quantity'       => $totalQty > 0 ? rtrim(rtrim(number_format($totalQty, 2), '0'), '.') . ' ' . $unit : '—',
-            'unit'           => $unit,
-            'items'          => $lineItems,
-            'delivery_terms' => collect($rfq->items ?? [])->first()['delivery_terms'] ?? 'DDP - Delivered Duty Paid',
-            'payment_terms'  => '30% Advance, 70% on Delivery',
-            'required_date'  => $this->longDate($rfq->deadline),
-            'buyer' => $this->buildBuyerCard($rfq),
-            'competition' => [
-                'count'     => $rfq->bids->count(),
-                // Average is privacy-aware: only revealed once the supplier
-                // has submitted their own bid on this RFQ. Otherwise we'd
-                // leak the cluster of competing offers to a non-bidder.
-                'average'   => $myBid && $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->avg(), $currency) : null,
-                'lowest'    => $myBid && $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->min(), $currency) : null,
-                'my_bid_id' => $myBid?->id,
+        // Owner-only bids list. Suppliers never see it (IDOR / intel leak).
+        $bids = [];
+        if ($isRfqOwner) {
+            $bids = $rfq->bids->sortByDesc(function ($b) {
+                $score = $b->ai_score['overall'] ?? null;
+                return $score ?? 0;
+            })->values()->map(function ($bid, $idx) use ($currency) {
+                $name = $bid->company?->name ?? __('common.anonymous');
+                $aiScore = $bid->ai_score['overall'] ?? null;
+                $compliance = $bid->ai_score['compliance'] ?? $aiScore;
+                $rating = $bid->ai_score['rating'] ?? null;
+
+                return [
+                    'id'          => $bid->id,
+                    'code'        => $this->initials($name),
+                    'name'        => $name,
+                    'rating'      => $rating ? number_format($rating, 1) : '—',
+                    'compliance'  => $compliance !== null ? (int) $compliance : null,
+                    'price'       => $this->money((float) $bid->price, $bid->currency ?? $currency),
+                    'days'        => (int) $bid->delivery_time_days,
+                    'recommended' => $idx === 0 && $aiScore !== null,
+                ];
+            })->all();
+        }
+
+        $deadline = $rfq->deadline;
+        $daysLeft = $deadline ? max(0, (int) now()->startOfDay()->diffInDays($deadline->startOfDay(), false)) : null;
+
+        // Supplier-side extras: my bid, match score, buyer card.
+        $myBid       = null;
+        $myPosition  = null;
+        $matchScore  = 0;
+        $buyerCard   = null;
+        if (!$isRfqOwner && $user?->company_id) {
+            $myBid = $rfq->bids->firstWhere('company_id', $user->company_id);
+            if ($myBid) {
+                $sorted = $rfq->bids->sortBy('price')->values();
+                $myPosition = $sorted->search(fn ($b) => $b->id === $myBid->id) + 1;
+            }
+            $supplierCompany = \App\Models\Company::with('categories:id,parent_id')->find($user->company_id);
+            $matchScore = $supplierCompany ? $rfq->matchScoreFor($supplierCompany) : 0;
+        }
+        if (!$isRfqOwner) {
+            $buyerCard = $this->buildBuyerCard($rfq);
+        }
+
+        // Fallback terms pulled from item metadata when the RFQ itself
+        // does not carry them directly on the model.
+        $firstItem      = $items->first() ?: [];
+        $deliveryTerms  = $rfq->delivery_terms ?? $firstItem['delivery_terms'] ?? null;
+        $paymentTerms   = $rfq->payment_terms  ?? $firstItem['payment_terms']  ?? null;
+
+        $rfqData = [
+            'id'                 => $rfq->rfq_number,
+            'numeric_id'         => $rfq->id,
+            'title'              => $rfq->title,
+            'status'             => $this->mapRfqStatus($rfq),
+            'published'          => $this->longDate($rfq->created_at),
+            'bids_count'         => $rfq->bids->count(),
+            'description'        => $rfq->description ?? '',
+            'category'           => $rfq->category?->name ?? __('rfq.category_general'),
+            'quantity'           => $totalQty > 0
+                ? rtrim(rtrim(number_format($totalQty, 2), '0'), '.') . ' ' . $unit
+                : '—',
+            'unit'               => $unit,
+            'location'           => $this->formatLocation($rfq->delivery_location),
+            'deadline'           => $this->longDate($deadline),
+            'deadline_time'      => $deadline?->format('h:i A') . ' GST',
+            'deadline_raw'       => $deadline,
+            'days_left'          => $daysLeft,
+            'tech_specs'         => $techSpecs,
+            'items'              => $lineItems,
+            'bids'               => $bids,
+            'budget'             => $rfq->budget ? $this->money((float) $rfq->budget, $currency) : null,
+            'budget_min'         => $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->min(), $currency) : null,
+            'budget_max'         => $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->max(), $currency) : null,
+            'avg_market_price'   => $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->avg(), $currency) : null,
+            'typical_delivery'   => $bidsDeliveries->isNotEmpty()
+                ? $bidsDeliveries->min() . '-' . $bidsDeliveries->max() . ' ' . __('rfq.days')
+                : null,
+            'target_role'        => $rfq->target_role ?? 'supplier',
+            'attachments'        => $this->buildAttachments($rfq),
+            'created_at'         => $rfq->created_at,
+            'is_auction'         => (bool) ($rfq->is_auction ?? false),
+            'is_owner'           => $isRfqOwner,
+            'can_enable_auction' => (bool) ($user && $user->hasPermission('rfq.edit') && $isRfqOwner && ! ($rfq->is_auction ?? false)),
+            'delivery_terms'     => $deliveryTerms,
+            'payment_terms'      => $paymentTerms,
+            'required_date'      => $this->longDate($deadline),
+            'match'              => $matchScore,
+            'buyer'              => $buyerCard,
+            'competition'        => [
+                'count'       => $rfq->bids->count(),
+                // Privacy-aware: aggregates revealed only after the
+                // supplier has themselves committed a bid.
+                'average'     => $myBid && $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->avg(), $currency) : null,
+                'lowest'      => $myBid && $bidsAmounts->isNotEmpty() ? $this->money($bidsAmounts->min(), $currency) : null,
+                'my_bid_id'   => $myBid?->id,
                 'my_position' => $myPosition,
             ],
         ];
 
-        return view('dashboard.rfqs.show-supplier', ['rfq' => $data]);
+        return view('dashboard.rfqs.show', ['rfq' => $rfqData]);
     }
+
+    /**
+     * Build the attachments list from stored RFQ documents. Returns an
+     * empty array when the column/relation isn't present so the view can
+     * render an empty state rather than hitting an undefined index.
+     */
+    private function buildAttachments(Rfq $rfq): array
+    {
+        $raw = $rfq->attachments ?? $rfq->documents ?? [];
+        if (!is_array($raw)) {
+            return [];
+        }
+        return array_values(array_map(function ($file) {
+            if (is_string($file)) {
+                return ['name' => basename($file), 'url' => $file];
+            }
+            return [
+                'name' => $file['name'] ?? basename($file['path'] ?? $file['url'] ?? ''),
+                'url'  => $file['url'] ?? (isset($file['path']) ? \Illuminate\Support\Facades\Storage::url($file['path']) : '#'),
+            ];
+        }, $raw));
+    }
+
 
     /**
      * Build the "Buyer Information" card on the supplier RFQ detail page
@@ -577,6 +558,9 @@ class RfqController extends Controller
     {
         $user = auth()->user();
         abort_unless($user?->hasPermission('bid.submit'), 403);
+        // Admins bypass permission checks, but they have no company and
+        // must not transact on behalf of one. Block the bid form outright.
+        abort_if($user->isAdmin() || !$user->company_id, 403, 'Only supplier/buyer accounts can submit bids.');
 
         $rfq = $this->findOrFail($id);
         $rfq->loadMissing(['company', 'category', 'bids']);

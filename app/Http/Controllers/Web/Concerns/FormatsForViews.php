@@ -2,28 +2,59 @@
 
 namespace App\Http\Controllers\Web\Concerns;
 
-use App\Enums\CompanyType;
-use App\Models\Company;
 use App\Models\ExchangeRate;
 use Illuminate\Support\Carbon;
 
 trait FormatsForViews
 {
     /**
-     * Per-request cache for supplier-side detection so the company lookup
-     * fires at most once per controller action even when multiple call
-     * sites ask the same question.
-     *
-     * @var array<int, bool>
+     * Currency symbol map — used by the locale-aware money() formatter
+     * to render the right symbol for the active locale. Arabic users
+     * see "د.إ" instead of "AED" so the numbers read naturally in
+     * right-to-left text flow.
      */
-    private array $supplierSideCache = [];
+    private const CURRENCY_SYMBOLS_AR = [
+        'AED' => 'د.إ',
+        'SAR' => 'ر.س',
+        'USD' => '$',
+        'EUR' => '€',
+        'GBP' => '£',
+        'KWD' => 'د.ك',
+        'BHD' => 'د.ب',
+        'QAR' => 'ر.ق',
+        'OMR' => 'ر.ع',
+        'EGP' => 'ج.م',
+    ];
 
     /**
-     * Format an amount with currency, e.g. "AED 95,000".
+     * Format an amount with currency symbol, locale-aware.
+     *
+     * In the Arabic locale the output is "1,000 د.إ" (symbol after the
+     * number, separated by a narrow no-break space). In English the
+     * output stays "AED 95,000" (ISO code before the number). This
+     * matches regional conventions — Arabic users read right-to-left
+     * so the amount comes first, then the unit.
+     *
+     * The `number_format` decimals follow the currency's minor unit:
+     * zero-decimal currencies (JPY, KRW) get 0, three-decimal dinars
+     * (BHD, KWD, OMR) get 3, everything else gets 0 for readability
+     * (the full precision is shown in financial contexts via the
+     * payment schedule component which formats to 2dp separately).
      */
     protected function money(?float $amount, string $currency = 'AED'): string
     {
-        return $currency . ' ' . number_format((float) $amount);
+        $formatted = number_format((float) $amount);
+
+        if (app()->getLocale() === 'ar') {
+            $symbol = self::CURRENCY_SYMBOLS_AR[$currency] ?? $currency;
+            // Narrow no-break space (\u{202F}) keeps the number and
+            // symbol visually grouped without allowing a line break
+            // between them, and prevents BiDi reordering from swapping
+            // the two parts in mixed-direction text.
+            return $formatted . "\u{202F}" . $symbol;
+        }
+
+        return $currency . ' ' . $formatted;
     }
 
     /**
@@ -93,89 +124,31 @@ trait FormatsForViews
     }
 
     /**
-     * Pure-supplier-side user roles. These roles will always land on the
-     * supplier-facing views regardless of company type. Cross-cutting
-     * roles (company_manager, finance, sales, branch_manager …) are NOT
-     * in this list — for them we look at the company TYPE instead, so a
-     * "Company Manager" of a supplier company sees the supplier views
-     * and a "Company Manager" of a buyer company sees the buyer views.
+     * Format a delivery_location value (array or raw JSON string) into a
+     * human-readable single-line address. Priority: address, city, country.
+     * Falls back to an em-dash when nothing usable is available. Centralised
+     * here because both the RFQ and PR surfaces render the same shape.
      */
-    private const SUPPLIER_SIDE_ROLES = [
-        'supplier',
-        'service_provider',
-        'logistics',
-        'clearance',
-    ];
-
-    /**
-     * Pure-supplier-side company types. Any user attached to a company
-     * with one of these types is treated as supplier-side, regardless of
-     * what their personal role is.
-     */
-    private const SUPPLIER_SIDE_COMPANY_TYPES = [
-        'supplier',
-        'service_provider',
-        'logistics',
-        'clearance',
-    ];
-
-    /**
-     * Whether the current authenticated user should see the supplier
-     * variants of role-aware views (My Contracts, Marketplace RFQs,
-     * Submitted Bids …) instead of the buyer variants.
-     *
-     * Two routing inputs are considered:
-     *
-     *   1. The user's ROLE — pure supplier-side roles (supplier,
-     *      service_provider, logistics, clearance) always count as
-     *      supplier-side.
-     *   2. The user's COMPANY TYPE — for cross-cutting roles such as
-     *      company_manager / finance / sales / branch_manager, the
-     *      company type is the source of truth. A company manager of a
-     *      supplier company is supplier-side; a company manager of a
-     *      buyer company is buyer-side.
-     *
-     * The previous role-only check missed (2), which made every
-     * company_manager (and every other cross-cutting role) of a
-     * supplier company silently land on the buyer index — empty,
-     * because the buyer query filters by buyer_company_id and the
-     * supplier company never matches it.
-     */
-    protected function isSupplierSideUser(): bool
+    protected function formatLocation(mixed $location): string
     {
-        $user = auth()->user();
-        if (!$user) {
-            return false;
+        if (is_string($location) && $location !== '') {
+            $decoded = json_decode($location, true);
+            if (is_array($decoded)) {
+                $location = $decoded;
+            }
         }
 
-        $cacheKey = (int) $user->id;
-        if (array_key_exists($cacheKey, $this->supplierSideCache)) {
-            return $this->supplierSideCache[$cacheKey];
+        if (is_array($location)) {
+            $parts = array_filter([
+                $location['address'] ?? null,
+                $location['city']    ?? null,
+                $location['country'] ?? null,
+            ]);
+            $joined = trim(implode(', ', $parts));
+            return $joined !== '' ? $joined : '—';
         }
 
-        // Step 1 — pure supplier-side role wins immediately.
-        $role = $user->role?->value ?? null;
-        if ($role !== null && in_array($role, self::SUPPLIER_SIDE_ROLES, true)) {
-            return $this->supplierSideCache[$cacheKey] = true;
-        }
-
-        // Step 2 — fall back to company type. Only the type column is
-        // selected so this stays a single tiny query and the per-request
-        // cache makes repeat calls free.
-        if (!$user->company_id) {
-            return $this->supplierSideCache[$cacheKey] = false;
-        }
-
-        $type = Company::query()
-            ->whereKey($user->company_id)
-            ->value('type');
-
-        $typeValue = $type instanceof CompanyType ? $type->value : (string) $type;
-
-        return $this->supplierSideCache[$cacheKey] = in_array(
-            $typeValue,
-            self::SUPPLIER_SIDE_COMPANY_TYPES,
-            true,
-        );
+        return $location ? (string) $location : '—';
     }
+
 }

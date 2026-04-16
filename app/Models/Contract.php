@@ -39,6 +39,11 @@ class Contract extends Model
         // bank account is opened. Lets the contract show page render the
         // escrow status panel without re-querying escrow_accounts.
         'escrow_account_id',
+        // Phase 6 (UAE Compliance Roadmap) — cached result of the
+        // SignatureGradeResolver for this contract. Stamped once at
+        // first sign so the contract show page / verify endpoint can
+        // read it without re-running the resolver per request.
+        'signature_grade_required',
     ];
 
     protected function casts(): array
@@ -60,6 +65,29 @@ class Contract extends Model
     public function buyerCompany(): BelongsTo
     {
         return $this->belongsTo(Company::class, 'buyer_company_id');
+    }
+
+    /**
+     * Hydrate the JSON `parties` column into typed value objects. The raw
+     * column stays an array (cast above) so existing code keeps working;
+     * callers that prefer typed access ask for this accessor instead of
+     * `$contract->parties`.
+     *
+     * @return list<\App\ValueObjects\ContractParty>
+     */
+    public function partyDetails(): array
+    {
+        return \App\ValueObjects\ContractParty::collection($this->parties);
+    }
+
+    /**
+     * Same idea for the `signatures` JSON column. Read-only typed view.
+     *
+     * @return list<\App\ValueObjects\ContractSignature>
+     */
+    public function signatureDetails(): array
+    {
+        return \App\ValueObjects\ContractSignature::collection($this->signatures);
     }
 
     public function branch(): BelongsTo

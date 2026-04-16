@@ -28,13 +28,16 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
+// Per-route throttles on credential-handling endpoints. A shared bucket on
+// the prefix would let a noisy register flood starve login attempts from
+// honest users on the same IP, so each route gets its own budget.
 Route::prefix('auth')->group(function () {
-    Route::post('register-company', [AuthController::class, 'registerCompany']);
-    Route::post('register', [AuthController::class, 'register']);
-    Route::post('login', [AuthController::class, 'login']);
-    Route::post('refresh', [AuthController::class, 'refresh']);
-    Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('reset-password', [AuthController::class, 'resetPassword']);
+    Route::post('register-company', [AuthController::class, 'registerCompany'])->middleware('throttle:5,60');
+    Route::post('register', [AuthController::class, 'register'])->middleware('throttle:5,60');
+    Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,15');
+    Route::post('refresh', [AuthController::class, 'refresh'])->middleware('throttle:30,15');
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:3,15');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,15');
 });
 
 Route::get('health', fn () => response()->json(['status' => 'ok', 'timestamp' => now()]));

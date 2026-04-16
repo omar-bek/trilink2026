@@ -63,6 +63,10 @@ class Company extends Model
         // values that should receive contract events. Null = legacy
         // "notify everyone in the company" behaviour.
         'notification_recipient_roles',
+        // Phase 7 (UAE Compliance Roadmap) — Corporate Tax (9%) tracking.
+        'corporate_tax_number',
+        'corporate_tax_status',
+        'corporate_tax_registered_at',
     ];
 
     protected function casts(): array
@@ -91,7 +95,40 @@ class Company extends Model
             // Notification recipient role filter — JSON list of
             // UserRole values that opt in to contract events.
             'notification_recipient_roles' => 'array',
+            // Phase 7 (UAE Compliance Roadmap) — Corporate Tax.
+            'corporate_tax_registered_at' => 'date',
         ];
+    }
+
+    /**
+     * Phase 7 (UAE Compliance Roadmap) — true when the company holds
+     * QFZP (Qualifying Free Zone Person) status under Federal
+     * Decree-Law 47/2022. QFZP entities pay 0% Corporate Tax on
+     * qualifying income — a distinction the tax invoice PDF surfaces
+     * so the buyer knows the supply's CT treatment.
+     */
+    public function isQfzp(): bool
+    {
+        return $this->corporate_tax_status === \App\Enums\CorporateTaxStatus::QFZP->value
+            || $this->corporate_tax_status === \App\Enums\CorporateTaxStatus::QFZP;
+    }
+
+    /**
+     * Phase 7 — CT status annotation for the tax invoice PDF.
+     * Returns a brief label string or null when no annotation needed.
+     */
+    public function ctAnnotation(): ?string
+    {
+        $status = $this->corporate_tax_status instanceof \App\Enums\CorporateTaxStatus
+            ? $this->corporate_tax_status
+            : \App\Enums\CorporateTaxStatus::tryFrom((string) $this->corporate_tax_status);
+
+        return match ($status) {
+            \App\Enums\CorporateTaxStatus::QFZP                   => 'QFZP — Qualifying Free Zone Person (0% CT on qualifying income)',
+            \App\Enums\CorporateTaxStatus::EXEMPT_BELOW_THRESHOLD => 'Exempt — annual profits below AED 375,000 threshold',
+            \App\Enums\CorporateTaxStatus::NOT_REGISTERED         => 'WARNING: Company is NOT registered for Corporate Tax',
+            default                                                => null,
+        };
     }
 
     /**
@@ -149,13 +186,31 @@ class Company extends Model
      */
     public function latestActiveIcvScore(): ?float
     {
-        $cert = $this->icvCertificates()
-            ->where('status', IcvCertificate::STATUS_VERIFIED)
-            ->where('expires_date', '>=', now()->toDateString())
-            ->orderByDesc('score')
-            ->first();
+        // Cache for 10 minutes to prevent N+1 when called in loops
+        // (e.g. bid comparison, supplier listing). The sidebar badge
+        // invalidator clears the company-level cache on model changes.
+        $cacheKey = "company:{$this->id}:icv_score";
 
-        return $cert ? (float) $cert->score : null;
+        return cache()->remember($cacheKey, 600, function () {
+            // Use the eager-loaded collection when available so callers that
+            // already paid for `with('icvCertificates')` (contract show, bid
+            // comparison) don't trigger an extra query on cache miss.
+            if ($this->relationLoaded('icvCertificates')) {
+                $cert = $this->icvCertificates
+                    ->where('status', IcvCertificate::STATUS_VERIFIED)
+                    ->filter(fn ($c) => $c->expires_date && $c->expires_date->gte(now()->startOfDay()))
+                    ->sortByDesc('score')
+                    ->first();
+            } else {
+                $cert = $this->icvCertificates()
+                    ->where('status', IcvCertificate::STATUS_VERIFIED)
+                    ->where('expires_date', '>=', now()->toDateString())
+                    ->orderByDesc('score')
+                    ->first();
+            }
+
+            return $cert ? (float) $cert->score : null;
+        });
     }
 
     /**
@@ -191,6 +246,11 @@ class Company extends Model
     public function categories(): BelongsToMany
     {
         return $this->belongsToMany(Category::class, 'company_category')->withTimestamps();
+    }
+
+    public function categoryRequests(): HasMany
+    {
+        return $this->hasMany(CompanyCategoryRequest::class);
     }
 
     public function purchaseRequests(): HasMany
@@ -264,10 +324,21 @@ class Company extends Model
      */
     public function hasValidTradeLicense(): bool
     {
-        $latest = $this->companyDocuments()
+        // Callers that pre-load `companyDocuments` (sidebar badge, admin
+        // company list, bid comparison grid) get this in O(1) with no extra
+        // query. Only fall back to a DB hit when the relation wasn't loaded —
+        // that's what the ->relationLoaded check is guarding.
+        $docs = $this->relationLoaded('companyDocuments')
+            ? $this->companyDocuments
+            : $this->companyDocuments()
+                ->where('type', \App\Enums\DocumentType::TRADE_LICENSE)
+                ->where('status', CompanyDocument::STATUS_VERIFIED)
+                ->get();
+
+        $latest = $docs
             ->where('type', \App\Enums\DocumentType::TRADE_LICENSE)
             ->where('status', CompanyDocument::STATUS_VERIFIED)
-            ->latest('id')
+            ->sortByDesc('id')
             ->first();
 
         if (!$latest) {
@@ -353,6 +424,17 @@ class Company extends Model
      */
     public function isInsured(): bool
     {
+        // Prefer the eager-loaded collection when present. Dashboards that
+        // iterate parties->map(...->isInsured()) would otherwise fire one
+        // query per party (N+1). If the relation wasn't loaded, we fall
+        // back to a scoped existence query — identical to the old behaviour.
+        if ($this->relationLoaded('insurances')) {
+            return $this->insurances->contains(
+                fn ($i) => $i->status === CompanyInsurance::STATUS_VERIFIED
+                    && $i->expires_at?->isFuture()
+            );
+        }
+
         return $this->insurances()
             ->where('status', CompanyInsurance::STATUS_VERIFIED)
             ->where('expires_at', '>', now())

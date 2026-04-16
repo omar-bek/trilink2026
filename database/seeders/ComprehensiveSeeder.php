@@ -71,6 +71,11 @@ use App\Models\TrackingEvent;
 use App\Models\User;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
+use App\Models\ContractApproval;
+use App\Models\ContractParty;
+use App\Models\PrivacyPolicyVersion;
+use App\Models\CertificateUpload;
+use App\Models\CompanyCategoryRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Notifications\DatabaseNotification;
@@ -129,6 +134,11 @@ use Illuminate\Support\Str;
  *    47. TaxInvoice                      51. IcvCertificate
  *    48. TaxCreditNote                   (+ free-zone & ICV-weight columns
  *    49. Consent                            on Companies / Rfqs)
+ *
+ *   Phase 7+ additions
+ *    52. CollusionAlerts                 55. PlatformFees
+ *    53. BlacklistedCompanies            56. EInvoiceSubmissions
+ *    54. ContractApprovals               57. ContractParties
  *
  * Login: every user is created with the password "password".
  */
@@ -213,14 +223,36 @@ class ComprehensiveSeeder extends Seeder
         // Pre-seeds the per-supplier invoice-number sequence rows.
         $this->seedTaxInvoicesAndCreditNotes($admin);
 
+        // ---- Phase 7+ additions ----
+        $this->seedCollusionAlerts($rfqs);
+        $this->seedBlacklistedCompanies($sanctioned, $admin);
+        $this->seedPlatformFees($admin);
+        $this->seedEInvoiceSubmissions($admin);
+        $this->seedContractApprovals($contracts, $buyer);
+        $this->seedContractParties($contracts, $buyer, $logistics);
+
+        // ---- Phase 2.5 / 8 / 9 additions (post-implementation hardening) ----
+        // Phase 2.5 — immutable privacy policy snapshots.
+        $this->seedPrivacyPolicyVersions($admin);
+        // Phase 8 — Tier 3 product/shipment certifications (CoO, ECAS, Halal, GSO).
+        $this->seedCertificateUploads($this->suppliers, $shipments, $admin);
+        // Phase 8.5 — supplier-initiated category extension requests awaiting admin review.
+        $this->seedCategoryRequests($this->suppliers, $cats, $admin);
+        // Phase 9 — Tax Residency Certificates on the buyer + a couple of suppliers.
+        $this->seedTrcOnCompanies($buyer, $this->suppliers);
+        // Phase 9 — audit chain anchors so the Government console has anchor history to display.
+        $this->seedAuditChainAnchors();
+
         $this->command->info(sprintf(
-            'ComprehensiveSeeder: done — %d Companies, %d Users, %d Products, %d PRs, %d RFQs, %d Bids, %d Contracts, %d Payments, %d Shipments, %d Disputes, %d Webhooks, %d Notifications, %d ICV certs, %d Consents, %d PrivacyReqs, %d TaxInvoices, %d CreditNotes.',
+            'ComprehensiveSeeder: done — %d Companies, %d Users, %d Products, %d PRs, %d RFQs, %d Bids, %d Contracts, %d Payments, %d Shipments, %d Disputes, %d Webhooks, %d Notifications, %d ICV certs, %d Consents, %d PrivacyReqs, %d TaxInvoices, %d CreditNotes, %d CollusionAlerts, %d PlatformFees.',
             Company::count(), User::count(), Product::count(),
             PurchaseRequest::count(), Rfq::count(), Bid::count(),
             Contract::count(), Payment::count(), Shipment::count(),
             Dispute::count(), WebhookEndpoint::count(), DatabaseNotification::count(),
             IcvCertificate::count(), Consent::count(), PrivacyRequest::count(),
             TaxInvoice::count(), TaxCreditNote::count(),
+            DB::table('collusion_alerts')->count(),
+            DB::table('platform_fees')->count(),
         ));
     }
 
@@ -2806,5 +2838,659 @@ class ComprehensiveSeeder extends Seeder
             ['company_id' => $original->supplier_company_id, 'series' => 'CN', 'year' => $year],
             ['next_value' => ($original->supplier_company_id * 1000) + $cnSeq + 1],
         );
+    }
+
+    // ================================================================
+    // Phase 7 — Collusion Alerts
+    // ================================================================
+    /** @param Collection<int,Rfq> $rfqs */
+    private function seedCollusionAlerts(Collection $rfqs): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('collusion_alerts')) {
+            return;
+        }
+
+        $rfq = $rfqs->first();
+        if (! $rfq) {
+            return;
+        }
+
+        $alertDefs = [
+            [
+                'rfq_id'   => $rfq->id,
+                'type'     => 'shared_beneficial_owner',
+                'severity' => 'critical',
+                'status'   => 'open',
+                'evidence' => json_encode([
+                    'pattern'          => 'Two bidders share a beneficial owner (SHA1 match)',
+                    'company_a'        => 'Emirates Industrial Co.',
+                    'company_b'        => 'Al-Khoory Trading LLC',
+                    'bo_hash'          => sha1('784-1978-1234567-1'),
+                    'ownership_pct_a'  => 65,
+                    'ownership_pct_b'  => 40,
+                ]),
+            ],
+            [
+                'rfq_id'   => $rfq->id,
+                'type'     => 'shared_ip_address',
+                'severity' => 'high',
+                'status'   => 'investigating',
+                'evidence' => json_encode([
+                    'pattern'    => 'Two bids submitted from the same IP within 3 minutes',
+                    'ip_address' => '185.23.45.67',
+                    'company_a'  => 'Dubai Tech Solutions',
+                    'company_b'  => 'Gulf Office Supplies',
+                    'time_gap'   => '2m 47s',
+                ]),
+            ],
+            [
+                'rfq_id'   => $rfq->id,
+                'type'     => 'timing_cluster',
+                'severity' => 'medium',
+                'status'   => 'false_positive',
+                'evidence' => json_encode([
+                    'pattern'     => '3 bids submitted within a 10-minute window',
+                    'window_min'  => 10,
+                    'submissions' => 3,
+                    'note'        => 'Reviewed — coincidental timing near RFQ deadline.',
+                ]),
+            ],
+            [
+                'rfq_id'   => $rfq->id,
+                'type'     => 'shared_email_domain',
+                'severity' => 'medium',
+                'status'   => 'confirmed',
+                'evidence' => json_encode([
+                    'pattern'   => 'Two bidders share a non-generic email domain',
+                    'domain'    => 'holding-group.ae',
+                    'company_a' => 'Subsidiary Alpha LLC',
+                    'company_b' => 'Subsidiary Beta LLC',
+                ]),
+            ],
+        ];
+
+        // Seed second RFQ alert if available
+        $rfq2 = $rfqs->skip(1)->first();
+        if ($rfq2) {
+            $alertDefs[] = [
+                'rfq_id'   => $rfq2->id,
+                'type'     => 'shared_phone_prefix',
+                'severity' => 'medium',
+                'status'   => 'open',
+                'evidence' => json_encode([
+                    'pattern'       => 'Two bidders share the first 8 digits of phone number',
+                    'phone_prefix'  => '+9715500',
+                    'company_a'     => 'Emirates Industrial Co.',
+                    'company_b'     => 'MedCo Diagnostics',
+                ]),
+            ];
+
+            $alertDefs[] = [
+                'rfq_id'   => $rfq2->id,
+                'type'     => 'self_bidding',
+                'severity' => 'critical',
+                'status'   => 'open',
+                'evidence' => json_encode([
+                    'pattern' => 'RFQ owner company submitted a bid on their own RFQ',
+                    'company' => 'Al-Ahram Group',
+                    'rfq'     => $rfq2->rfq_number ?? 'RFQ-' . $rfq2->id,
+                ]),
+            ];
+        }
+
+        foreach ($alertDefs as $def) {
+            DB::table('collusion_alerts')->updateOrInsert(
+                ['rfq_id' => $def['rfq_id'], 'type' => $def['type']],
+                array_merge($def, [
+                    'admin_notes' => $def['status'] === 'false_positive' ? 'Reviewed and cleared — timing was coincidental.' : null,
+                    'handled_by'  => in_array($def['status'], ['investigating', 'false_positive', 'confirmed']) ? User::where('role', 'admin')->value('id') : null,
+                    'handled_at'  => in_array($def['status'], ['investigating', 'false_positive', 'confirmed']) ? now()->subDays(1) : null,
+                    'created_at'  => now()->subDays(rand(1, 14)),
+                    'updated_at'  => now(),
+                ]),
+            );
+        }
+    }
+
+    // ================================================================
+    // Phase 7 — Blacklisted Companies
+    // ================================================================
+    private function seedBlacklistedCompanies(Company $sanctioned, User $admin): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('blacklisted_companies')) {
+            return;
+        }
+
+        $entries = [
+            [
+                'company_id'     => $sanctioned->id,
+                'reason'         => 'Sanctions hit detected — company matched OFAC SDN list entry.',
+                'notes'          => 'Automatic blacklisting triggered by SanctionsScreeningService. Company notified via registered email. Appeal window: 30 days from blacklist date.',
+                'blacklisted_by' => $admin->id,
+                'expires_at'     => null, // permanent
+                'is_active'      => true,
+            ],
+        ];
+
+        // Add a historical (expired) entry for variety
+        $expiredCompany = $this->suppliers->last();
+        if ($expiredCompany) {
+            $entries[] = [
+                'company_id'     => $expiredCompany->id,
+                'reason'         => 'Temporary suspension — pending document re-verification after trade license expiry.',
+                'notes'          => 'Company submitted renewal; suspension lifted after verified documents received.',
+                'blacklisted_by' => $admin->id,
+                'expires_at'     => now()->subDays(30)->toDateTimeString(),
+                'is_active'      => false,
+            ];
+        }
+
+        foreach ($entries as $entry) {
+            DB::table('blacklisted_companies')->updateOrInsert(
+                ['company_id' => $entry['company_id'], 'reason' => $entry['reason']],
+                array_merge($entry, [
+                    'created_at' => now()->subDays(rand(5, 60)),
+                    'updated_at' => now(),
+                ]),
+            );
+        }
+    }
+
+    // ================================================================
+    // Phase 7 — Platform Fees
+    // ================================================================
+    private function seedPlatformFees(User $admin): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('platform_fees')) {
+            return;
+        }
+
+        $fees = [
+            [
+                'name'        => 'Standard Transaction Fee',
+                'type'        => 'percentage',
+                'value'       => 2.5000,
+                'applies_to'  => 'payment',
+                'min_amount'  => 50.00,
+                'max_amount'  => 25000.00,
+                'is_active'   => true,
+                'description' => 'Applied to every payment processed through the platform. Covers payment gateway fees and platform services.',
+            ],
+            [
+                'name'        => 'Escrow Service Fee',
+                'type'        => 'percentage',
+                'value'       => 1.0000,
+                'applies_to'  => 'escrow',
+                'min_amount'  => 100.00,
+                'max_amount'  => 50000.00,
+                'is_active'   => true,
+                'description' => 'Charged when escrow is activated on a contract. Covers bank partner costs and escrow account management.',
+            ],
+            [
+                'name'        => 'RFQ Publishing Fee',
+                'type'        => 'fixed',
+                'value'       => 0.0000,
+                'applies_to'  => 'rfq',
+                'min_amount'  => null,
+                'max_amount'  => null,
+                'is_active'   => true,
+                'description' => 'Currently waived. Reserved for future premium RFQ features (featured placement, extended reach).',
+            ],
+            [
+                'name'        => 'Contract Stamp Fee',
+                'type'        => 'fixed',
+                'value'       => 150.0000,
+                'applies_to'  => 'contract',
+                'min_amount'  => null,
+                'max_amount'  => null,
+                'is_active'   => true,
+                'description' => 'One-time fee per contract execution. Covers digital signature verification and tamper-proof storage.',
+            ],
+            [
+                'name'        => 'Premium Supplier Listing',
+                'type'        => 'fixed',
+                'value'       => 500.0000,
+                'applies_to'  => 'rfq',
+                'min_amount'  => null,
+                'max_amount'  => null,
+                'is_active'   => false,
+                'description' => 'Monthly fee for premium placement in supplier directory. Currently inactive — planned for Q3 2026.',
+            ],
+        ];
+
+        foreach ($fees as $fee) {
+            DB::table('platform_fees')->updateOrInsert(
+                ['name' => $fee['name']],
+                array_merge($fee, [
+                    'created_by' => $admin->id,
+                    'created_at' => now()->subDays(90),
+                    'updated_at' => now(),
+                ]),
+            );
+        }
+    }
+
+    // ================================================================
+    // Phase 5 — E-Invoice Submissions (demo queue entries)
+    // ================================================================
+    private function seedEInvoiceSubmissions(User $admin): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('e_invoice_submissions')) {
+            return;
+        }
+
+        $invoices = TaxInvoice::orderBy('id')->limit(4)->get();
+        $statuses = ['accepted', 'submitted', 'rejected', 'failed'];
+
+        foreach ($invoices as $i => $invoice) {
+            $status = $statuses[$i] ?? 'submitted';
+
+            DB::table('e_invoice_submissions')->updateOrInsert(
+                ['tax_invoice_id' => $invoice->id, 'tax_credit_note_id' => null],
+                [
+                    'document_type'       => 'invoice',
+                    'status'              => $status,
+                    'asp_provider'        => 'mock',
+                    'asp_environment'     => 'sandbox',
+                    'payload_xml'         => '<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"><ID>' . $invoice->invoice_number . '</ID></Invoice>',
+                    'payload_sha256'      => hash('sha256', $invoice->invoice_number),
+                    'asp_submission_id'   => 'MOCK-' . Str::upper(Str::random(12)),
+                    'asp_response_raw'    => json_encode(['status' => $status, 'message' => $status === 'rejected' ? 'Schema validation failed: missing PaymentMeansCode' : 'OK']),
+                    'error_message'       => $status === 'failed' ? 'Max retries exceeded' : ($status === 'rejected' ? 'Schema validation failed' : null),
+                    'retries'             => $status === 'failed' ? 5 : ($status === 'rejected' ? 1 : 0),
+                    'submitted_at'        => now()->subHours(rand(1, 48)),
+                    'next_retry_at'       => $status === 'failed' ? now()->addHours(8) : null,
+                    'created_at'          => now()->subDays(rand(1, 14)),
+                    'updated_at'          => now(),
+                ],
+            );
+        }
+    }
+
+    // ================================================================
+    // Contract Approvals (internal approval routing)
+    // ================================================================
+    /** @param Collection<int,Contract> $contracts */
+    private function seedContractApprovals(Collection $contracts, Company $buyer): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('contract_approvals')) {
+            return;
+        }
+
+        $manager = User::where('email', 'manager@al-ahram.test')->first();
+        $financeMgr = User::where('email', 'finance.mgr@al-ahram.test')->first();
+
+        if (! $manager || ! $financeMgr) {
+            return;
+        }
+
+        foreach ($contracts->take(2) as $i => $contract) {
+            ContractApproval::updateOrCreate(
+                ['contract_id' => $contract->id, 'user_id' => $manager->id],
+                [
+                    'company_id' => $buyer->id,
+                    'decision'   => 'approved',
+                    'notes'      => 'Approved — within budget and scope.',
+                ],
+            );
+
+            ContractApproval::updateOrCreate(
+                ['contract_id' => $contract->id, 'user_id' => $financeMgr->id],
+                [
+                    'company_id' => $buyer->id,
+                    'decision'   => 'approved',
+                    'notes'      => 'Finance review complete. Payment schedule verified.',
+                ],
+            );
+        }
+
+        // One pending approval
+        $pendingContract = $contracts->skip(2)->first();
+        if ($pendingContract) {
+            ContractApproval::updateOrCreate(
+                ['contract_id' => $pendingContract->id, 'user_id' => $manager->id],
+                [
+                    'company_id' => $buyer->id,
+                    'decision'   => 'pending',
+                    'notes'      => null,
+                ],
+            );
+        }
+    }
+
+    // ================================================================
+    // Contract Parties (denormalized party index)
+    // ================================================================
+    /** @param Collection<int,Contract> $contracts */
+    private function seedContractParties(Collection $contracts, Company $buyer, Company $logistics): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('contract_parties')) {
+            return;
+        }
+
+        foreach ($contracts as $contract) {
+            // Buyer party
+            ContractParty::updateOrCreate(
+                ['contract_id' => $contract->id, 'company_id' => $buyer->id],
+                ['role' => 'buyer'],
+            );
+
+            // Supplier/logistics party — use the first supplier from the
+            // contract's parties JSON, falling back to logistics.
+            $parties = $contract->parties ?? [];
+            $supplierParty = collect($parties)->firstWhere('role', 'supplier');
+            $supplierId = $supplierParty['company_id'] ?? $logistics->id;
+
+            ContractParty::updateOrCreate(
+                ['contract_id' => $contract->id, 'company_id' => $supplierId],
+                ['role' => 'supplier'],
+            );
+        }
+    }
+
+    // ================================================================
+    // Phase 2.5 — Privacy Policy versions (immutable consent ledger)
+    // ================================================================
+    private function seedPrivacyPolicyVersions(User $admin): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('privacy_policy_versions')) {
+            return;
+        }
+
+        $versions = [
+            [
+                'version'        => '1.0',
+                'body_en'        => "TriLink Trading — Privacy Policy v1.0\n\nThis policy governs how we collect, store, and process personal data under UAE Federal Decree-Law 45 of 2021 (PDPL).",
+                'body_ar'        => "تريلينك تريدينج — سياسة الخصوصية الإصدار 1.0\n\nتحكم هذه السياسة كيفية جمع البيانات الشخصية وتخزينها ومعالجتها وفقًا للمرسوم بقانون اتحادي رقم 45 لسنة 2021 (PDPL).",
+                'effective_from' => CarbonImmutable::now()->subMonths(6),
+                'changelog'      => 'Initial public release.',
+            ],
+            [
+                'version'        => '1.1',
+                'body_en'        => "TriLink Trading — Privacy Policy v1.1\n\nClarifies cross-border transfer rules per PDPL Article 22 + DSAR window reduced from 45 to 30 days.",
+                'body_ar'        => "تريلينك تريدينج — سياسة الخصوصية الإصدار 1.1\n\nتوضيح قواعد النقل عبر الحدود وفقًا للمادة 22 من PDPL وتقليل نافذة طلبات DSAR من 45 إلى 30 يومًا.",
+                'effective_from' => CarbonImmutable::now()->subMonths(2),
+                'changelog'      => 'Tightened DSAR turnaround + cross-border clauses.',
+            ],
+        ];
+
+        foreach ($versions as $v) {
+            PrivacyPolicyVersion::updateOrCreate(
+                ['version' => $v['version']],
+                [
+                    'body_en'        => $v['body_en'],
+                    'body_ar'        => $v['body_ar'],
+                    'sha256'         => PrivacyPolicyVersion::canonicalSha256($v['body_en'], $v['body_ar']),
+                    'effective_from' => $v['effective_from'],
+                    'changelog'      => $v['changelog'],
+                    'published_by'   => $admin->id,
+                ],
+            );
+        }
+    }
+
+    // ================================================================
+    // Phase 8 — Tier 3 compliance certificate uploads (CoO, ECAS, Halal, GSO)
+    // ================================================================
+    /**
+     * @param Collection<int,Company> $suppliers
+     * @param Collection<int,Shipment> $shipments
+     */
+    private function seedCertificateUploads(Collection $suppliers, Collection $shipments, User $admin): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('certificate_uploads')) {
+            return;
+        }
+
+        // Each supplier gets a baseline pair of company-wide certs (CoO + ISO),
+        // then a couple of suppliers get product/shipment-scoped ones (ECAS,
+        // Halal, GSO) so the admin queue + expiry-reminder cron have realistic
+        // mixed data to render against.
+        $i = 0;
+        foreach ($suppliers as $supplier) {
+            CertificateUpload::updateOrCreate(
+                [
+                    'company_id'         => $supplier->id,
+                    'certificate_type'   => CertificateUpload::TYPE_COO,
+                    'certificate_number' => 'COO-' . strtoupper(substr(md5($supplier->id . 'coo'), 0, 8)),
+                ],
+                [
+                    'issuer'            => 'Dubai Chamber of Commerce',
+                    'issued_date'       => CarbonImmutable::now()->subMonths(8)->toDateString(),
+                    'expires_date'      => CarbonImmutable::now()->addMonths(4)->toDateString(),
+                    'file_path'         => "demo/certs/{$supplier->id}-coo.pdf",
+                    'file_sha256'       => hash('sha256', "coo-{$supplier->id}"),
+                    'file_size'         => 184_320,
+                    'original_filename' => 'certificate-of-origin.pdf',
+                    'status'            => CertificateUpload::STATUS_VERIFIED,
+                    'uploaded_by'       => $admin->id,
+                    'verified_by'       => $admin->id,
+                    'verified_at'       => CarbonImmutable::now()->subMonths(7),
+                ],
+            );
+
+            CertificateUpload::updateOrCreate(
+                [
+                    'company_id'         => $supplier->id,
+                    'certificate_type'   => CertificateUpload::TYPE_ISO,
+                    'certificate_number' => 'ISO-9001-' . strtoupper(substr(md5($supplier->id . 'iso'), 0, 6)),
+                ],
+                [
+                    'issuer'            => 'Bureau Veritas',
+                    'issued_date'       => CarbonImmutable::now()->subYear()->toDateString(),
+                    'expires_date'      => CarbonImmutable::now()->addYears(2)->toDateString(),
+                    'file_path'         => "demo/certs/{$supplier->id}-iso.pdf",
+                    'file_sha256'       => hash('sha256', "iso-{$supplier->id}"),
+                    'file_size'         => 220_540,
+                    'original_filename' => 'iso-9001.pdf',
+                    'status'            => CertificateUpload::STATUS_VERIFIED,
+                    'uploaded_by'       => $admin->id,
+                    'verified_by'       => $admin->id,
+                    'verified_at'       => CarbonImmutable::now()->subMonths(11),
+                ],
+            );
+
+            // First supplier — ECAS + a pending Halal awaiting verification.
+            if ($i === 0) {
+                CertificateUpload::updateOrCreate(
+                    [
+                        'company_id'         => $supplier->id,
+                        'certificate_type'   => CertificateUpload::TYPE_ECAS,
+                        'certificate_number' => 'ECAS-' . uniqid(),
+                    ],
+                    [
+                        'issuer'            => 'Emirates Authority for Standardization (ESMA)',
+                        'issued_date'       => CarbonImmutable::now()->subMonths(3)->toDateString(),
+                        'expires_date'      => CarbonImmutable::now()->addYear()->toDateString(),
+                        'file_path'         => "demo/certs/{$supplier->id}-ecas.pdf",
+                        'file_sha256'       => hash('sha256', "ecas-{$supplier->id}"),
+                        'file_size'         => 312_990,
+                        'original_filename' => 'ecas-conformity.pdf',
+                        'status'            => CertificateUpload::STATUS_VERIFIED,
+                        'uploaded_by'       => $admin->id,
+                        'verified_by'       => $admin->id,
+                        'verified_at'       => CarbonImmutable::now()->subMonths(2),
+                    ],
+                );
+
+                CertificateUpload::updateOrCreate(
+                    [
+                        'company_id'         => $supplier->id,
+                        'certificate_type'   => CertificateUpload::TYPE_HALAL,
+                        'certificate_number' => 'HALAL-' . uniqid(),
+                    ],
+                    [
+                        'issuer'            => 'Emirates International Accreditation Centre (EIAC)',
+                        'issued_date'       => CarbonImmutable::now()->subWeeks(2)->toDateString(),
+                        'expires_date'      => CarbonImmutable::now()->addYear()->toDateString(),
+                        'file_path'         => "demo/certs/{$supplier->id}-halal.pdf",
+                        'file_sha256'       => hash('sha256', "halal-{$supplier->id}"),
+                        'file_size'         => 198_770,
+                        'original_filename' => 'halal-cert.pdf',
+                        'status'            => CertificateUpload::STATUS_PENDING,
+                        'uploaded_by'       => $admin->id,
+                    ],
+                );
+            }
+
+            // Second supplier — GSO certificate scoped to a real shipment if any exist.
+            if ($i === 1) {
+                $firstShipment = $shipments->first();
+                CertificateUpload::updateOrCreate(
+                    [
+                        'company_id'         => $supplier->id,
+                        'certificate_type'   => CertificateUpload::TYPE_GSO,
+                        'certificate_number' => 'GSO-' . uniqid(),
+                    ],
+                    [
+                        'shipment_id'       => $firstShipment?->id,
+                        'issuer'            => 'GCC Standardization Organization',
+                        'issued_date'       => CarbonImmutable::now()->subMonths(2)->toDateString(),
+                        'expires_date'      => CarbonImmutable::now()->addMonths(10)->toDateString(),
+                        'file_path'         => "demo/certs/{$supplier->id}-gso.pdf",
+                        'file_sha256'       => hash('sha256', "gso-{$supplier->id}"),
+                        'file_size'         => 256_000,
+                        'original_filename' => 'gso-quality.pdf',
+                        'status'            => CertificateUpload::STATUS_VERIFIED,
+                        'uploaded_by'       => $admin->id,
+                        'verified_by'       => $admin->id,
+                        'verified_at'       => CarbonImmutable::now()->subMonths(1),
+                    ],
+                );
+            }
+
+            $i++;
+        }
+    }
+
+    // ================================================================
+    // Phase 8.5 — Supplier-initiated category extension requests
+    // ================================================================
+    /**
+     * @param Collection<int,Company> $suppliers
+     * @param array<string,Category> $cats
+     */
+    private function seedCategoryRequests(Collection $suppliers, array $cats, User $admin): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('company_category_requests')) {
+            return;
+        }
+
+        $catList = array_values($cats);
+        if (count($catList) < 2 || $suppliers->isEmpty()) {
+            return;
+        }
+
+        // First supplier — pending request for a new category.
+        $first = $suppliers->first();
+        $requesterFirst = User::where('company_id', $first->id)->first();
+        CompanyCategoryRequest::updateOrCreate(
+            ['company_id' => $first->id, 'category_id' => $catList[0]->id],
+            [
+                'requested_by' => $requesterFirst?->id,
+                'note'         => 'We have ECAS-certified inventory in this segment and would like to bid on related RFQs.',
+                'status'       => CompanyCategoryRequest::STATUS_PENDING,
+            ],
+        );
+
+        // Second supplier — already approved.
+        if ($suppliers->count() > 1) {
+            $second = $suppliers->skip(1)->first();
+            $requesterSecond = User::where('company_id', $second->id)->first();
+            CompanyCategoryRequest::updateOrCreate(
+                ['company_id' => $second->id, 'category_id' => $catList[1]->id],
+                [
+                    'requested_by' => $requesterSecond?->id,
+                    'note'         => 'Existing supplier in adjacent category — expanding scope.',
+                    'status'       => CompanyCategoryRequest::STATUS_APPROVED,
+                    'reviewed_by'  => $admin->id,
+                    'reviewed_at'  => CarbonImmutable::now()->subDays(3),
+                ],
+            );
+        }
+
+        // Third supplier — rejected with reason.
+        if ($suppliers->count() > 2) {
+            $third = $suppliers->skip(2)->first();
+            $requesterThird = User::where('company_id', $third->id)->first();
+            CompanyCategoryRequest::updateOrCreate(
+                ['company_id' => $third->id, 'category_id' => $catList[count($catList) - 1]->id],
+                [
+                    'requested_by'     => $requesterThird?->id,
+                    'note'             => 'Looking to enter this segment.',
+                    'status'           => CompanyCategoryRequest::STATUS_REJECTED,
+                    'reviewed_by'      => $admin->id,
+                    'reviewed_at'      => CarbonImmutable::now()->subDays(1),
+                    'rejection_reason' => 'No verified product portfolio yet — please submit ICV + product samples first.',
+                ],
+            );
+        }
+    }
+
+    // ================================================================
+    // Phase 9 — Tax Residency Certificates on companies
+    // ================================================================
+    /**
+     * @param Collection<int,Company> $suppliers
+     */
+    private function seedTrcOnCompanies(Company $buyer, Collection $suppliers): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('companies', 'trc_path')) {
+            return;
+        }
+
+        $buyer->update([
+            'trc_path'        => 'demo/trc/buyer-trc-2025.pdf',
+            'trc_expires_at'  => CarbonImmutable::now()->addMonths(9),
+        ]);
+
+        foreach ($suppliers->take(2) as $supplier) {
+            $supplier->update([
+                'trc_path'        => "demo/trc/supplier-{$supplier->id}-trc-2025.pdf",
+                'trc_expires_at'  => CarbonImmutable::now()->addMonths(7),
+            ]);
+        }
+    }
+
+    // ================================================================
+    // Phase 9 — Audit chain anchors (Merkle roots written to WORM storage)
+    // ================================================================
+    private function seedAuditChainAnchors(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('audit_chain_anchors')) {
+            return;
+        }
+
+        $tail = AuditLog::orderByDesc('id')->first();
+        if (! $tail) {
+            return;
+        }
+
+        // Two historic anchors + one most-recent so the dashboard renders a
+        // small chain history. The hashes here are demo SHA-256 values; the
+        // production anchor command computes the real Merkle root from the
+        // audit_logs table.
+        $anchors = [
+            ['anchored_at' => CarbonImmutable::now()->subWeeks(4), 'rows' => max(1, (int) ($tail->id * 0.4))],
+            ['anchored_at' => CarbonImmutable::now()->subWeeks(2), 'rows' => max(1, (int) ($tail->id * 0.7))],
+            ['anchored_at' => CarbonImmutable::now()->subDays(1),  'rows' => $tail->id],
+        ];
+
+        foreach ($anchors as $a) {
+            $hash = hash('sha256', "demo-anchor-{$a['rows']}");
+            DB::table('audit_chain_anchors')->updateOrInsert(
+                ['anchor_sha256' => $hash],
+                [
+                    'chain_head_hash'      => hash('sha256', "head-{$a['rows']}"),
+                    'chain_head_id'        => $a['rows'],
+                    'row_count'            => $a['rows'],
+                    'storage_path'         => "s3://trilink-audit-anchors/" . $a['anchored_at']->format('Y/m/d') . "-{$a['rows']}.json",
+                    's3_etag'              => '"' . substr(md5("etag-{$a['rows']}"), 0, 32) . '"',
+                    'opentimestamps_proof' => null,
+                    'anchored_at'          => $a['anchored_at'],
+                    'created_at'           => $a['anchored_at'],
+                ],
+            );
+        }
     }
 }

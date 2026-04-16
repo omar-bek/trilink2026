@@ -43,13 +43,6 @@ class BidService
             return 'Cannot bid on your own RFQ';
         }
 
-        // Block exclusive suppliers from bidding on their parent company's
-        // RFQs. This is the "I am Company A's own supplier" rule — they can
-        // still bid on every other company's RFQs in the same field.
-        if (CompanySupplier::isLocked((int) $data['company_id'], (int) $rfq->company_id)) {
-            return 'You are an exclusive supplier of this company and cannot bid on their RFQs';
-        }
-
         // Sanctions block: a company flagged on any watchlist (OFAC, UN, EU,
         // OpenSanctions consolidated) cannot transact on the platform. This
         // applies to both sides — a sanctioned bidder OR a sanctioned RFQ
@@ -78,7 +71,7 @@ class BidService
 
         // Notify every user inside the buyer's company that a new bid arrived.
         // Suppliers don't get notified about their own bid — only the buyer side.
-        $buyerUsers = User::where('company_id', $rfq->company_id)->get();
+        $buyerUsers = User::where('company_id', $rfq->company_id)->active()->get();
         if ($buyerUsers->isNotEmpty()) {
             Notification::send($buyerUsers, new NewBidNotification($bid));
         }
@@ -88,8 +81,7 @@ class BidService
 
     public function update(int $id, array $data): ?Bid
     {
-        $bid = Bid::find($id);
-        if (!$bid) return null;
+        $bid = Bid::findOrFail($id);
 
         $bid->update($data);
         return $bid->fresh(['rfq', 'company', 'provider']);
@@ -97,14 +89,12 @@ class BidService
 
     public function delete(int $id): bool
     {
-        $bid = Bid::find($id);
-        return $bid ? $bid->delete() : false;
+        return Bid::findOrFail($id)->delete();
     }
 
     public function evaluate(int $id, array $aiScore): ?Bid
     {
-        $bid = Bid::find($id);
-        if (!$bid) return null;
+        $bid = Bid::findOrFail($id);
 
         $bid->update([
             'ai_score' => $aiScore,

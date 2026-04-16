@@ -256,7 +256,7 @@ class RoleAwareWebTest extends TestCase
 
     public function test_forgot_password_form_renders(): void
     {
-        $this->get('/forgot-password')->assertOk()->assertSee(__('auth.forgot_password'));
+        $this->get('/forgot-password')->assertOk()->assertSee(__('forgot.title'));
     }
 
     public function test_forgot_password_post_returns_neutral_message(): void

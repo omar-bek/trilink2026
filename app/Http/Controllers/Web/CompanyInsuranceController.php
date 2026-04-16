@@ -56,7 +56,7 @@ class CompanyInsuranceController extends Controller
             'currency'        => ['required', 'string', 'size:3'],
             'starts_at'       => ['required', 'date'],
             'expires_at'      => ['required', 'date', 'after:starts_at'],
-            'file'            => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'file'            => ['required', 'file', 'max:10240', ...\App\Rules\SafeUpload::pdfOrImage()],
         ]);
 
         $file = $request->file('file');

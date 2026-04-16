@@ -164,14 +164,7 @@ class PurchaseRequestController extends Controller
 
         $timeline = $this->buildPrTimeline($pr);
 
-        $location = $pr->delivery_location;
-        if (is_array($location)) {
-            $location = trim(implode(', ', array_filter([
-                $location['address'] ?? null,
-                $location['city'] ?? null,
-                $location['country'] ?? null,
-            ])));
-        }
+        $location = $this->formatLocation($pr->delivery_location);
 
         // Priority is derived from how soon the buyer needs the items.
         // We don't store priority separately (the create form has the field
@@ -195,12 +188,18 @@ class PurchaseRequestController extends Controller
 
         // A PR is approvable when it is awaiting a manager decision and the
         // viewer holds pr.approve permission inside the same company. The
-        // owner cannot approve their own request — that's the whole point of
-        // the workflow.
+        // owner cannot approve their own request UNLESS they're the only
+        // manager in the company (solo-manager fallback).
+        $isSelfRequest = $user && $user->id === $pr->buyer_id;
+        $soloManager = $isSelfRequest && !User::where('company_id', $pr->company_id)
+            ->where('id', '!=', $user->id)
+            ->where('role', \App\Enums\UserRole::COMPANY_MANAGER->value)
+            ->exists();
+
         $canApprove = $user
             && $user->hasPermission('pr.approve')
             && $user->company_id === $pr->company_id
-            && $user->id !== $pr->buyer_id
+            && (!$isSelfRequest || $soloManager)
             && in_array($statusValue, ['pending_approval', 'submitted'], true);
 
         $prData = [
@@ -462,7 +461,15 @@ class PurchaseRequestController extends Controller
         abort_unless($user->company_id === $pr->company_id, 403, 'Cannot approve PRs of another company.');
         // Branch managers can only approve PRs that belong to their own branch.
         abort_if($user->isBranchManager() && $user->branch_id !== $pr->branch_id, 403, 'Cannot approve PRs from another branch.');
-        abort_if($user->id === $pr->buyer_id, 422, 'You cannot approve your own purchase request.');
+        // Self-approval ban: the requester can't approve their own PR.
+        // Exception: solo-manager companies where there's no other approver.
+        if ($user->id === $pr->buyer_id) {
+            $otherApprovers = User::where('company_id', $pr->company_id)
+                ->where('id', '!=', $user->id)
+                ->where('role', \App\Enums\UserRole::COMPANY_MANAGER->value)
+                ->exists();
+            abort_if($otherApprovers, 422, 'You cannot approve your own purchase request — another manager in your company should review it.');
+        }
 
         $approved = $this->service->approve($pr->id, $user->id);
 
@@ -545,8 +552,16 @@ class PurchaseRequestController extends Controller
                 continue;
             }
             if ($user->id === $pr->buyer_id) {
-                $skipped++;
-                continue;
+                // Solo-manager exception: allow self-approval only when
+                // there's no other manager in the company who could review.
+                $otherApprovers = User::where('company_id', $pr->company_id)
+                    ->where('id', '!=', $user->id)
+                    ->where('role', \App\Enums\UserRole::COMPANY_MANAGER->value)
+                    ->exists();
+                if ($otherApprovers) {
+                    $skipped++;
+                    continue;
+                }
             }
             // Only PRs awaiting approval are eligible.
             if ($this->statusValue($pr->status) !== 'pending_approval') {

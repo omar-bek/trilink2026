@@ -84,7 +84,8 @@
                 {{-- Form fields --}}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div class="md:col-span-2">
-                        <x-auth.select :label="__('register.field_company_type')" name="company_type" required :placeholder="__('register.field_company_type_placeholder')" :options="$companyTypes" />
+                        <x-auth.select :label="__('register.field_company_type')" name="company_type" :placeholder="__('register.field_company_type_placeholder')" :options="$companyTypes" />
+                        <p class="mt-1.5 text-[11px] text-muted leading-relaxed">{{ __('register.field_company_type_hint') }}</p>
                     </div>
 
                     <x-auth.input :label="__('register.field_company_name_en')" name="company_name_en" :placeholder="__('register.field_company_name_en_placeholder')" required />

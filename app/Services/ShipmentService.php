@@ -130,7 +130,7 @@ class ShipmentService
 
         // Notify every user in each party company (not just the primary
         // contact) so procurement + logistics teammates both see the update.
-        $users = \App\Models\User::whereIn('company_id', $partyIds)->get();
+        $users = \App\Models\User::whereIn('company_id', $partyIds)->active()->get();
 
         if ($users->isNotEmpty()) {
             Notification::send($users, new ShipmentStatusNotification($shipment, $newStatus));

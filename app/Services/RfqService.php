@@ -49,7 +49,7 @@ class RfqService
         // approval flow (see PurchaseRequestService::buildRfqDataFromPr).
         // Anything that's already OPEN at create time should fan out to
         // matching suppliers immediately.
-        if ($rfq->status === RfqStatus::OPEN->value || $rfq->status === RfqStatus::OPEN) {
+        if ($rfq->status === RfqStatus::OPEN) {
             $this->notifyMatchingSuppliers($rfq);
         }
 
@@ -58,17 +58,16 @@ class RfqService
 
     public function update(int $id, array $data): ?Rfq
     {
-        $rfq = Rfq::find($id);
-        if (!$rfq) return null;
+        $rfq = Rfq::findOrFail($id);
 
         // Capture the previous status so we can detect a draft → open
         // transition (manual publish) and fan out the notification then.
-        $wasOpen = $rfq->status === RfqStatus::OPEN || $rfq->status === RfqStatus::OPEN->value;
+        $wasOpen = $rfq->status === RfqStatus::OPEN;
 
         $rfq->update($data);
         $rfq = $rfq->fresh(['company', 'category']);
 
-        $isOpen = $rfq && ($rfq->status === RfqStatus::OPEN || $rfq->status === RfqStatus::OPEN->value);
+        $isOpen = $rfq && $rfq->status === RfqStatus::OPEN;
         if ($rfq && !$wasOpen && $isOpen) {
             $this->notifyMatchingSuppliers($rfq);
         }
@@ -78,8 +77,7 @@ class RfqService
 
     public function delete(int $id): bool
     {
-        $rfq = Rfq::find($id);
-        return $rfq ? $rfq->delete() : false;
+        return Rfq::findOrFail($id)->delete();
     }
 
     public function getByPurchaseRequest(int $purchaseRequestId): LengthAwarePaginator
@@ -102,7 +100,7 @@ class RfqService
             return null;
         }
 
-        $rfq->update(['status' => RfqStatus::CLOSED->value]);
+        $rfq->update(['status' => RfqStatus::CANCELLED->value]);
 
         $bidders = $rfq->bids->pluck('provider')->filter()->unique('id');
         if ($bidders->isNotEmpty()) {
@@ -182,6 +180,7 @@ class RfqService
 
         $recipients = User::query()
             ->whereIn('company_id', $companyIds)
+            ->active()
             ->whereNotNull('email')
             ->limit(500)
             ->get();

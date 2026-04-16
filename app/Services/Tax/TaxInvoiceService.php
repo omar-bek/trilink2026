@@ -356,9 +356,16 @@ class TaxInvoiceService
     {
         $invoice->refresh();
 
+        // Phase 7 (UAE Compliance Roadmap) — Corporate Tax annotation.
+        // Pull the supplier's CT status so the PDF can show "QFZP"
+        // or "exempt" if applicable. Loaded from the snapshot company_id.
+        $supplierCompany = \App\Models\Company::find($invoice->supplier_company_id);
+        $ctAnnotation = $supplierCompany?->ctAnnotation();
+
         $pdf = Pdf::loadView('dashboard.admin.tax-invoices.pdf', [
-            'invoice' => $invoice,
-            'qrDataUri' => $this->qrEncoder->renderDataUri($invoice),
+            'invoice'      => $invoice,
+            'qrDataUri'    => $this->qrEncoder->renderDataUri($invoice),
+            'ctAnnotation' => $ctAnnotation,
         ])->setPaper('a4');
 
         $bytes = $pdf->output();
