@@ -211,7 +211,7 @@
         </div>
 
         {{-- ─────────────────────── Request More Info ─────────────────────── --}}
-        @if($company->status?->value !== 'active')
+        @if(true)
         @php
             $infoRequestRow  = $company->infoRequest;
             $existingRequest = $infoRequestRow && $infoRequestRow->isPending()
