@@ -917,6 +917,104 @@
                 </a>
             </div>
         </div>
+
+        {{-- ─────────────── Request More Info (admin mode only) ─────────────── --}}
+        @php
+            $infoRequestRow  = $company->infoRequest;
+            $existingRequest = $infoRequestRow && $infoRequestRow->isPending()
+                ? [
+                    'items' => $infoRequestRow->items ?? [],
+                    'note'  => $infoRequestRow->note ?? '',
+                ]
+                : null;
+            $catalog         = \App\Support\CompanyInfoFields::catalog();
+            $fieldEntries    = array_filter($catalog, fn ($e) => ($e['kind'] ?? '') === 'field');
+            $docEntries      = array_filter($catalog, fn ($e) => ($e['kind'] ?? '') === 'document');
+            $checkedItems    = $existingRequest['items'] ?? [];
+        @endphp
+        <div class="bg-surface border border-th-border rounded-[16px] p-[25px]">
+            <div class="flex items-start justify-between gap-4 mb-5">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-[10px] bg-[#4f7cff]/10 border border-[#4f7cff]/20 flex items-center justify-center">
+                        <svg class="w-[16px] h-[16px] text-[#4f7cff]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-[14px] font-bold text-primary leading-tight">{{ __('admin.companies.request_info_title') }}</h3>
+                        <p class="text-[11px] text-muted mt-0.5">{{ __('admin.companies.request_info_help') }}</p>
+                    </div>
+                </div>
+                @if($existingRequest)
+                <span class="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-[#ffb020] bg-[#ffb020]/10 border border-[#ffb020]/30 rounded-full px-2.5 py-1 flex-shrink-0">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#ffb020]"></span>
+                    {{ __('admin.companies.request_info_active') }}
+                </span>
+                @endif
+            </div>
+
+            @if($existingRequest)
+            <div class="bg-surface-2 border border-th-border rounded-[12px] p-[17px] mb-5 text-[12px]">
+                <p class="text-[10px] font-bold text-faint uppercase tracking-wider mb-3">{{ __('admin.companies.request_info_pending') }}</p>
+                <ul class="space-y-1.5 text-body mb-3">
+                    @foreach($existingRequest['items'] as $key)
+                        @if(isset($catalog[$key]))
+                        <li class="flex items-center gap-2">
+                            <svg class="w-3.5 h-3.5 text-[#ffb020]" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            {{ __($catalog[$key]['label_key']) }}
+                        </li>
+                        @endif
+                    @endforeach
+                </ul>
+                @if(!empty($existingRequest['note']))
+                <p class="text-[10px] font-bold text-faint uppercase tracking-wider mb-1.5">{{ __('admin.companies.request_info_note') }}</p>
+                <p class="text-body whitespace-pre-line">{{ $existingRequest['note'] }}</p>
+                @endif
+                <form method="POST" action="{{ route('admin.companies.cancel-info', $company->id) }}" class="mt-3">
+                    @csrf @method('DELETE')
+                    <button type="submit" class="text-[11px] font-semibold text-[#ff4d7f] hover:underline">{{ __('admin.companies.request_info_cancel') }}</button>
+                </form>
+            </div>
+            @endif
+
+            <form method="POST" action="{{ route('admin.companies.request-info', $company->id) }}">
+                @csrf
+                <div class="mb-5">
+                    <p class="text-[10px] font-bold text-faint uppercase tracking-wider mb-2.5">{{ __('admin.companies.request_info_fields') }}</p>
+                    <div class="space-y-2">
+                        @foreach($fieldEntries as $key => $entry)
+                        <label class="flex items-center gap-2 text-[12px] text-body bg-surface-2 border border-th-border rounded-[10px] px-3 py-2 cursor-pointer hover:border-accent/40 transition-colors">
+                            <input type="checkbox" name="items[]" value="{{ $key }}" @checked(in_array($key, $checkedItems, true)) />
+                            {{ __($entry['label_key']) }}
+                        </label>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="mb-5">
+                    <p class="text-[10px] font-bold text-faint uppercase tracking-wider mb-2.5">{{ __('admin.companies.request_info_documents') }}</p>
+                    <div class="space-y-2">
+                        @foreach($docEntries as $key => $entry)
+                        <label class="flex items-center gap-2 text-[12px] text-body bg-surface-2 border border-th-border rounded-[10px] px-3 py-2 cursor-pointer hover:border-accent/40 transition-colors">
+                            <input type="checkbox" name="items[]" value="{{ $key }}" @checked(in_array($key, $checkedItems, true)) />
+                            {{ __($entry['label_key']) }}
+                        </label>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="mb-5">
+                    <label class="block text-[10px] font-bold text-faint uppercase tracking-wider mb-2">{{ __('admin.companies.request_info_note_label') }}</label>
+                    <textarea name="note" rows="3"
+                              placeholder="{{ __('admin.companies.request_info_note_placeholder') }}"
+                              class="w-full bg-surface-2 border border-th-border rounded-[12px] px-4 py-3 text-[13px] text-primary focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 resize-none transition-colors">{{ $existingRequest['note'] ?? '' }}</textarea>
+                </div>
+
+                <button type="submit"
+                        class="w-full inline-flex items-center justify-center gap-2 h-11 px-5 bg-accent text-white rounded-[12px] text-[13px] font-bold hover:bg-accent-h shadow-[0_4px_14px_rgba(79,124,255,0.25)] transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                    {{ $existingRequest ? __('admin.companies.request_info_update') : __('admin.companies.request_info_send') }}
+                </button>
+            </form>
+        </div>
         @endif
 
         {{-- ─────────────── Bank details (hidden in public mode) ─────────────── --}}
