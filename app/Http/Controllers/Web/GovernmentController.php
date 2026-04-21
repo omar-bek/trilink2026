@@ -401,6 +401,102 @@ class GovernmentController extends Controller
         ));
     }
 
+    /** Government: Most-traded commodities report. */
+    public function commoditiesReport(Request $request): View
+    {
+        $months = (int) $request->query('months', 12);
+        $months = max(1, min($months, 36));
+        $since = now()->subMonths($months);
+
+        // Top commodities (categories) — RFQ activity + linked contract value.
+        $topCommodities = DB::table('categories')
+            ->leftJoin('rfqs', function ($j) use ($since) {
+                $j->on('rfqs.category_id', '=', 'categories.id')
+                    ->whereNotIn('rfqs.status', ['draft', 'cancelled'])
+                    ->where('rfqs.created_at', '>=', $since)
+                    ->whereNull('rfqs.deleted_at');
+            })
+            ->leftJoin('bids', 'bids.rfq_id', '=', 'rfqs.id')
+            ->leftJoin('contracts', function ($j) {
+                $j->on('contracts.purchase_request_id', '=', 'rfqs.purchase_request_id')
+                    ->whereNotNull('rfqs.purchase_request_id')
+                    ->whereNull('contracts.deleted_at');
+            })
+            ->select(
+                'categories.id',
+                'categories.name',
+                DB::raw('COUNT(DISTINCT rfqs.id) as rfq_count'),
+                DB::raw('COUNT(DISTINCT bids.id) as bid_count'),
+                DB::raw('COUNT(DISTINCT contracts.id) as contract_count'),
+                DB::raw('COALESCE(SUM(DISTINCT rfqs.budget), 0) as rfq_budget_total'),
+                DB::raw('COALESCE(SUM(DISTINCT contracts.total_amount), 0) as contract_value_total')
+            )
+            ->groupBy('categories.id', 'categories.name')
+            ->havingRaw('COUNT(DISTINCT rfqs.id) > 0')
+            ->orderByDesc('rfq_count')
+            ->limit(15)
+            ->get()
+            ->map(function ($row) {
+                $row->avg_bids = $row->rfq_count > 0 ? round($row->bid_count / $row->rfq_count, 1) : 0;
+
+                return $row;
+            });
+
+        $totalCategoryValue = (float) $topCommodities->sum('contract_value_total');
+        $totalRfqBudget = (float) $topCommodities->sum('rfq_budget_total');
+
+        $stats = [
+            'active_commodities' => $topCommodities->count(),
+            'total_rfqs' => (int) DB::table('rfqs')
+                ->whereNotIn('status', ['draft', 'cancelled'])
+                ->whereNotNull('category_id')
+                ->where('created_at', '>=', $since)
+                ->count(),
+            'total_contract_value' => $totalCategoryValue,
+            'total_rfq_budget' => $totalRfqBudget,
+        ];
+
+        // Monthly RFQ trend across all commodities.
+        $monthlyTrend = DB::table('rfqs')
+            ->whereNotIn('status', ['draft', 'cancelled'])
+            ->whereNotNull('category_id')
+            ->where('created_at', '>=', $since)
+            ->select(
+                DB::raw($this->monthExpr('rfqs.created_at').' as month'),
+                DB::raw('COUNT(*) as rfq_count'),
+                DB::raw('COALESCE(SUM(budget), 0) as budget_total')
+            )
+            ->groupBy('month')
+            ->orderBy('month')
+            ->get();
+
+        // Top catalogue products (Buy-Now listings) by activity — proxy: recent
+        // listings in active state, grouped by HS/SKU hotness within a category.
+        $topProducts = DB::table('products')
+            ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
+            ->leftJoin('companies', 'products.company_id', '=', 'companies.id')
+            ->where('products.is_active', true)
+            ->whereNull('products.deleted_at')
+            ->select(
+                'products.id',
+                'products.name',
+                'products.hs_code',
+                'products.base_price',
+                'products.currency',
+                'products.unit',
+                'categories.name as category_name',
+                'companies.name as supplier_name'
+            )
+            ->orderByDesc('products.updated_at')
+            ->limit(10)
+            ->get();
+
+        return view('dashboard.gov.commodities-report', compact(
+            'stats', 'topCommodities', 'totalCategoryValue',
+            'monthlyTrend', 'topProducts', 'months'
+        ));
+    }
+
     /** Government: Dispute management */
     public function disputes(Request $request): View
     {
@@ -448,8 +544,49 @@ class GovernmentController extends Controller
             'companies' => $this->exportCompanies(),
             'disputes' => $this->exportDisputes(),
             'icv' => $this->exportIcv(),
+            'commodities' => $this->exportCommodities(),
             default => abort(404),
         };
+    }
+
+    private function exportCommodities()
+    {
+        $rows = DB::table('categories')
+            ->leftJoin('rfqs', function ($j) {
+                $j->on('rfqs.category_id', '=', 'categories.id')
+                    ->whereNotIn('rfqs.status', ['draft', 'cancelled'])
+                    ->whereNull('rfqs.deleted_at');
+            })
+            ->leftJoin('bids', 'bids.rfq_id', '=', 'rfqs.id')
+            ->leftJoin('contracts', function ($j) {
+                $j->on('contracts.purchase_request_id', '=', 'rfqs.purchase_request_id')
+                    ->whereNotNull('rfqs.purchase_request_id')
+                    ->whereNull('contracts.deleted_at');
+            })
+            ->select(
+                'categories.id',
+                'categories.name',
+                DB::raw('COUNT(DISTINCT rfqs.id) as rfq_count'),
+                DB::raw('COUNT(DISTINCT bids.id) as bid_count'),
+                DB::raw('COUNT(DISTINCT contracts.id) as contract_count'),
+                DB::raw('COALESCE(SUM(DISTINCT rfqs.budget), 0) as rfq_budget_total'),
+                DB::raw('COALESCE(SUM(DISTINCT contracts.total_amount), 0) as contract_value_total')
+            )
+            ->groupBy('categories.id', 'categories.name')
+            ->havingRaw('COUNT(DISTINCT rfqs.id) > 0')
+            ->orderByDesc('rfq_count')
+            ->get();
+
+        $csv = "ID,Commodity,RFQs,Bids,Contracts,RFQ Budget (AED),Contract Value (AED)\n";
+        foreach ($rows as $r) {
+            $name = str_replace('"', '""', $r->name);
+            $csv .= "{$r->id},\"{$name}\",{$r->rfq_count},{$r->bid_count},{$r->contract_count},{$r->rfq_budget_total},{$r->contract_value_total}\n";
+        }
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="gov_commodities_'.date('Y-m-d').'.csv"',
+        ]);
     }
 
     private function exportContracts()

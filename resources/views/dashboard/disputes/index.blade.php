@@ -277,6 +277,46 @@
                 @error('description')<p class="text-[11px] text-[#ff4d7f] mt-1">{{ $message }}</p>@enderror
             </div>
 
+            {{-- Structured claim — amount + remedy + severity turn a
+                 narrative complaint into an actionable case. --}}
+            <div class="grid grid-cols-3 gap-3">
+                <div class="col-span-2">
+                    <label class="block text-[12px] font-semibold text-primary mb-2">{{ __('disputes.claim_amount') }} <span class="text-muted font-normal">({{ __('common.optional') }})</span></label>
+                    <input type="number" name="claim_amount" min="0" step="0.01"
+                           class="w-full bg-page border border-th-border rounded-xl px-4 py-2.5 text-[13px] text-primary focus:outline-none focus:border-accent/40">
+                </div>
+                <div>
+                    <label class="block text-[12px] font-semibold text-primary mb-2">{{ __('common.currency') }}</label>
+                    <input type="text" name="claim_currency" value="AED" maxlength="3"
+                           class="w-full bg-page border border-th-border rounded-xl px-4 py-2.5 text-[13px] text-primary uppercase focus:outline-none focus:border-accent/40">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[12px] font-semibold text-primary mb-2">{{ __('disputes.remedy') }}</label>
+                    <select name="requested_remedy" class="w-full bg-page border border-th-border rounded-xl px-4 py-2.5 text-[13px] text-primary focus:outline-none focus:border-accent/40">
+                        <option value="">—</option>
+                        <option value="refund">{{ __('disputes.remedy.refund') }}</option>
+                        <option value="replacement">{{ __('disputes.remedy.replacement') }}</option>
+                        <option value="credit_note">{{ __('disputes.remedy.credit_note') }}</option>
+                        <option value="repair">{{ __('disputes.remedy.repair') }}</option>
+                        <option value="price_adjustment">{{ __('disputes.remedy.price_adjustment') }}</option>
+                        <option value="contract_amendment">{{ __('disputes.remedy.contract_amendment') }}</option>
+                        <option value="other">{{ __('disputes.remedy.other') }}</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[12px] font-semibold text-primary mb-2">{{ __('disputes.severity') }}</label>
+                    <select name="severity" class="w-full bg-page border border-th-border rounded-xl px-4 py-2.5 text-[13px] text-primary focus:outline-none focus:border-accent/40">
+                        <option value="low">{{ __('severity.low') }}</option>
+                        <option value="medium" selected>{{ __('severity.medium') }}</option>
+                        <option value="high">{{ __('severity.high') }}</option>
+                        <option value="critical">{{ __('severity.critical') }}</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="flex items-center justify-end gap-3 pt-2">
                 <button type="button" onclick="document.getElementById('open-dispute-modal').classList.add('hidden')"
                         class="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-muted bg-page border border-th-border hover:text-primary">

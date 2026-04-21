@@ -159,36 +159,65 @@ $nav = [
             ['key' => 'icv-certificates', 'label' => __('nav.icv_certificates'), 'route' => 'dashboard.icv-certificates.index',
              'icon' => 'M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0',
              'perm' => null, 'roles' => ['company_manager'], 'badge' => 'icv-certificates'],
-            ['key' => 'gov', 'label' => __('gov.title'), 'route' => 'gov.index',
-             'icon' => 'M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-contracts', 'label' => __('gov.contracts_title'), 'route' => 'gov.contracts',
-             'icon' => 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-payments', 'label' => __('gov.payments_title'), 'route' => 'gov.payments',
-             'icon' => 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-competition', 'label' => __('gov.competition_title'), 'route' => 'gov.competition',
-             'icon' => 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-disputes', 'label' => __('gov.disputes_title'), 'route' => 'gov.disputes',
-             'icon' => 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 17.25h.007v.008H12v-.008z',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-icv', 'label' => __('gov.icv_title'), 'route' => 'gov.icv-report',
-             'icon' => 'M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-esg', 'label' => __('gov.esg_title'), 'route' => 'gov.esg-report',
-             'icon' => 'M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-sanctions', 'label' => __('gov.sanctions_title'), 'route' => 'gov.sanctions-report',
-             'icon' => 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-sme', 'label' => __('gov.sme_title'), 'route' => 'gov.sme-report',
-             'icon' => 'M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35',
-             'perm' => null, 'roles' => ['government', 'admin']],
-            ['key' => 'gov-collusion', 'label' => __('gov.collusion_title'), 'route' => 'gov.collusion-report',
-             'icon' => 'M12 9v3.75m0 0h.008v.008H12v-.008zM21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-             'perm' => null, 'roles' => ['government', 'admin']],
+        ],
+    ],
+    // Government console — extracted into its own block (rendered below
+    // under a dedicated heading with sub-group labels). Items stay here
+    // so the role gate + permission visibility logic is still shared.
+    'government' => [
+        'label' => __('gov.title'),
+        'groups' => [
+            [
+                'label' => __('gov.group_oversight'),
+                'color' => '#ff4d7f',
+                'items' => [
+                    ['key' => 'gov', 'label' => __('gov.console_home'), 'route' => 'gov.index',
+                     'icon' => 'M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                    ['key' => 'gov-contracts', 'label' => __('gov.contracts_title'), 'route' => 'gov.contracts',
+                     'icon' => 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                    ['key' => 'gov-payments', 'label' => __('gov.payments_title'), 'route' => 'gov.payments',
+                     'icon' => 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                    ['key' => 'gov-disputes', 'label' => __('gov.disputes_title'), 'route' => 'gov.disputes',
+                     'icon' => 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 17.25h.007v.008H12v-.008z',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                ],
+            ],
+            [
+                'label' => __('gov.group_market'),
+                'color' => '#8B5CF6',
+                'items' => [
+                    ['key' => 'gov-commodities', 'label' => __('gov.commodities_title'), 'route' => 'gov.commodities-report',
+                     'icon' => 'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                    ['key' => 'gov-competition', 'label' => __('gov.competition_title'), 'route' => 'gov.competition',
+                     'icon' => 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                    ['key' => 'gov-sme', 'label' => __('gov.sme_title'), 'route' => 'gov.sme-report',
+                     'icon' => 'M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                    ['key' => 'gov-icv', 'label' => __('gov.icv_title'), 'route' => 'gov.icv-report',
+                     'icon' => 'M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                ],
+            ],
+            [
+                'label' => __('gov.group_risk'),
+                'color' => '#ffb020',
+                'items' => [
+                    ['key' => 'gov-sanctions', 'label' => __('gov.sanctions_title'), 'route' => 'gov.sanctions-report',
+                     'icon' => 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.623 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                    ['key' => 'gov-collusion', 'label' => __('gov.collusion_title'), 'route' => 'gov.collusion-report',
+                     'icon' => 'M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                    ['key' => 'gov-esg', 'label' => __('gov.esg_title'), 'route' => 'gov.esg-report',
+                     'icon' => 'M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z',
+                     'perm' => null, 'roles' => ['government', 'admin']],
+                ],
+            ],
         ],
     ],
     'analytics' => [
@@ -349,6 +378,62 @@ $fmtBadge = function (int $n): string {
                 </a>
                 @endforeach
             </div>
+        </div>
+        @endif
+
+        {{-- ─────────────────────── Government console ─────────────────────── --}}
+        {{-- Dedicated block for government/admin roles. Renders with a
+             pink role-accent header and three semantic sub-groups
+             (oversight, market intelligence, compliance & risk) so the
+             reports console is scannable at a glance. --}}
+        @if(in_array($role, ['government', 'admin'], true))
+        @php
+            $govRing = '#ff4d7f';
+            $govTint = 'rgba(255,77,127,0.08)';
+        @endphp
+        <div class="rounded-[14px] border p-3 -mx-1"
+             style="border-color: rgba(255,77,127,0.22); background: linear-gradient(180deg, rgba(255,77,127,0.06), transparent 70%);">
+            <div class="flex items-center justify-between mb-3 px-2">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg"
+                          style="background: {{ $govTint }}; color: {{ $govRing }};">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18"/></svg>
+                    </span>
+                    <h3 class="text-[11px] font-bold uppercase tracking-[0.14em]" style="color: {{ $govRing }};">
+                        {{ $nav['government']['label'] }}
+                    </h3>
+                </div>
+                <span class="text-[9px] font-bold uppercase tracking-[0.14em] text-faint">{{ __('gov.console') }}</span>
+            </div>
+
+            @foreach($nav['government']['groups'] as $gi => $group)
+            @php $groupItems = collect($group['items'])->filter($visible); @endphp
+            @if($groupItems->isNotEmpty())
+            <div @class(['mb-3' => !$loop->last, 'space-y-1'])>
+                <div class="flex items-center gap-2 px-2 mb-1.5">
+                    <span class="w-1 h-1 rounded-full" style="background: {{ $group['color'] }};"></span>
+                    <span class="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">{{ $group['label'] }}</span>
+                    <span class="flex-1 h-px bg-th-border/60"></span>
+                </div>
+                <div class="space-y-0.5">
+                    @foreach($groupItems as $item)
+                    @php $isActive = $active === $item['key']; @endphp
+                    <a href="{{ route($item['route']) }}"
+                       @class([
+                           'flex items-center gap-3 px-3 py-2 rounded-[10px] text-[13px] font-semibold transition-all',
+                           'text-body hover:bg-surface-2 hover:text-primary' => !$isActive,
+                       ])
+                       @style([
+                           'background: rgba(255,77,127,0.12); color: '.$govRing.'; box-shadow: inset 0 0 0 1px rgba(255,77,127,0.35);' => $isActive,
+                       ])>
+                        <svg class="w-[17px] h-[17px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $item['icon'] }}"/></svg>
+                        <span class="flex-1 truncate">{{ $item['label'] }}</span>
+                    </a>
+                    @endforeach
+                </div>
+            </div>
+            @endif
+            @endforeach
         </div>
         @endif
 

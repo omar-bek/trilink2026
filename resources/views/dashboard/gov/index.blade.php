@@ -47,7 +47,7 @@
             </div>
         </div>
         @if(!empty($escalated) && count($escalated) > 0)
-        <a href="{{ route('dashboard.disputes.index', ['status' => 'escalated']) }}" class="inline-flex items-center gap-1 text-[12px] font-semibold text-accent hover:text-accent-h transition-colors">
+        <a href="{{ route('dashboard.disputes', ['status' => 'escalated']) }}" class="inline-flex items-center gap-1 text-[12px] font-semibold text-accent hover:text-accent-h transition-colors">
             {{ __('common.view_all') }}
             <svg class="w-3.5 h-3.5 rtl:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </a>

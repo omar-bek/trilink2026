@@ -223,6 +223,7 @@ Route::middleware(['auth', 'web.role:government,admin'])->prefix('gov')->name('g
     Route::get('/esg-report', [GovernmentController::class, 'esgReport'])->name('esg-report');
     Route::get('/sanctions-report', [GovernmentController::class, 'sanctionsReport'])->name('sanctions-report');
     Route::get('/sme-report', [GovernmentController::class, 'smeReport'])->name('sme-report');
+    Route::get('/commodities-report', [GovernmentController::class, 'commoditiesReport'])->name('commodities-report');
     Route::get('/disputes', [GovernmentController::class, 'disputes'])->name('disputes');
     Route::get('/export', [GovernmentController::class, 'export'])->name('export');
 });
@@ -805,8 +806,19 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     Route::get('/disputes/{id}', [DisputeController::class, 'show'])->name('dashboard.disputes.show');
     // Any party of a contract can open a dispute (verified in controller).
     Route::post('/disputes', [DisputeController::class, 'store'])->name('dashboard.disputes.store');
+
+    // Interactive case-file actions — messages, offers, acknowledgement,
+    // withdrawal. All authorisation is enforced inside the controller /
+    // service; routes stay coarse-grained so any authenticated user with
+    // dispute.view can hit them and get a 403 if they're not a party.
+    Route::post('/disputes/{id}/acknowledge', [DisputeController::class, 'acknowledge'])->name('dashboard.disputes.acknowledge');
+    Route::post('/disputes/{id}/messages', [DisputeController::class, 'message'])->name('dashboard.disputes.message');
+    Route::post('/disputes/{id}/offers', [DisputeController::class, 'submitOffer'])->name('dashboard.disputes.offers.submit');
+    Route::post('/disputes/{id}/offers/{offerId}/respond', [DisputeController::class, 'respondToOffer'])->name('dashboard.disputes.offers.respond');
+    Route::post('/disputes/{id}/withdraw', [DisputeController::class, 'withdraw'])->name('dashboard.disputes.withdraw');
+
     Route::post('/disputes/{id}/escalate', [DisputeController::class, 'escalate'])->name('dashboard.disputes.escalate');
-    // Only government users resolve escalated disputes.
+    // Only government users adjudicate escalated disputes.
     Route::middleware('web.role:government,admin')->group(function () {
         Route::post('/disputes/{id}/resolve', [DisputeController::class, 'resolve'])->name('dashboard.disputes.resolve');
     });
