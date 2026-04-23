@@ -22,9 +22,16 @@
     <h3 class="text-[20px] font-bold text-primary mb-1">{{ __('settings.bank_account') ?? 'Receiving Bank Account' }}</h3>
     <p class="text-[14px] text-muted mb-6">{{ __('settings.bank_account_hint') ?? 'Where TriLink will deposit funds when buyers settle your invoices.' }}</p>
 
-    <form method="POST" action="{{ route('settings.payment.update') }}" class="space-y-4">
+    @unless($canManageBilling)
+    <div class="mb-6 bg-[#ffc24d]/5 border border-[#ffc24d]/30 rounded-xl p-4 text-[13px] text-[#ffc24d]">
+        {{ __('settings.manager_only_billing_notice') }}
+    </div>
+    @endunless
+
+    <form method="POST" action="{{ route('settings.payment.update') }}" class="space-y-4" @unless($canManageBilling) onsubmit="return false" @endunless>
         @csrf
         @method('PATCH')
+        <fieldset @unless($canManageBilling) disabled class="opacity-60 pointer-events-none" @endunless class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block text-[13px] text-muted mb-1.5">Account Holder Name</label>
@@ -65,10 +72,11 @@
             </div>
         </div>
 
-        <button type="submit" class="inline-flex items-center gap-2 h-12 px-6 rounded-xl text-[14px] font-medium text-white bg-accent hover:bg-accent-h transition-colors">
+        <button type="submit" class="inline-flex items-center gap-2 h-12 px-6 rounded-xl text-[14px] font-medium text-white bg-accent hover:bg-accent-h transition-colors disabled:opacity-50 disabled:cursor-not-allowed" @unless($canManageBilling) disabled @endunless>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             Save Bank Details
         </button>
+        </fieldset>
     </form>
 
 @else

@@ -1,8 +1,16 @@
 <h3 class="text-[18px] font-bold text-primary mb-6">{{ __('settings.company_profile') }}</h3>
 
-<form method="POST" action="{{ route('settings.company.update') }}" class="space-y-5">
+@unless($canEditCompany)
+<div class="mb-6 bg-[#ffc24d]/5 border border-[#ffc24d]/30 rounded-xl p-4 text-[13px] text-[#ffc24d]">
+    {{ __('settings.manager_only_notice') }}
+</div>
+@endunless
+
+<form method="POST" action="{{ route('settings.company.update') }}" class="space-y-5" @unless($canEditCompany) onsubmit="return false" @endunless>
     @csrf
     @method('PATCH')
+    <fieldset @unless($canEditCompany) disabled class="opacity-60 pointer-events-none" @endunless class="space-y-5">
+    @php $__companyTabOpen = true; @endphp
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
@@ -48,9 +56,10 @@
     </div>
 
     <div class="pt-4 border-t border-th-border">
-        <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(79,124,255,0.25)]">
+        <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(79,124,255,0.25)] disabled:opacity-50 disabled:cursor-not-allowed" @unless($canEditCompany) disabled @endunless>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z"/></svg>
             Save Changes
         </button>
     </div>
+    </fieldset>
 </form>

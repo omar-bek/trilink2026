@@ -1,0 +1,13 @@
+# Default owners — every change in this repo requires a review from one
+# of the listed accounts before merging.
+
+*                           @khamis-mubarak
+
+# Security-sensitive surfaces — require extra eyes.
+/app/Services/Escrow/       @khamis-mubarak
+/app/Services/Payments/     @khamis-mubarak
+/app/Models/AuditLog.php    @khamis-mubarak
+/app/Http/Middleware/       @khamis-mubarak
+/database/migrations/       @khamis-mubarak
+/config/                    @khamis-mubarak
+/.github/                   @khamis-mubarak

@@ -54,6 +54,12 @@ $tabs = [
         'icon'  => '<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/>',
     ],
     [
+        'key'   => 'design-partners',
+        'label' => __('admin.tabs.design_partners'),
+        'route' => 'admin.design-partners.index',
+        'icon'  => '<path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>',
+    ],
+    [
         'key'   => 'categories',
         'label' => __('admin.tabs.categories'),
         'route' => 'admin.categories.index',

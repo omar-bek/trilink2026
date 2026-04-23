@@ -216,7 +216,8 @@
 
     {{-- RIGHT: Buyer info + Competition + Submit Bid + Download --}}
     <div class="space-y-4">
-        {{-- Buyer Information --}}
+        {{-- Buyer Information — supplier-side only; owner/admin see null. --}}
+        @if(!empty($rfq['buyer']))
         <div class="bg-[#1a1d29] border border-[rgba(255,255,255,0.1)] rounded-[16px] p-[25px]">
             <h3 class="text-[16px] font-semibold text-white mb-4">Buyer Information</h3>
             <div class="flex items-center gap-3 mb-5">
@@ -252,6 +253,7 @@
                 </div>
             </dl>
         </div>
+        @endif
 
         {{-- Competition --}}
         <div class="bg-[#1a1d29] border border-[rgba(255,255,255,0.1)] rounded-[16px] p-[25px]">

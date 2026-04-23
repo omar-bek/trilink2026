@@ -76,6 +76,16 @@
 
     {{-- ===== Action buttons row ===== --}}
     <div class="flex items-center gap-3 mb-8 flex-wrap">
+        @if($bid['status'] === 'accepted' && $bid['my_role'] === 'buyer')
+            <a href="{{ route('dashboard.bids.proforma-invoice', ['id' => $bid['numeric_id']]) }}"
+               target="_blank"
+               rel="noopener"
+               class="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[13px] font-semibold text-white bg-accent hover:bg-accent-h shadow-[0_4px_14px_rgba(79,124,255,0.3)]">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                {{ __('bids.generate_invoice') }}
+            </a>
+        @endif
+
         @if($bid['status'] === 'submitted' || $bid['status'] === 'under_review')
             @can('bid.accept')
             <form method="POST" action="{{ route('dashboard.bids.accept', ['id' => $bid['numeric_id']]) }}" class="inline">

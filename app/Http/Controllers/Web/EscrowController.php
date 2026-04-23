@@ -162,6 +162,7 @@ class EscrowController extends Controller
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'reason' => ['required', 'string', 'max:500'],
+            'payment_id' => ['nullable', 'integer', 'exists:payments,id'],
         ]);
 
         try {
@@ -174,6 +175,32 @@ class EscrowController extends Controller
             );
         } catch (BankPartnerException $e) {
             return back()->withErrors(['escrow' => $e->getMessage()]);
+        }
+
+        // Phase A hardening — Cabinet Decision 52/2017 Article 60 requires
+        // a tax credit note whenever a tax invoice is reversed. Auto-cut
+        // one against the payment the refund unwinds so the buyer can
+        // reverse their input tax and the supplier can reduce their
+        // output tax on the next VAT return. Silent failure on CN
+        // generation doesn't roll back the refund — finance can retry.
+        if (! empty($validated['payment_id'])) {
+            $payment = \App\Models\Payment::find($validated['payment_id']);
+            if ($payment && $payment->contract_id === $contract->id) {
+                try {
+                    app(\App\Services\Payments\CreditNoteAutoGenerator::class)
+                        ->generateFromRefund(
+                            $payment,
+                            (float) $validated['amount'],
+                            \App\Models\TaxCreditNote::REASON_REFUND,
+                            $user?->id,
+                        );
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('credit note auto-gen skipped', [
+                        'payment_id' => $payment->id,
+                        'reason' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
 
         return redirect()

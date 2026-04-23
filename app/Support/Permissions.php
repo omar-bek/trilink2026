@@ -117,6 +117,27 @@ class Permissions
 
     public const REPORTS_EXPORT = 'reports.export';
 
+    // Company-wide settings. Reserved for the company manager (and admins).
+    // Each key maps to a tab in /settings. Split so a manager can delegate
+    // "edit company profile" without handing over bank-account access.
+    public const COMPANY_SETTINGS_VIEW = 'company.settings.view';
+
+    public const COMPANY_PROFILE_EDIT = 'company.profile.edit';
+
+    public const COMPANY_BILLING_MANAGE = 'company.billing.manage';
+
+    public const COMPANY_SECURITY_MANAGE = 'company.security.manage';
+
+    public const COMPANY_DEFAULTS_MANAGE = 'company.defaults.manage';
+
+    public const COMPANY_API_TOKENS_MANAGE = 'company.api_tokens.manage';
+
+    public const COMPANY_BRANDING_MANAGE = 'company.branding.manage';
+
+    public const COMPANY_APPROVALS_MANAGE = 'company.approvals.manage';
+
+    public const COMPANY_AUDIT_VIEW = 'company.audit.view';
+
     /**
      * Catalog grouped by domain. Keys are translation suffixes; the UI
      * looks them up via __('perm.<key>').
@@ -173,6 +194,18 @@ class Permissions
             ],
             'reports' => [
                 self::REPORTS_VIEW, self::REPORTS_EXPORT,
+            ],
+            // Company manager-only catalog. These keys never appear in the
+            // team-member permission editor (see CompanyUserController's
+            // filterCatalog guard) because they are the bypass that lets a
+            // manager run the company — handing them out would defeat the
+            // split-of-duties the rest of the catalog enforces.
+            'company_admin' => [
+                self::COMPANY_SETTINGS_VIEW, self::COMPANY_PROFILE_EDIT,
+                self::COMPANY_BILLING_MANAGE, self::COMPANY_SECURITY_MANAGE,
+                self::COMPANY_DEFAULTS_MANAGE, self::COMPANY_API_TOKENS_MANAGE,
+                self::COMPANY_BRANDING_MANAGE, self::COMPANY_APPROVALS_MANAGE,
+                self::COMPANY_AUDIT_VIEW,
             ],
         ];
     }

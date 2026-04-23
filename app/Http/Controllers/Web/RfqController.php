@@ -259,7 +259,7 @@ class RfqController extends Controller
                 $location = $this->formatLocation($rfq->delivery_location);
 
                 $quantity = collect($rfq->items ?? [])->sum(fn ($i) => (float) ($i['qty'] ?? $i['quantity'] ?? 0));
-                $unit = collect($rfq->items ?? [])->first()['unit'] ?? '';
+                $unit = (collect($rfq->items ?? [])->first() ?: [])['unit'] ?? '';
 
                 // Did this supplier already submit a bid on this RFQ?
                 // The badge + the disabled-CTA logic on the index card both
@@ -353,7 +353,7 @@ class RfqController extends Controller
         $currency = $rfq->currency ?: 'AED';
         $items = collect($rfq->items ?? []);
         $totalQty = $items->sum(fn ($i) => (float) ($i['qty'] ?? $i['quantity'] ?? 0));
-        $unit = $items->first()['unit'] ?? __('rfq.unit_default');
+        $unit = ($items->first() ?: [])['unit'] ?? __('rfq.unit_default');
 
         $techSpecs = $items->flatMap(function ($item) {
             $specs = $item['specs'] ?? $item['specifications'] ?? [];
@@ -591,7 +591,7 @@ class RfqController extends Controller
 
         $currency = $rfq->currency ?: 'AED';
         $totalQty = collect($rfq->items ?? [])->sum(fn ($i) => (float) ($i['qty'] ?? $i['quantity'] ?? 0));
-        $unit = collect($rfq->items ?? [])->first()['unit'] ?? __('rfq.unit_default');
+        $unit = (collect($rfq->items ?? [])->first() ?: [])['unit'] ?? __('rfq.unit_default');
 
         // Phase 2 — resolve the tax rate to show as a live VAT preview while
         // the supplier types. Same lookup ContractService uses at acceptance
@@ -709,7 +709,22 @@ class RfqController extends Controller
         abort_unless(auth()->user()?->hasPermission('rfq.view'), 403);
 
         $rfq = $this->findOrFail($id)->load(['category', 'company']);
-        $pdf = Pdf::loadView('dashboard.rfqs.pdf', ['rfq' => $rfq]);
+
+        $requested = request()->query('lang');
+        $pdfLocale = in_array($requested, ['ar', 'en'], true)
+            ? $requested
+            : (auth()->user()?->locale ?? app()->getLocale());
+
+        $previous = app()->getLocale();
+        app()->setLocale($pdfLocale);
+        try {
+            $pdf = Pdf::loadView('dashboard.rfqs.pdf', [
+                'rfq'       => $rfq,
+                'pdfLocale' => $pdfLocale,
+            ]);
+        } finally {
+            app()->setLocale($previous);
+        }
 
         return $pdf->download(($rfq->rfq_number ?: 'RFQ').'.pdf');
     }

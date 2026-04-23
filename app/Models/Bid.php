@@ -41,6 +41,7 @@ class Bid extends Model
         'subtotal_excl_tax',
         'tax_amount',
         'total_incl_tax',
+        'negotiation_round_cap',
     ];
 
     protected function casts(): array

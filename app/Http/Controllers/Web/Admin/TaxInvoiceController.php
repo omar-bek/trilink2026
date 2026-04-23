@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Web\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Models\Payment;
+use App\Models\Company;
 use App\Models\TaxInvoice;
 use App\Services\Tax\TaxInvoiceService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -106,15 +109,32 @@ class TaxInvoiceController extends Controller
         ]);
     }
 
-    public function download(int $id, Request $request): BinaryFileResponse|StreamedResponse|RedirectResponse
+    public function download(int $id, Request $request): BinaryFileResponse|StreamedResponse|RedirectResponse|Response
     {
         abort_unless($request->user()?->hasPermission('payment.view'), 403);
 
         $invoice = TaxInvoice::findOrFail($id);
 
+        // Language toggle. ?lang=ar renders Arabic-only, ?lang=en renders
+        // English-only; anything else (or absent) returns the canonical
+        // bilingual PDF that's stored on disk for the FTA audit trail.
+        $requested = $request->query('lang');
+        $pdfLocale = in_array($requested, ['ar', 'en'], true) ? $requested : null;
+
+        if ($pdfLocale !== null) {
+            $supplier = Company::find($invoice->supplier_company_id);
+            $pdf = Pdf::loadView('dashboard.admin.tax-invoices.pdf', [
+                'invoice' => $invoice,
+                'qrDataUri' => null,
+                'ctAnnotation' => $supplier?->ctAnnotation(),
+                'pdfLocale' => $pdfLocale,
+            ])->setPaper('a4');
+
+            $filename = $invoice->invoice_number.'_'.$pdfLocale.'.pdf';
+            return $pdf->download($filename);
+        }
+
         if (! $invoice->pdf_path) {
-            // PDF was never rendered (job failed, or invoice issued before
-            // the renderer existed). Render it now and store it.
             $invoice = $this->service->renderAndStorePdf($invoice);
         }
 

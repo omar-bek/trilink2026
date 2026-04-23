@@ -31,6 +31,17 @@ class NegotiationMessage extends Model
         'offer',
         'round_number',
         'round_status',
+        'expires_at',
+        'expired_at',
+        'responded_at',
+        'responded_by',
+        'subtotal_excl_tax',
+        'tax_amount',
+        'total_incl_tax',
+        'signed_by_name',
+        'signed_at',
+        'signature_ip',
+        'signature_hash',
     ];
 
     protected function casts(): array
@@ -38,7 +49,24 @@ class NegotiationMessage extends Model
         return [
             'offer' => 'array',
             'round_number' => 'integer',
+            'expires_at' => 'datetime',
+            'expired_at' => 'datetime',
+            'responded_at' => 'datetime',
+            'signed_at' => 'datetime',
+            'subtotal_excl_tax' => 'decimal:2',
+            'tax_amount' => 'decimal:2',
+            'total_incl_tax' => 'decimal:2',
         ];
+    }
+
+    public function isOpen(): bool
+    {
+        return $this->round_status === self::ROUND_OPEN;
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->isPast();
     }
 
     public function bid(): BelongsTo

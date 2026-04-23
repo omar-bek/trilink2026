@@ -45,6 +45,19 @@ class Contract extends Model
         // first sign so the contract show page / verify endpoint can
         // read it without re-running the resolver per request.
         'signature_grade_required',
+        // Phase C / G / H (UAE finance hardening).
+        'payment_terms',
+        'late_fee_annual_rate',
+        'early_discount_rate',
+        'early_discount_days',
+        'credit_limit',
+        'retention_percentage',
+        'retention_amount',
+        'retention_release_date',
+        'retention_released_at',
+        'vat_treatment',
+        'corporate_tax_applicable',
+        'default_wht_rate',
     ];
 
     protected function casts(): array
@@ -60,6 +73,16 @@ class Contract extends Model
             'end_date' => 'date',
             'progress_updates' => 'array',
             'supplier_documents' => 'array',
+            // Phase C / G / H.
+            'retention_percentage' => 'decimal:2',
+            'retention_amount' => 'decimal:2',
+            'retention_release_date' => 'date',
+            'retention_released_at' => 'datetime',
+            'late_fee_annual_rate' => 'decimal:2',
+            'early_discount_rate' => 'decimal:2',
+            'credit_limit' => 'decimal:2',
+            'default_wht_rate' => 'decimal:2',
+            'corporate_tax_applicable' => 'boolean',
         ];
     }
 

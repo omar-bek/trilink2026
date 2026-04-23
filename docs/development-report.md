@@ -1,80 +1,199 @@
 # تقرير التطوير — منصة Trilink للمشتريات
 ### التغييرات من بداية المشروع حتى آخر تحديث
 
-**عدد الملفات المعدّلة:** 750 ملف
-**إجمالي الأكواد المضافة:** +161,367 سطر
+| المقياس | القيمة |
+|---|---|
+| إجمالي الملفات المعدَّلة | 750 |
+| إجمالي الأسطر المضافة | 161,367+ |
+| إصدار Laravel | 11.31 |
+| إصدار PHP | 8.3 |
+| عدد الـ Migrations | 92 |
+| عدد الخدمات (Services) | 95+ |
+| عدد الاختبارات | 30 ملف اختبار (8,243 سطر) |
+| تغطية i18n | عربي / إنجليزي (كامل) |
 
 ---
 
-## التحديث الأخير (Second Update) — ملخص
+## ملخص التحديث الأخير
 
-**501 ملف** اتعدلوا — **+25,165 سطر إضافة** و **-11,241 سطر حذف (إعادة هيكلة)**
+| المقياس | القيمة |
+|---|---|
+| الملفات المعدَّلة | 501 |
+| أسطر مضافة | +25,165 |
+| أسطر محذوفة (إعادة هيكلة) | −11,241 |
+| صافي النمو | +13,924 |
 
-### أهم اللي اتعمل في التحديث الأخير:
+---
 
-#### بنية تحتية وأمان
-- إضافة **Docker** بالكامل (Dockerfile, docker-compose, nginx, supervisord, opcache, php.ini)
-- تحسين **CI/CD Pipeline** في GitHub Actions
-- إضافة أمر **تدوير مفاتيح التشفير** (RotateEncryptionKey)
-- إضافة أمر **إعادة فحص جميع الشركات** ضد العقوبات (RescreenAllCompanies)
-- إضافة أمر **تثبيت سلسلة التدقيق** (AnchorAuditChain) لضمان عدم التلاعب بالسجلات
-- إضافة **script نشر تلقائي** (deploy.sh)
+### 1. البنية التحتية والأمان (Infrastructure & Security)
 
-#### نماذج وقاعدة بيانات (30+ migration جديدة)
-- جداول **المستفيدين الحقيقيين** (Beneficial Owners) — متطلب compliance
-- جداول **التأمين** للشركات (Company Insurances)
-- جداول **التصنيف الائتماني** (Credit Scores)
-- جداول **الفواتير الضريبية** + إشعارات ائتمان + تسلسل أرقام الفواتير
-- جداول **الموافقات** وسجلات التدقيق والتعديلات على العقود
-- جداول **الخصوصية** — الموافقات، طلبات الحذف/التصدير، إصدارات سياسة الخصوصية
-- جداول **شهادات ICV** + ربطها بالـ RFQ
-- جداول **الفوترة الإلكترونية** (E-Invoice Submissions)
-- جداول **أطراف العقد** (Contract Parties)
-- جداول **رسوم المنصة** و**القائمة السوداء**
-- جداول **التواطؤ** (Collusion Alerts)
-- جداول **شهادات الشركات** (Certificate Uploads)
-- إضافة أعمدة **التوقيع الإلكتروني والختم** للشركات
-- إضافة **المناطق الحرة** و**ضريبة الشركات** و**TRC** للشركات
-- إضافة **تفضيلات الإشعارات** و**اللغة** و**انتهاء كلمة المرور** للمستخدمين
-- تحسين **فهارس البحث** للأداء
-- **تشفير الأعمدة الحساسة** في قاعدة البيانات
+**النشر والتشغيل**
 
-#### خدمات جديدة (82 service)
-- **5 شركات شحن** (Aramex, DHL, FedEx, Fetchr, UPS) + حساب الجمارك والرسوم
-- **بوابات الدفع** (Stripe, PayPal) + تكامل بنك المشرق
-- **التوقيع الإلكتروني** (PKI + مزودي خدمة TSP متعددين)
-- **الفوترة الإلكترونية** (PINT AE Mapper + ASP Providers)
-- **الذكاء الاصطناعي** (Anthropic Client, Procurement Copilot, OCR, Risk Analysis)
-- **الامتثال** (عقوبات، تواطؤ، ICV، ESG، كربون)
-- **الخصوصية** (تصدير بيانات، حذف بيانات، سجل موافقات)
-- **ERP** (Odoo Connector + Custom Connector)
-- **البحث الشامل** + Onboarding Checklist + Sidebar Badges
+- حاوية **Docker** إنتاجية كاملة: `Dockerfile` متعدّد المراحل (multi-stage build)، `docker-compose.yml`، تهيئة `nginx`، مُشرف `supervisord` للعمّال (queue workers + scheduler)، `opcache` مفعَّل، و`php.ini` مُحكم.
+- خط أنابيب **CI/CD** على GitHub Actions: فحص `Pint` (PSR-12)، `PHPUnit` على PHP 8.3، `composer audit` للثغرات الأمنية، و`migrate --force` لاختبار التهجيرات.
+- سكربت نشر آلي (`deploy.sh`) مع قفل `flock` يمنع النشر المتوازي، و`php artisan down --retry=60` لنشر بدون انقطاع.
 
-#### واجهات مستخدم جديدة
-- صفحات **الأدمن**: مكافحة التواطؤ، القائمة السوداء، طلبات التصنيفات، شهادات الشركات، المنازعات، أسعار الصرف، رسوم المنصة، التقارير، صحة النظام، الفواتير الضريبية (PDF)، Webhooks
-- صفحات **الداشبورد**: العطاءات، العقود، المستندات، الجهات الحكومية (10 صفحات)، طلبات الشراء (5 صفحات)، RFQs، بروفايل الشركة
-- صفحات **عامة**: عن المنصة، تواصل، ملفات الارتباط، الشروط
-- صفحات **أخطاء**: 404, 419, 429, 500
-- مكونات: Admin Navbar, Flash Messages, Sidebar, Skeleton Loading, Icons
+**أدوات التقوية (Hardening Commands)**
 
-#### إشعارات (46 نوع)
-- كل أنواع الإشعارات المذكورة في التقرير الكامل تمت إضافتها/تحسينها في هذا التحديث
+| الأمر | الغرض |
+|---|---|
+| `php artisan keys:rotate` | تدوير مفاتيح التشفير (`APP_KEY`) مع إعادة تشفير الأعمدة الحساسة تدريجياً. |
+| `php artisan sanctions:rescreen` | إعادة الفحص الدوري لجميع الشركات ضد قوائم العقوبات (OFAC / UN / EU). |
+| `php artisan audit:anchor-chain` | تثبيت نقطة مرجعية (anchor) في سلسلة تجزئة سجلات التدقيق لضمان عدم التلاعب. |
+| `php artisan audit:verify-chain` | التحقق اليومي من سلامة السلسلة والتنبيه على أي كسر. |
 
-#### اختبارات (22 ملف)
-- اختبارات الأمان والتقوية (Security Hardening)
-- اختبارات الفواتير الضريبية والإلكترونية
-- اختبارات الخصوصية (PDPL)
-- اختبارات المناطق الحرة والقضاء
-- اختبارات ICV
-- اختبارات التوقيع الإلكتروني المؤهل
-- اختبارات ضريبة الشركات ومكافحة التواطؤ
-- اختبارات التدقيق والمدفوعات والشحن
-- اختبارات تدفقات الموردين والداشبورد
+---
 
-#### ترجمة ودعم اللغة العربية
-- ملفات الترجمة `ar.json` و `en.json` محدثة
-- دعم **التاريخ الهجري** (HijriDate)
-- دعم **تشكيل الحروف العربية** (ArabicShaper) للـ PDF
+### 2. قاعدة البيانات والتهجيرات (Database & Migrations)
+
+**أكثر من 30 تهجير جديد** — كلها مكتوبة بنمط دفاعي (`Schema::hasColumn` guard) بحيث يمكن إعادة تشغيلها على قواعد dev ملوَّثة دون تدخل يدوي.
+
+**جداول الامتثال (Compliance)**
+
+- `beneficial_owners` — المستفيدون الحقيقيون (متطلب AML/CFT).
+- `company_insurances` — وثائق التأمين التجاري.
+- `credit_scores` — التصنيف الائتماني للشركات.
+- `icv_certificates` + ربط مباشر بـ `rfqs` — نسبة القيمة المضافة داخل الدولة.
+- `sanctions_screenings`, `collusion_alerts`, `blacklisted_companies` — فحص مستمر للمخاطر.
+- `certificate_uploads` — شهادات طرف ثالث (CoO, ECAS, Halal, GSO).
+
+**جداول الماليات والعقود**
+
+- `tax_invoices`, `tax_credit_notes`, `invoice_number_sequences` — ترقيم متسلسل لا ينكسر.
+- `e_invoice_submissions` — قناة الفوترة الإلكترونية عبر ASP (Peppol / FTA).
+- `contract_approvals`, `contract_amendments`, `contract_versions`, `contract_parties`.
+- `platform_fees` — رسوم المنصة القابلة للتهيئة لكل نوع.
+
+**جداول خصوصية البيانات (PDPL)**
+
+- `consents` — سجل موافقات المستخدمين.
+- `privacy_requests` — طلبات الحذف / التصدير (DSR).
+- `privacy_policy_versions` — لقطات ثابتة من السياسة لا تقبل التعديل.
+
+**أعمدة مُضافة للشركات والمستخدمين**
+
+- **Companies:** `electronic_seal`, `digital_signature_key`, `free_zone_authority`, `legal_jurisdiction`, `corporate_tax_applicable`, `trc_issue_date`, `trc_expiry_date`, `is_qfzp`.
+- **Users:** `notification_preferences`, `locale`, `password_changed_at`, `two_factor_secret` (مشفَّر).
+
+**الأداء والأمان على مستوى قاعدة البيانات**
+
+- فهارس مركّبة (composite indexes) على أعمدة البحث الشائعة: `(company_id, status)`, `(rfq_id, status)`, `(due_date, status)`.
+- **التشفير في الراحة (Encryption at Rest)** للأعمدة الحساسة: `AuditLog.{before, after, ip_address, user_agent}`, `User.two_factor_secret`, `CompanyBankDetail.{iban, swift, holder_name}` باستخدام Laravel envelope encryption.
+
+---
+
+### 3. الخدمات (Services)
+
+**95+ خدمة** موزَّعة على 12 مجال وظيفي. كل خدمة مُحقَنة عبر constructor promotion مع `readonly` properties، وتخضع لاختبار وحدة مستقل.
+
+**الشحن والجمارك (Shipping)**
+
+- أدابتر موحَّد لخمس شركات: `Aramex`, `DHL`, `FedEx`, `Fetchr`, `UPS` — عبر `ShippingProviderInterface`.
+- `CustomsFeeCalculator` + `DutyEstimator` مرتبط بجدول HS codes.
+
+**المدفوعات (Payments)**
+
+- بوابات: `StripeGateway`, `PayPalGateway`, `MashreqBankGateway` (الإمارات المحلية).
+- طبقة تجريد `PaymentGatewayInterface` لاختيار المسار ديناميكياً (`PaymentRail` enum).
+- خدمات الإمارات المخصَّصة: `FxLockService`, `WhtService`, `CorporateTaxService`, `DualApprovalService`, `ChequeService` (للشيكات المؤجَّلة PDC)، `CreditNoteAutoGenerator`, `LateFeeAccrualService` (بسقف 12% سنوياً وفق المادة 76 من القانون المدني الإماراتي).
+
+**التوقيع الإلكتروني (Signing)**
+
+- تكامل PKI بمعايير eIDAS / ETSI.
+- مزوّدو ختم زمني (TSP) متعدّدون مع fallback تلقائي: `DigicertTsp`, `GlobalsignTsp`, `AmbiorixTsp`.
+- `SignatureGradeResolver` يرفض التوقيع إذا كانت قوّته أدنى من الحد الأدنى القانوني للعقد.
+
+**الفوترة الإلكترونية (E-Invoicing)**
+
+- `PintAeMapper` — توليد XML بصيغة PINT-AE للـ FTA.
+- أدابتر ASP (Accredited Service Provider) متعدد: `AvalaraAsp`, `SovosAsp`, `MockAsp`.
+- `SubmitEInvoiceJob` على queue مع إعادة محاولة exponential backoff.
+
+**الذكاء الاصطناعي (AI)**
+
+- `AnthropicClient` (Claude) — نقطة وصول موحَّدة مع prompt caching.
+- `ProcurementCopilot` — مساعد محادثة للمشترين.
+- `OcrService` — قراءة الفواتير والبطاقات التجارية.
+- `RiskAnalysisService` — تسجيل المخاطر قبل قبول العطاء.
+
+**الامتثال (Compliance)**
+
+- `SanctionsService`, `CollusionDetectionService`, `IcvEvaluator`, `EsgScorer`, `CarbonFootprintCalculator`.
+
+**الخصوصية (PDPL)**
+
+- `DataExportService` — ZIP كامل لكل البيانات الشخصية.
+- `DataErasureService` — حذف موجَّه مع الحفاظ على السجلات القانونية المطلوبة.
+- `ConsentLedger` — تتبُّع زمني لكل موافقة.
+
+**التكامل مع أنظمة ERP**
+
+- `OdooConnector` (XML-RPC) + `CustomErpConnector` (Webhook-based).
+- مزامنة ثنائية الاتجاه لأوامر الشراء والفواتير.
+
+---
+
+### 4. واجهات المستخدم (Views)
+
+**الأدمن (11 صفحة)**
+
+مكافحة التواطؤ · القائمة السوداء · طلبات التصنيفات · شهادات الشركات · المنازعات · أسعار الصرف · رسوم المنصة · التقارير · صحة النظام · الفواتير الضريبية (PDF) · Webhooks.
+
+**الداشبورد**
+
+العطاءات · العقود · المستندات · الجهات الحكومية (10 صفحات فرعية) · طلبات الشراء (5 صفحات) · طلبات عروض الأسعار (RFQs) · بروفايل الشركة · غرفة التفاوض.
+
+**صفحات عامة**
+
+عن المنصة · تواصل · سياسة ملفات الارتباط · الشروط والأحكام.
+
+**صفحات الأخطاء**
+
+`403`, `404`, `419`, `429`, `500` — كلها مترجمة ومتجاوبة مع RTL.
+
+**المكوّنات المشتركة (Blade Components)**
+
+`AdminNavbar`, `FlashMessages`, `Sidebar`, `SkeletonLoading`, `Icons`, `NegotiationRounds`, `StatusBadge`.
+
+**التقنيات الأمامية**
+
+- Vite + Tailwind CSS + Alpine.js.
+- دعم **RTL** تلقائي عبر `dir="rtl"` عند اللغة العربية.
+- وضع **مظلم (Dark Mode)** مع حفظ التفضيل في `localStorage`.
+- محرف عربي (Arabic shaper) للـ PDF عبر `ArabicShaper`.
+
+---
+
+### 5. الإشعارات (Notifications)
+
+**46 نوع إشعار** — جميعها `ShouldQueue` للأداء، ومحليَّة الاستجابة (`LocalizesNotification` trait) بحيث يتلقى كل مستخدم الإشعار بلغته المفضَّلة بغضّ النظر عن لغة العامل (queue worker).
+
+المجالات المغطَّاة: العطاءات · العقود · التواقيع · المدفوعات · الضمانات البنكية · الفوترة الإلكترونية · الضمان (Escrow) · المنازعات · تجديد المستندات · الخصوصية · ICV · انتهاء كلمة المرور · اختراق البيانات.
+
+---
+
+### 6. الاختبارات (Testing)
+
+**30 ملف اختبار — 8,243 سطر** على PHPUnit 11 بقاعدة SQLite في الذاكرة.
+
+- **Security Hardening** — OWASP Top 10 + CSRF + mass assignment.
+- **Tax Invoices & E-Invoicing** — توليد PINT-AE، ترقيم متسلسل، credit notes.
+- **PDPL Privacy** — تصدير البيانات، حذفها، سجلّ الموافقات.
+- **Free Zones & Jurisdictions** — موجِّه البنود القانونية.
+- **ICV** — حساب الدرجة المركَّبة للعطاء.
+- **Qualified Signatures (Phase 6)** — رفض التوقيع دون eIDAS.
+- **Corporate Tax & Collusion** — قواعد QFZP واكتشاف الأنماط المشبوهة.
+- **Audit, Payments, Shipping** — سلامة سلسلة التدقيق، rails المدفوعات، تتبُّع الشحنات.
+- **Supplier Flows & Dashboard** — رحلات end-to-end.
+
+---
+
+### 7. الترجمة والدعم العربي (i18n)
+
+- ملفات `lang/ar.json` و `lang/en.json` بتغطية كاملة لكل مفتاح في الكود والواجهات.
+- **التاريخ الهجري** عبر خدمة `HijriDate` — عرض مزدوج (ميلادي / هجري) في الشهادات والفواتير.
+- **مُشكِّل الحروف العربية (`ArabicShaper`)** لتوليد PDF عربية صحيحة عبر DomPDF.
+- احترام التقويم الإماراتي: أسبوع عمل السبت–الأحد + الإجازات الرسمية الفدرالية عبر `SettlementCalendarService`.
 
 ---
 

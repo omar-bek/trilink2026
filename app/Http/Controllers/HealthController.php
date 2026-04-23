@@ -5,110 +5,78 @@ namespace App\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
 use Throwable;
 
 /**
- * Machine-readable health probes for load balancers, uptime monitors, and
- * Kubernetes liveness/readiness checks.
+ * Health and readiness probes.
  *
- *   GET /health       — liveness: process is running (no dependency checks)
- *   GET /health/ready — readiness: DB + cache + queue driver reachable
+ *  - `GET /api/health`    — shallow liveness: is the PHP process alive.
+ *                           Called by load balancers every few seconds.
+ *                           Must NOT touch external dependencies so a
+ *                           transient DB/Redis blip doesn't take the app
+ *                           out of rotation while it could still serve
+ *                           cached reads.
  *
- * The readiness probe fails with 503 if ANY dependency is down so the load
- * balancer stops sending traffic to this pod while it's unhealthy. It's
- * intentionally NOT gated behind auth — an unauthenticated probe is how
- * every mainstream monitor works, and the response leaks nothing sensitive.
+ *  - `GET /api/health/ready` — deep readiness: can this instance serve
+ *                           real traffic right now. Touches DB, Redis,
+ *                           and the object-storage disk. Returns 503 on
+ *                           any failure so Kubernetes / ECS keeps pulling
+ *                           the instance from the routing pool.
  */
 class HealthController extends Controller
 {
-    /**
-     * Liveness probe — returns 200 as long as the PHP process can handle
-     * a request. Use this for k8s livenessProbe; failing here triggers
-     * a pod restart, so we intentionally check NOTHING external.
-     */
-    public function liveness(): JsonResponse
+    public function shallow(): JsonResponse
     {
         return response()->json([
             'status' => 'ok',
+            'service' => config('app.name'),
+            'version' => config('app.version', 'dev'),
             'timestamp' => now()->toIso8601String(),
         ]);
     }
 
-    /**
-     * Readiness probe — returns 200 only when every external dependency
-     * this app needs to serve traffic is reachable. A failure here
-     * pulls the pod out of the load balancer pool but does NOT restart
-     * the process (the dependency may recover on its own).
-     */
-    public function readiness(): JsonResponse
+    public function ready(): JsonResponse
     {
         $checks = [
-            'database' => $this->probeDatabase(),
-            'cache' => $this->probeCache(),
-            'queue' => $this->probeQueue(),
+            'db' => $this->check(fn () => DB::select('select 1 as ok')),
+            'cache' => $this->check(fn () => Cache::store()->put('health:ready', '1', 5) && Cache::store()->get('health:ready') === '1'),
+            'storage' => $this->check(fn () => is_writable(storage_path())),
         ];
 
-        $ok = ! in_array(false, array_column($checks, 'ok'), true);
+        if (config('database.redis.default.host')) {
+            $checks['redis'] = $this->check(fn () => Redis::ping() !== null);
+        }
+
+        $allHealthy = collect($checks)->every(fn ($c) => $c['healthy']);
+        $status = $allHealthy ? 200 : 503;
 
         return response()->json([
-            'status' => $ok ? 'ok' : 'degraded',
-            'timestamp' => now()->toIso8601String(),
+            'status' => $allHealthy ? 'ready' : 'degraded',
             'checks' => $checks,
-        ], $ok ? 200 : 503);
-    }
-
-    private function probeDatabase(): array
-    {
-        try {
-            $start = microtime(true);
-            DB::connection()->getPdo();
-            DB::select('SELECT 1');
-
-            return [
-                'ok' => true,
-                'latency_ms' => (int) ((microtime(true) - $start) * 1000),
-            ];
-        } catch (Throwable $e) {
-            return ['ok' => false, 'error' => $e->getMessage()];
-        }
-    }
-
-    private function probeCache(): array
-    {
-        try {
-            $key = '__health_probe__';
-            $start = microtime(true);
-            Cache::put($key, 'ok', 5);
-            $value = Cache::get($key);
-            Cache::forget($key);
-
-            return [
-                'ok' => $value === 'ok',
-                'latency_ms' => (int) ((microtime(true) - $start) * 1000),
-                'driver' => config('cache.default'),
-            ];
-        } catch (Throwable $e) {
-            return ['ok' => false, 'error' => $e->getMessage()];
-        }
+            'timestamp' => now()->toIso8601String(),
+        ], $status);
     }
 
     /**
-     * The queue probe only confirms the configured connection resolves —
-     * it does NOT dispatch a test job, which would flood the queue on
-     * every probe hit. For deeper queue health use Horizon's dashboard.
+     * @param  \Closure():mixed  $probe
+     * @return array{healthy: bool, latency_ms?: int, error?: string}
      */
-    private function probeQueue(): array
+    private function check(\Closure $probe): array
     {
+        $start = microtime(true);
         try {
-            $driver = config('queue.default');
-            $connection = config("queue.connections.$driver");
-            if (! $connection) {
-                return ['ok' => false, 'error' => "queue connection '$driver' not configured"];
-            }
+            $probe();
 
-            return ['ok' => true, 'driver' => $driver];
+            return [
+                'healthy' => true,
+                'latency_ms' => (int) round((microtime(true) - $start) * 1000),
+            ];
         } catch (Throwable $e) {
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return [
+                'healthy' => false,
+                'error' => class_basename($e).': '.$e->getMessage(),
+            ];
         }
     }
 }

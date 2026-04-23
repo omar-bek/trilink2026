@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Enums\PaymentStatus;
 use App\Jobs\IssueTaxInvoiceJob;
 use App\Models\Payment;
+use App\Services\FtaTaxRoutingService;
 
 /**
  * Auto-issue tax invoices when a Payment becomes COMPLETED.
@@ -56,5 +57,23 @@ class PaymentInvoiceObserver
         }
 
         IssueTaxInvoiceJob::dispatch($payment->id);
+
+        // FTA auto-routing — accrue VAT / Corporate Tax / WHT against
+        // the tax ledger and kick the routing step so funds end up in
+        // the company's ring-fenced tax account without finance having
+        // to remember to move them. Fires synchronously so the ledger
+        // row is visible the moment the payment UI refreshes.
+        try {
+            /** @var FtaTaxRoutingService $router */
+            $router = app(FtaTaxRoutingService::class);
+            foreach ($router->accrueFor($payment) as $entry) {
+                $router->route($entry);
+            }
+        } catch (\Throwable $e) {
+            // Tax routing failing must never roll back the payment
+            // itself — log and let the nightly reconciliation job pick
+            // up any stuck rows.
+            report($e);
+        }
     }
 }

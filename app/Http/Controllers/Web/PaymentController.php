@@ -448,11 +448,48 @@ class PaymentController extends Controller
         abort_unless($user?->hasPermission('payment.approve'), 403, 'Forbidden: missing payments.approve permission.');
         abort_unless($payment->company_id === $user->company_id, 403);
 
-        $this->service->approve($payment->id, $user->id);
+        try {
+            $this->service->approve($payment->id, $user->id);
+        } catch (\Throwable $e) {
+            return back()->withErrors(['payment' => $e->getMessage()]);
+        }
+
+        $payment->refresh();
 
         return redirect()
             ->route('dashboard.payments')
-            ->with('status', __('payments.approved_successfully'));
+            ->with('status', $payment->requires_dual_approval && ! $payment->second_approver_id
+                ? __('payments.primary_approval_recorded')
+                : __('payments.approved_successfully'));
+    }
+
+    /**
+     * Second-signer endpoint for payments that triggered dual approval.
+     * Requires payment.approve and that the acting user is NOT the one
+     * who recorded the primary approval.
+     */
+    public function secondApprove(string $id): RedirectResponse
+    {
+        $payment = Payment::findOrFail((int) $id);
+        $user = auth()->user();
+
+        abort_unless($user?->hasPermission('payment.approve'), 403);
+        abort_unless($payment->company_id === $user->company_id, 403);
+        abort_unless($payment->requires_dual_approval && ! $payment->second_approver_id, 409);
+
+        if ((int) $payment->approved_by === (int) $user->id) {
+            return back()->withErrors(['payment' => __('payments.dual_approval_same_user')]);
+        }
+
+        try {
+            $this->service->secondApprove($payment->id, $user->id);
+        } catch (\Throwable $e) {
+            return back()->withErrors(['payment' => $e->getMessage()]);
+        }
+
+        return redirect()
+            ->route('dashboard.payments.show', ['id' => $payment->id])
+            ->with('status', __('payments.second_approval_recorded'));
     }
 
     public function process(string $id): RedirectResponse
@@ -463,11 +500,27 @@ class PaymentController extends Controller
         abort_unless($user?->hasPermission('payment.process'), 403, 'Forbidden: missing payments.process permission.');
         abort_unless($payment->company_id === $user->company_id, 403);
 
-        $result = $this->service->process($payment->id, request()->input('gateway', 'stripe'));
+        // Phase D — the buyer's finance user picks which rail settles
+        // this payment. UAE-local rails (uaefts, noqodi) unlock longer
+        // settlement windows but support larger values than cards.
+        // Card rails (stripe, network, checkout) settle faster.
+        $allowedRails = [
+            'stripe', 'paypal', 'network', 'magnati', 'telr', 'checkout',
+            'uaefts', 'ipi', 'dda', 'noqodi', 'edirham', 'swift_wire',
+        ];
+        $rail = request()->input('rail', request()->input('gateway', 'stripe'));
+        if (! in_array($rail, $allowedRails, true)) {
+            return back()->withErrors(['payment' => __('payments.invalid_rail')]);
+        }
+
+        $result = $this->service->process($payment->id, $rail);
 
         if (is_string($result)) {
             return back()->withErrors(['payment' => $result]);
         }
+
+        // Stamp the rail on the payment so the UI can show "Paid via X".
+        $payment->update(['rail' => $rail]);
 
         return redirect()
             ->route('dashboard.payments')

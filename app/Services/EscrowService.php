@@ -140,6 +140,16 @@ class EscrowService
             throw new BankPartnerException('Escrow account is not active.');
         }
 
+        // Phase B — if a dispute has frozen this account, block the release.
+        // The freeze is cleared when the dispute resolves (see DisputeService).
+        // A manual release while frozen would defeat the whole protection so
+        // there is no override — the only way out is to resolve the dispute.
+        if ($account->frozen_at !== null) {
+            throw new BankPartnerException(
+                'Escrow is frozen due to an open dispute. Resolve or withdraw the dispute before releasing.'
+            );
+        }
+
         // Phase Hardening — UAE Federal Decree-Law 50/2022 Article 5
         // requires both parties to hold a valid trade license at the
         // moment value moves. Re-check on every release because a
@@ -230,6 +240,15 @@ class EscrowService
     {
         $this->guardAmount($amount);
 
+        // Phase B — dispute-driven refunds (reason prefix "dispute:") are
+        // allowed while frozen; manual refunds are not, matching the
+        // release() gate.
+        if ($account->frozen_at !== null && ! str_starts_with($reason, 'dispute:')) {
+            throw new BankPartnerException(
+                'Escrow is frozen due to an open dispute. Only dispute-driven refunds are permitted.'
+            );
+        }
+
         $partner = $this->resolvePartner($account);
 
         return DB::transaction(function () use ($account, $amount, $currency, $reason, $user, $partner) {
@@ -271,6 +290,44 @@ class EscrowService
 
             return $release;
         });
+    }
+
+    /**
+     * Phase B — freeze the escrow account because a dispute was opened
+     * against the parent contract. Release and refund both refuse to
+     * move funds while `frozen_at` is set. Idempotent: freezing a
+     * frozen account is a no-op but updates the freeze_reason.
+     */
+    public function freeze(EscrowAccount $account, int $disputeId, ?string $reason = null): EscrowAccount
+    {
+        $account->update([
+            'frozen_at' => $account->frozen_at ?? now(),
+            'frozen_by_dispute_id' => $disputeId,
+            'freeze_reason' => $reason,
+        ]);
+
+        $this->notifyParties($account->contract, 'frozen', null);
+
+        return $account->fresh();
+    }
+
+    /**
+     * Phase B — unfreeze the account once the dispute is resolved or
+     * withdrawn. Does not auto-refund; the mediator's decision drives
+     * whether the remaining balance goes to the supplier (release) or
+     * back to the buyer (refund).
+     */
+    public function unfreeze(EscrowAccount $account): EscrowAccount
+    {
+        $account->update([
+            'frozen_at' => null,
+            'frozen_by_dispute_id' => null,
+            'freeze_reason' => null,
+        ]);
+
+        $this->notifyParties($account->contract, 'unfrozen', null);
+
+        return $account->fresh();
     }
 
     /**

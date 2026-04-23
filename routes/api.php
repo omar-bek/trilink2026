@@ -42,7 +42,11 @@ Route::prefix('auth')->group(function () {
     Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,15');
 });
 
-Route::get('health', fn () => response()->json(['status' => 'ok', 'timestamp' => now()]));
+// Health probes. `health` is shallow (liveness for LB); `health/ready` is
+// deep (readiness — DB + cache + storage). Kept outside auth so
+// orchestrators can reach them without credentials.
+Route::get('health', [\App\Http\Controllers\HealthController::class, 'shallow']);
+Route::get('health/ready', [\App\Http\Controllers\HealthController::class, 'ready']);
 
 // Public settings
 Route::get('settings/public', [SettingController::class, 'publicSettings']);
@@ -60,6 +64,12 @@ Route::post('webhooks/escrow/{provider}', [WebhookController::class, 'escrowWebh
 // shared secret per ASP so a leak on one can't be replayed against
 // another. Body MUST be HMAC-SHA256 signed in X-EInvoice-Signature.
 Route::post('webhooks/e-invoice/{provider}', [EInvoiceWebhookController::class, 'handle'])->name('api.webhooks.einvoice');
+
+// SWIFT gpi Tracker — correspondent banks POST pacs.028 updates for
+// every outbound wire we've tagged with a UETR. Auth is HMAC-SHA256
+// over the raw body using services.swift_gpi.webhook_secret.
+Route::post('webhooks/swift-gpi', [\App\Http\Controllers\Api\SwiftGpiWebhookController::class, 'handle'])
+    ->name('api.webhooks.swift-gpi');
 
 /*
 |--------------------------------------------------------------------------

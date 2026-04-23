@@ -64,7 +64,15 @@ class DisputeService
         $data['sla_due_date'] = now()->addDays($severity->resolutionSlaDays());
 
         return DB::transaction(function () use ($data) {
-            $dispute = Dispute::create($data)->load(['contract', 'company', 'againstCompany']);
+            $dispute = Dispute::create($data)->load(['contract.escrowAccount', 'company', 'againstCompany']);
+
+            // Phase B — the moment a dispute opens on a contract with an
+            // active escrow, freeze the account so buyer can't drain it
+            // mid-mediation. Unfreezes when the dispute resolves.
+            $escrow = $dispute->contract?->escrowAccount;
+            if ($escrow && $escrow->frozen_at === null) {
+                app(EscrowService::class)->freeze($escrow, $dispute->id, 'dispute:'.$dispute->id);
+            }
 
             $this->recordEvent($dispute, $data['raised_by'] ?? null, $dispute->company_id, 'opened', [
                 'severity' => $dispute->severity?->value,
@@ -307,6 +315,12 @@ class DisputeService
             'resolved_at' => now(),
         ]);
 
+        // Phase B — withdraw also unfreezes the escrow.
+        $escrow = $dispute->contract?->escrowAccount;
+        if ($escrow && $escrow->frozen_by_dispute_id === $dispute->id) {
+            app(EscrowService::class)->unfreeze($escrow);
+        }
+
         $this->recordEvent($dispute, $actor->id, $actor->company_id, 'withdrawn', ['reason' => $reason]);
         $this->systemMessage($dispute, __('disputes.system.withdrawn'));
         $this->notifyParties($dispute->fresh(), 'resolved');
@@ -373,6 +387,15 @@ class DisputeService
             'resolved_at' => now(),
             'decided_by' => $actor->id,
         ]);
+
+        // Phase B — the dispute is over; unfreeze the escrow account if we
+        // froze it on open. The mediator's decision drives whether the
+        // balance is released (supplier wins) or refunded (buyer wins)
+        // — that's a separate call that the oversight UI issues.
+        $escrow = $dispute->contract?->escrowAccount;
+        if ($escrow && $escrow->frozen_by_dispute_id === $dispute->id) {
+            app(EscrowService::class)->unfreeze($escrow);
+        }
 
         $this->recordEvent($dispute, $actor->id, $actor->company_id, 'decided', [
             'outcome' => $outcome->value,

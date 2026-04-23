@@ -37,6 +37,10 @@ class EscrowAccount extends Model
         'activated_at',
         'closed_at',
         'metadata',
+        // Phase B — dispute-driven freeze.
+        'frozen_at',
+        'frozen_by_dispute_id',
+        'freeze_reason',
     ];
 
     protected function casts(): array
@@ -46,6 +50,7 @@ class EscrowAccount extends Model
             'total_released' => 'decimal:2',
             'activated_at' => 'datetime',
             'closed_at' => 'datetime',
+            'frozen_at' => 'datetime',
             'metadata' => 'array',
         ];
     }

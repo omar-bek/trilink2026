@@ -11,6 +11,15 @@ use App\Notifications\PaymentFailedNotification;
 use App\Notifications\PaymentRequestedNotification;
 use App\Notifications\PaymentStatusNotification;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Services\PaymentAmlService;
+use App\Services\Payments\CorporateTaxService;
+use App\Services\Payments\DualApprovalService;
+use App\Services\Payments\EarlyDiscountService;
+use App\Services\Payments\FxLockService;
+use App\Services\Payments\PlatformFeeCalculator;
+use App\Services\Payments\WhtService;
+use App\Services\PaymentTermsService;
+use App\Services\RetentionService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Notification;
 
@@ -18,6 +27,15 @@ class PaymentService
 {
     public function __construct(
         private readonly PaymentGatewayFactory $gatewayFactory,
+        private readonly ?PaymentAmlService $aml = null,
+        private readonly ?PaymentTermsService $terms = null,
+        private readonly ?RetentionService $retention = null,
+        private readonly ?FxLockService $fx = null,
+        private readonly ?WhtService $wht = null,
+        private readonly ?CorporateTaxService $corporateTax = null,
+        private readonly ?DualApprovalService $dualApproval = null,
+        private readonly ?PlatformFeeCalculator $platformFees = null,
+        private readonly ?EarlyDiscountService $earlyDiscount = null,
     ) {}
 
     public function list(array $filters = []): LengthAwarePaginator
@@ -136,26 +154,131 @@ class PaymentService
 
     public function approve(int $id, int $approverId): ?Payment
     {
-        $payment = Payment::find($id);
+        $payment = Payment::with('contract')->find($id);
         if (! $payment || $payment->status !== PaymentStatus::PENDING_APPROVAL) {
             return null;
         }
 
         // Phase Hardening — UAE Federal Decree-Law 50/2022 Article 5
-        // requires both parties to a financial transaction to hold a
-        // valid trade license at the moment value moves. The contract
-        // creation flow checks this once at sign time, but a license
-        // can expire afterwards. Re-checking here means an expired
-        // license blocks payment approval and the operator gets a
-        // clear, recoverable error instead of money flowing to an
-        // unlicensed entity.
+        // requires both parties to hold a valid trade license the moment
+        // value moves.
         $this->assertPaymentPartiesLicensed($payment);
 
-        $payment->update([
+        // Phase E — AML / sanctions screening.
+        if ($this->aml && config('services.aml.enabled', false)) {
+            $screenResult = $this->aml->screen($payment, 'pre_approval');
+            if ($screenResult === 'hit') {
+                throw new \RuntimeException(
+                    'Payment blocked — sanctions or AML screening returned a HIT. '
+                    .'Escalate to compliance before retrying.'
+                );
+            }
+            if ($screenResult === 'review') {
+                throw new \RuntimeException(
+                    'Payment requires compliance review — a screening result needs sign-off '
+                    .'before approval can proceed.'
+                );
+            }
+        }
+
+        // Phase A hardening — FX lock. Freezes the AED equivalent at
+        // approval so the rate cannot drift between approval & settlement.
+        if ($this->fx) {
+            $this->fx->lock($payment);
+        }
+
+        // Phase A hardening — WHT. For cross-border recipients, records
+        // the statutory withholding rate + amount on the Payment row.
+        if ($this->wht) {
+            $this->wht->apply($payment);
+        }
+
+        // Phase A hardening — UAE Corporate Tax exposure (9% / 0% QFZP).
+        // Booked for reporting; not deducted from the Payment amount.
+        if ($this->corporateTax) {
+            $this->corporateTax->apply($payment);
+        }
+
+        // Phase C — stamp invoice_issued_at and compute due_date from
+        // the contract's payment_terms on approval.
+        $invoiceIssued = now()->toDateString();
+        $payment->invoice_issued_at = $invoiceIssued;
+        if ($this->terms) {
+            $payment->due_date = $this->terms->computeDueDate($payment);
+        }
+
+        // Phase A hardening — dual approval gate. Above the threshold
+        // (default AED 500k) this only records the PRIMARY signer and
+        // leaves status = PENDING_APPROVAL until a second user approves.
+        if ($this->dualApproval && $this->dualApproval->requiresDualApproval($payment)) {
+            $primary = \App\Models\User::find($approverId);
+            if (! $primary) {
+                throw new \RuntimeException('Approver not found.');
+            }
+            // Persist the FX / WHT / CT snapshot BEFORE handing off to the
+            // dual-approval service so the secondary signer sees the same
+            // numbers the primary approved.
+            $payment->save();
+
+            $this->dualApproval->recordPrimary($payment, $primary);
+            $this->notifyParties($payment, 'awaiting_second_approval');
+
+            return $payment->fresh();
+        }
+
+        $payment->fill([
             'status' => PaymentStatus::APPROVED,
             'approved_at' => now(),
             'approved_by' => $approverId,
-        ]);
+        ])->save();
+
+        // Phase G — skim the retention slice onto the parent contract.
+        if ($this->retention) {
+            $this->retention->skim($payment->fresh('contract'));
+        }
+
+        // Phase A hardening — platform fee allocation rows.
+        if ($this->platformFees) {
+            $this->platformFees->allocate($payment->fresh());
+        }
+
+        $this->notifyParties($payment, 'approved');
+
+        return $payment->fresh();
+    }
+
+    /**
+     * Second-signer gate for dual-approval payments. Pulls the payment
+     * to APPROVED and runs the retention + platform-fee hooks that the
+     * single-approver path runs inline.
+     */
+    public function secondApprove(int $id, int $approverId): ?Payment
+    {
+        $payment = Payment::with('contract')->find($id);
+        if (! $payment) {
+            return null;
+        }
+        if (! $this->dualApproval) {
+            throw new \RuntimeException('Dual approval not wired.');
+        }
+        if (! $payment->requires_dual_approval || $payment->second_approver_id) {
+            return null;
+        }
+
+        $user = \App\Models\User::find($approverId);
+        if (! $user) {
+            throw new \RuntimeException('Approver not found.');
+        }
+
+        $this->dualApproval->recordSecondary($payment, $user);
+        $payment = $payment->fresh(['contract']);
+
+        if ($this->retention) {
+            $this->retention->skim($payment);
+        }
+        if ($this->platformFees) {
+            $this->platformFees->allocate($payment);
+        }
 
         $this->notifyParties($payment, 'approved');
 
@@ -262,6 +385,12 @@ class PaymentService
                 'gateway_payment_id' => $result['payment_id'] ?? null,
                 'gateway_order_id' => $result['order_id'] ?? null,
             ]);
+
+            // Phase A hardening — apply early-payment discount if the
+            // settlement falls inside the contract's discount window.
+            if ($this->earlyDiscount) {
+                $this->earlyDiscount->applyOnSettlement($payment->fresh());
+            }
 
             return $payment->fresh();
         } catch (\Exception $e) {

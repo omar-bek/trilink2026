@@ -1,0 +1,20 @@
+parameters:
+  level: 6
+  paths:
+    - app
+    - config
+    - database/factories
+    - database/seeders
+    - routes
+  excludePaths:
+    - storage
+    - bootstrap/cache
+    - vendor
+  ignoreErrors:
+    # Eloquent dynamic properties — Laravel convention that PHPStan can't fully reason about.
+    - '#Access to an undefined property Illuminate\\Database\\Eloquent\\Model::\$\w+#'
+    # request() helper returns mixed; we cast at use-site.
+    - '#Cannot call method \w+\(\) on mixed#'
+  checkMissingIterableValueType: false
+  checkGenericClassInNonGenericObjectType: false
+  reportUnmatchedIgnoredErrors: false

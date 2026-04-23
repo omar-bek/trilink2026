@@ -3,6 +3,8 @@
 
 @section('content')
 
+<div x-data="{ acceptOpen: false, signerName: '', ack: false, rejectOpen: false }">
+
 {{-- ===== Header ===== --}}
 <div class="flex items-start justify-between gap-6 mb-8 flex-wrap">
     <div class="flex items-start gap-4 flex-1 min-w-0">
@@ -27,14 +29,17 @@
 
     @if($n['can_act'])
     <div class="flex items-center gap-3 flex-wrap">
-        @if($n['my_side'] === 'buyer')
-        <form method="POST" action="{{ route('dashboard.negotiations.accept', ['id' => $n['numeric_id']]) }}">
-            @csrf
-            <button type="submit" class="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[13px] font-semibold text-white bg-[#00d9b5] hover:bg-[#00c9a5] shadow-[0_4px_14px_rgba(0,217,181,0.3)]">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                {{ __('negotiation.accept_current') }}
-            </button>
-        </form>
+        @if($n['can_respond'])
+        <button type="button" @click="acceptOpen = true"
+                class="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[13px] font-semibold text-white bg-[#00d9b5] hover:bg-[#00c9a5] shadow-[0_4px_14px_rgba(0,217,181,0.3)]">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            {{ __('negotiation.accept_offer') }}
+        </button>
+        <button type="button" @click="rejectOpen = true"
+                class="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-[13px] font-semibold text-[#ff4d7f] bg-[#ff4d7f]/10 border border-[#ff4d7f]/30 hover:bg-[#ff4d7f]/15">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            {{ __('negotiation.reject_offer') }}
+        </button>
         @endif
         <form method="POST" action="{{ route('dashboard.negotiations.end', ['id' => $n['numeric_id']]) }}"
               onsubmit="return confirm('{{ __('negotiation.end_confirm') }}');">
@@ -47,6 +52,78 @@
     </div>
     @endif
 </div>
+
+{{-- Accept (signed) modal — visible when the current user is the
+     responder on the open counter round. Uses the signed-acceptance
+     flow so both parties have wet-ink-equivalent evidence. --}}
+@if($n['can_act'] && $n['can_respond'])
+<div x-show="acceptOpen" x-cloak class="mb-6 rounded-2xl border border-[#00d9b5]/30 bg-[#00d9b5]/5 p-5 space-y-3">
+    <div class="flex items-center justify-between gap-3">
+        <p class="text-[14px] font-bold text-primary">{{ __('negotiation.accept_review_title') }}</p>
+        <button type="button" @click="acceptOpen = false; ack = false; signerName = ''" class="text-muted hover:text-primary text-[18px] leading-none">&times;</button>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-surface border border-th-border rounded-lg p-3">
+        <div>
+            <p class="text-[10px] text-muted uppercase">{{ __('negotiation.amount') }}</p>
+            <p class="text-[13px] font-bold text-primary">{{ $n['current']['amount'] }}</p>
+        </div>
+        <div>
+            <p class="text-[10px] text-muted uppercase">{{ __('negotiation.delivery') }}</p>
+            <p class="text-[13px] font-bold text-primary">{{ $n['current']['delivery_days'] }} {{ __('common.days') }}</p>
+        </div>
+        <div class="col-span-2 sm:col-span-1">
+            <p class="text-[10px] text-muted uppercase">{{ __('negotiation.payment_terms') }}</p>
+            <p class="text-[13px] font-bold text-primary">{{ $n['current']['terms'] }}</p>
+        </div>
+    </div>
+    <form method="POST" action="{{ route('dashboard.negotiations.accept', ['id' => $n['numeric_id']]) }}" class="space-y-3">
+        @csrf
+        <div>
+            <label class="block text-[11px] font-semibold text-muted uppercase tracking-wide mb-1">{{ __('negotiation.signature_name_label') }}</label>
+            <input type="text" name="signature_name" x-model="signerName" required minlength="3" maxlength="150"
+                   class="w-full bg-surface border border-th-border rounded-lg px-3 py-2 text-[13px] text-primary"
+                   placeholder="{{ __('negotiation.signature_name_placeholder') }}">
+            <p class="text-[10px] text-muted mt-1">{{ __('negotiation.signature_hint') }}</p>
+        </div>
+        <label class="flex items-start gap-2 text-[12px] text-primary cursor-pointer">
+            <input type="checkbox" name="acknowledge" value="1" x-model="ack" required class="mt-0.5">
+            <span>{{ __('negotiation.accept_ack') }}</span>
+        </label>
+        <div class="flex items-center gap-3">
+            <button type="submit" :disabled="! ack || signerName.length < 3"
+                    class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#00d9b5] hover:bg-[#00c9a5] disabled:opacity-40 disabled:cursor-not-allowed">
+                {{ __('negotiation.sign_and_accept') }}
+            </button>
+            <button type="button" @click="acceptOpen = false; ack = false; signerName = ''" class="text-[12px] text-muted hover:text-primary">{{ __('common.cancel') }}</button>
+        </div>
+    </form>
+</div>
+
+{{-- Reject round form. Uses the structured round reject endpoint so
+     the round is marked REJECTED in the negotiation trail; the bid
+     itself stays open for a new round or a final "End Negotiation". --}}
+<div x-show="rejectOpen" x-cloak class="mb-6 rounded-2xl border border-[#ff4d7f]/30 bg-[#ff4d7f]/5 p-5 space-y-3">
+    <div class="flex items-center justify-between gap-3">
+        <p class="text-[14px] font-bold text-primary">{{ __('negotiation.reject_offer') }} — {{ __('negotiation.round_n', ['n' => $n['open_round_number']]) }}</p>
+        <button type="button" @click="rejectOpen = false" class="text-muted hover:text-primary text-[18px] leading-none">&times;</button>
+    </div>
+    <form method="POST" action="{{ route('dashboard.negotiation.reject', ['bid' => $n['numeric_id']]) }}" class="space-y-3">
+        @csrf
+        <div>
+            <label class="block text-[11px] font-semibold text-muted uppercase tracking-wide mb-1">{{ __('negotiation.reject_reason') }}</label>
+            <textarea name="reason" rows="3" maxlength="500"
+                      class="w-full bg-surface border border-th-border rounded-lg px-3 py-2 text-[13px] text-primary"
+                      placeholder="{{ __('negotiation.reject_reason_placeholder') }}"></textarea>
+        </div>
+        <div class="flex items-center gap-3">
+            <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-[#ff4d7f] hover:bg-[#e64372]">
+                {{ __('negotiation.confirm_reject') }}
+            </button>
+            <button type="button" @click="rejectOpen = false" class="text-[12px] text-muted hover:text-primary">{{ __('common.cancel') }}</button>
+        </div>
+    </form>
+</div>
+@endif
 
 @if(session('status'))
 <div class="mb-6 rounded-xl border border-[#00d9b5]/30 bg-[#00d9b5]/10 text-[#00d9b5] px-4 py-3 text-[13px]">
@@ -256,6 +333,8 @@
             </ul>
         </div>
     </div>
+</div>
+
 </div>
 
 @push('scripts')

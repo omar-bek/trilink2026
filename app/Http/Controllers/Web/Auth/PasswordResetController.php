@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Web\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
+use App\Rules\CompanyPasswordPolicy;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,17 +45,28 @@ class PasswordResetController extends Controller
 
     public function reset(Request $request): RedirectResponse
     {
+        // Look up the user before validation so the password policy rule
+        // can compare the new password against the tenant's history.
+        $targetUser = User::where('email', $request->input('email'))->first();
+
         $request->validate([
             'token' => ['required'],
             'email' => ['required', 'email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'confirmed', new CompanyPasswordPolicy($targetUser)],
         ]);
 
         $status = Password::reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function ($user, $password) {
+                $history = array_values(array_filter((array) ($user->password_history ?? [])));
+                array_unshift($history, $user->password);
+                $depth = (int) ($user->company?->securityPolicy()->password_history_count ?? 3);
+                $history = array_slice($history, 0, max(1, $depth));
+
                 $user->forceFill([
                     'password' => $password,
+                    'password_history' => $history,
+                    'password_changed_at' => now(),
                     'remember_token' => Str::random(60),
                 ])->save();
 

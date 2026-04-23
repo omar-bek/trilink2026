@@ -10,11 +10,15 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             RolesAndPermissionsSeeder::class,
-            // UNSPSC top-level segments seeded BEFORE the comprehensive
-            // seeder so the latter (which creates demo categories) can
-            // optionally point at the standard taxonomy.
+            // UNSPSC top-level segments seeded BEFORE the business seeder
+            // so demo categories can optionally reference the taxonomy.
             UnspscSegmentsSeeder::class,
-            ComprehensiveSeeder::class,
+            // Realistic UAE B2B data where every company acts as both
+            // BUYER and SUPPLIER — each publishes RFQs AND bids on other
+            // companies' RFQs, so the dual-role flow is exercised end
+            // to end: bid → negotiation → contract → escrow → payment
+            // → tax invoice → shipment → feedback.
+            RealisticDualRoleSeeder::class,
         ]);
     }
 }

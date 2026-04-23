@@ -34,6 +34,39 @@ class Payment extends Model
         // Phase 3 / Sprint 11 — set by EscrowService::releaseFor() when this
         // payment was satisfied via escrow rather than a card/bank gateway.
         'escrow_release_id',
+        // Phase C — DSO / terms.
+        'invoice_issued_at',
+        'due_date',
+        'paid_date',
+        'late_fee_amount',
+        'early_discount_amount',
+        // Phase H — WHT and reverse-charge.
+        'wht_rate',
+        'wht_amount',
+        'vat_reverse_charge',
+        // Phase D — settlement rail + SWIFT GPI.
+        'rail',
+        'uetr',
+        // Phase A hardening — FX lock, Corporate Tax, dual approval,
+        // dispute window, cheque + credit-note linkage, accrual flags.
+        'fx_rate_snapshot',
+        'fx_base_currency',
+        'fx_locked_at',
+        'amount_in_base',
+        'corporate_tax_applicable',
+        'corporate_tax_rate',
+        'corporate_tax_amount',
+        'requires_dual_approval',
+        'second_approver_id',
+        'second_approved_at',
+        'dispute_window_days',
+        'disputed_at',
+        'dispute_reason',
+        'postdated_cheque_id',
+        'refund_credit_note_id',
+        'settled_at',
+        'is_late_fee_accrual',
+        'parent_payment_id',
     ];
 
     protected function casts(): array
@@ -45,7 +78,59 @@ class Payment extends Model
             'vat_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'approved_at' => 'datetime',
+            // Phase C.
+            'invoice_issued_at' => 'date',
+            'due_date' => 'date',
+            'paid_date' => 'datetime',
+            'late_fee_amount' => 'decimal:2',
+            'early_discount_amount' => 'decimal:2',
+            // Phase H.
+            'wht_rate' => 'decimal:2',
+            'wht_amount' => 'decimal:2',
+            'vat_reverse_charge' => 'boolean',
+            // Phase A hardening.
+            'fx_rate_snapshot' => 'decimal:8',
+            'fx_locked_at' => 'datetime',
+            'amount_in_base' => 'decimal:2',
+            'corporate_tax_applicable' => 'boolean',
+            'corporate_tax_rate' => 'decimal:2',
+            'corporate_tax_amount' => 'decimal:2',
+            'requires_dual_approval' => 'boolean',
+            'second_approved_at' => 'datetime',
+            'disputed_at' => 'datetime',
+            'settled_at' => 'datetime',
+            'is_late_fee_accrual' => 'boolean',
         ];
+    }
+
+    public function postdatedCheque(): BelongsTo
+    {
+        return $this->belongsTo(PostdatedCheque::class, 'postdated_cheque_id');
+    }
+
+    public function refundCreditNote(): BelongsTo
+    {
+        return $this->belongsTo(TaxCreditNote::class, 'refund_credit_note_id');
+    }
+
+    public function secondApprover(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'second_approver_id');
+    }
+
+    public function parentPayment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class, 'parent_payment_id');
+    }
+
+    public function approvals(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PaymentApproval::class);
+    }
+
+    public function feeAllocations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PlatformFeeAllocation::class);
     }
 
     public function contract(): BelongsTo

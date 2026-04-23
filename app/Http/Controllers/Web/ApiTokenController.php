@@ -33,6 +33,8 @@ class ApiTokenController extends Controller
 
     public function index(Request $request): View
     {
+        $this->authorizeManager($request);
+
         $tokens = $request->user()->tokens()->latest()->get();
         $abilities = self::ALLOWED_ABILITIES;
 
@@ -41,6 +43,8 @@ class ApiTokenController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorizeManager($request);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:64'],
             'abilities' => ['nullable', 'array'],
@@ -61,11 +65,26 @@ class ApiTokenController extends Controller
 
     public function destroy(Request $request, int $id): RedirectResponse
     {
+        $this->authorizeManager($request);
+
         $token = $request->user()->tokens()->findOrFail($id);
         $token->delete();
 
         return redirect()
             ->route('dashboard.api-tokens.index')
             ->with('status', __('api.token_revoked'));
+    }
+
+    /**
+     * Belt-and-braces gate: the route is already behind the
+     * web.role:company_manager middleware, but mirroring the check here
+     * means this controller stays safe even if someone later copies the
+     * route into a less-strict group.
+     */
+    private function authorizeManager(Request $request): void
+    {
+        $user = $request->user();
+        $company = $user?->company;
+        abort_unless($company && $user->can('manageApiTokens', $company), 403);
     }
 }

@@ -18,6 +18,7 @@ use App\Models\TaxRate;
 use App\Models\User;
 use App\Notifications\ContractCreatedNotification;
 use App\Notifications\ContractSignedNotification;
+use App\Services\Payments\PaymentScheduleValidator;
 use App\Services\Signing\SignatureGradeResolver;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -30,7 +31,40 @@ class ContractService
     public function __construct(
         private readonly PaymentService $paymentService,
         private readonly SignatureGradeResolver $gradeResolver,
+        private readonly ?PaymentScheduleValidator $scheduleValidator = null,
     ) {}
+
+    /**
+     * Runs PaymentScheduleValidator on the schedule that's about to be
+     * written to a contract. Normalises the retention key to the new
+     * enum value (PaymentMilestone::RETENTION) so existing legacy data
+     * stays compatible and the validator doesn't reject live contracts.
+     *
+     * @param  array<int, array<string, mixed>>  $schedule
+     */
+    protected function validatePaymentSchedule(array $schedule, float $contractTotal): void
+    {
+        if (! $this->scheduleValidator) {
+            return;
+        }
+
+        foreach ($schedule as $i => $row) {
+            $key = (string) ($row['milestone'] ?? '');
+            if ($key === 'retention_release') {
+                continue;
+            }
+            // Map legacy ad-hoc keys produced by buildPaymentScheduleFromBid
+            // ("milestone_1", "milestone_2"...) to named milestones.
+            if (preg_match('/^milestone_(\d+)$/', $key, $m)) {
+                $schedule[$i]['milestone'] = match ((int) $m[1]) {
+                    1 => 'advance', 2 => 'production', 3 => 'delivery',
+                    default => 'final',
+                };
+            }
+        }
+
+        $this->scheduleValidator->validate($schedule, $contractTotal);
+    }
 
     /**
      * Phase 6 (UAE Compliance Roadmap) — refuse the signature when the

@@ -129,6 +129,23 @@ return [
     | provider they were opened against — see EscrowAccount::bank_partner.
     |
     */
+    // CBUAE AANI — instant alias-routed payments. Live credentials are
+    // issued per PSP; the sandbox falls back to deterministic stubs
+    // when base_url is empty (see AaniGateway).
+    'aani' => [
+        'base_url' => env('AANI_BASE_URL'),
+        'client_id' => env('AANI_CLIENT_ID'),
+        'client_secret' => env('AANI_CLIENT_SECRET'),
+        'signing_key' => env('AANI_SIGNING_KEY'),
+    ],
+
+    // SWIFT gpi Tracker — the correspondent bank signs inbound webhook
+    // payloads with this shared secret. Rotate on every BIC/onboarding
+    // change via the admin settings page.
+    'swift_gpi' => [
+        'webhook_secret' => env('SWIFT_GPI_WEBHOOK_SECRET'),
+    ],
+
     'escrow' => [
         'default' => env('ESCROW_DEFAULT_PROVIDER', 'mock'),
         'mashreq' => [
@@ -199,6 +216,22 @@ return [
     | works on the free public tier (rate-limited).
     |
     */
+    'credit' => [
+        // Active provider: 'mock' (default, deterministic) or 'aecb'.
+        // AECB requires a signed subscriber agreement with Al Etihad
+        // Credit Bureau and covers UAE trade-licence holders only. Any
+        // non-UAE lookup should still route through 'mock' or a future
+        // international provider (D&B / SIMAH).
+        'provider' => env('CREDIT_PROVIDER', 'mock'),
+        'aecb' => [
+            'base_url' => env('AECB_BASE_URL', 'https://api.aecb.gov.ae'),
+            'client_id' => env('AECB_CLIENT_ID'),
+            'client_secret' => env('AECB_CLIENT_SECRET'),
+            'subscriber_code' => env('AECB_SUBSCRIBER_CODE'),
+            'timeout' => env('AECB_TIMEOUT', 15),
+        ],
+    ],
+
     'sanctions' => [
         'opensanctions' => [
             'api_key' => env('OPENSANCTIONS_API_KEY'),
@@ -210,6 +243,30 @@ return [
             'api_secret' => env('REFINITIV_API_SECRET'),
             'endpoint' => env('REFINITIV_ENDPOINT', 'https://api.refinitiv.com/wco/v1'),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AML / Payment-time screening
+    |--------------------------------------------------------------------------
+    |
+    | Phase E of the UAE finance hardening. `enabled` is off by default so
+    | existing test suites and demo tenants that haven't onboarded a
+    | sanctions-screening provider aren't blocked at payment time. Flip to
+    | true in tenant-specific config once sanctions_screenings has fresh
+    | rows for every company.
+    |
+    | `missing_screening_action` controls what happens when a payment is
+    | approved for a company that has no recent sanctions_screenings row:
+    |   'allow'  — treat as clean (permissive; good for rollout)
+    |   'review' — require compliance sign-off before approval (strict)
+    |   'block'  — reject outright (paranoid; enterprise tenants)
+    */
+    'aml' => [
+        'enabled' => env('AML_PAYMENT_SCREENING', false),
+        'missing_screening_action' => env('AML_MISSING_ACTION', 'allow'),
+        'structuring_threshold' => env('AML_STRUCTURING_THRESHOLD', 55000),
+        'structuring_window_hours' => env('AML_STRUCTURING_WINDOW', 24),
     ],
 
 ];

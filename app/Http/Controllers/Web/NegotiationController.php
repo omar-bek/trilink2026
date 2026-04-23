@@ -8,10 +8,11 @@ use App\Http\Controllers\Web\Concerns\FormatsForViews;
 use App\Models\Bid;
 use App\Models\NegotiationMessage;
 use App\Services\ContractService;
+use App\Services\NegotiationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Throwable;
 
 /**
  * Negotiation Room — chat + counter offers between a buyer and a supplier
@@ -33,7 +34,10 @@ class NegotiationController extends Controller
 {
     use FormatsForViews;
 
-    public function __construct(private readonly ContractService $contracts) {}
+    public function __construct(
+        private readonly ContractService $contracts,
+        private readonly NegotiationService $negotiations,
+    ) {}
 
     public function show(string $id): View
     {
@@ -76,6 +80,16 @@ class NegotiationController extends Controller
             ->sortByDesc('created_at')
             ->first();
 
+        // Open round = a counter that is still awaiting a response. Only
+        // the OPPOSITE-side user can accept or reject it — the side that
+        // sent the counter has to wait for the other party to act.
+        $openRound = $this->negotiations->latestOpenRound($bid);
+        $hasOpenCounter = (bool) $openRound;
+        $canRespond = $hasOpenCounter
+            && $side !== null
+            && $openRound->sender_side !== $side
+            && ! $openRound->isExpired();
+
         $currentAmount = $latestCounter ? (float) ($latestCounter->offer['amount'] ?? $bid->price) : (float) $bid->price;
         $currentDays = $latestCounter ? (int) ($latestCounter->offer['delivery_days'] ?? $bid->delivery_time_days) : (int) ($bid->delivery_time_days ?? 0);
         $currentTerms = $latestCounter ? ($latestCounter->offer['payment_terms'] ?? $bid->payment_terms) : ($bid->payment_terms ?? '—');
@@ -115,6 +129,10 @@ class NegotiationController extends Controller
             'messages' => $messages,
             'my_side' => $side,
             'can_act' => $side !== null && in_array($this->statusValue($bid->status), ['submitted', 'under_review'], true),
+            'has_open_counter' => $hasOpenCounter,
+            'can_respond' => $canRespond,
+            'open_round_sender' => $openRound?->sender_side,
+            'open_round_number' => $openRound?->round_number,
         ];
 
         return view('dashboard.negotiations.show', ['n' => $view]);
@@ -141,6 +159,12 @@ class NegotiationController extends Controller
         return redirect()->route('dashboard.negotiations.show', ['id' => $bid->id]);
     }
 
+    /**
+     * Legacy endpoint kept for backwards compatibility with the older
+     * in-room counter form — delegates to the structured round service so
+     * VAT, expiry, audit, and notifications run consistently regardless of
+     * which UI opens the counter.
+     */
     public function storeCounterOffer(Request $request, string $id): RedirectResponse
     {
         $bid = $this->findBidOrFail($id);
@@ -148,70 +172,70 @@ class NegotiationController extends Controller
         $this->authorizeParticipant($bid, $user);
 
         $data = $request->validate([
-            'amount' => ['required', 'numeric', 'min:1'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
             'delivery_days' => ['required', 'integer', 'min:1', 'max:3650'],
             'payment_terms' => ['required', 'string', 'max:255'],
             'reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        NegotiationMessage::create([
-            'bid_id' => $bid->id,
-            'sender_id' => $user->id,
-            'sender_side' => $this->sideFor($bid, $user),
-            'kind' => 'counter_offer',
-            'body' => $data['reason'] ?? null,
-            'offer' => [
-                'amount' => (float) $data['amount'],
-                'currency' => $bid->currency ?? 'AED',
-                'delivery_days' => (int) $data['delivery_days'],
-                'payment_terms' => $data['payment_terms'],
-                'reason' => $data['reason'] ?? '',
-            ],
-        ]);
+        try {
+            $this->negotiations->openCounterOffer(
+                bid: $bid,
+                sender: $user,
+                offer: [
+                    'amount' => (float) $data['amount'],
+                    'currency' => strtoupper((string) ($bid->currency ?? 'AED')),
+                    'delivery_days' => (int) $data['delivery_days'],
+                    'payment_terms' => $data['payment_terms'],
+                ],
+                reason: $data['reason'] ?? null,
+            );
+        } catch (Throwable $e) {
+            return back()->withErrors(['negotiation' => $e->getMessage()])->withInput();
+        }
 
         return redirect()->route('dashboard.negotiations.show', ['id' => $bid->id])
             ->with('status', __('negotiation.counter_sent'));
     }
 
-    public function accept(string $id): RedirectResponse
+    /**
+     * Accept the current open round from inside the negotiation room.
+     * Delegates to NegotiationService so the VAT snapshot, signed
+     * acceptance, audit log, and notifications all go through the same
+     * code path as the bid-show Negotiation tab. Bid acceptance +
+     * contract creation is then handled by the Bid accept endpoint /
+     * the buyer from the bid show page — this only closes the round.
+     */
+    public function accept(Request $request, string $id): RedirectResponse
     {
         $bid = $this->findBidOrFail($id);
         $user = auth()->user();
         $this->authorizeParticipant($bid, $user);
 
-        // Only the buyer side can "accept the current offer" from inside the
-        // room — mirrors the bid accept rule.
-        abort_unless($this->sideFor($bid, $user) === 'buyer', 403, 'Only the buyer can accept an offer.');
-        abort_unless($user?->hasPermission('bid.accept'), 403);
+        $data = $request->validate([
+            'signature_name' => ['required', 'string', 'min:3', 'max:150'],
+            'acknowledge' => ['accepted'],
+        ], [
+            'signature_name.required' => __('negotiation.error_signature_required'),
+            'acknowledge.accepted' => __('negotiation.error_ack_required'),
+        ]);
 
-        // Same shape as BidController@accept: update bid + reject siblings +
-        // generate a contract — all inside one transaction. The only
-        // difference is we also copy the latest counter-offer's terms onto
-        // the bid first, so the contract reflects the negotiated price.
-        $contract = DB::transaction(function () use ($bid) {
-            $latestCounter = $bid->negotiationMessages()
-                ->where('kind', 'counter_offer')
-                ->latest()
-                ->first();
+        try {
+            $msg = $this->negotiations->acceptOffer($bid, $user, [
+                'name' => $data['signature_name'],
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+        } catch (Throwable $e) {
+            return back()->withErrors(['negotiation' => $e->getMessage()]);
+        }
 
-            $update = ['status' => BidStatus::ACCEPTED];
-            if ($latestCounter && is_array($latestCounter->offer)) {
-                $update['price'] = (float) ($latestCounter->offer['amount'] ?? $bid->price);
-                $update['delivery_time_days'] = (int) ($latestCounter->offer['delivery_days'] ?? $bid->delivery_time_days);
-                $update['payment_terms'] = $latestCounter->offer['payment_terms'] ?? $bid->payment_terms;
-            }
-            $bid->update($update);
+        if (! $msg) {
+            return back()->withErrors(['negotiation' => __('negotiation.no_open_round')]);
+        }
 
-            Bid::where('rfq_id', $bid->rfq_id)
-                ->where('id', '!=', $bid->id)
-                ->update(['status' => BidStatus::REJECTED->value]);
-
-            return $this->contracts->createFromBid($bid->fresh(['rfq', 'company']));
-        });
-
-        return redirect()
-            ->route('dashboard.contracts.show', ['id' => $contract->id])
-            ->with('status', __('contracts.created_from_bid'));
+        return redirect()->route('dashboard.bids.show', ['id' => $bid->id])
+            ->with('status', __('negotiation.offer_accepted'));
     }
 
     public function end(string $id): RedirectResponse

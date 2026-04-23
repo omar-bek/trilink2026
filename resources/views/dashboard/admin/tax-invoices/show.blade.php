@@ -33,6 +33,16 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
             {{ __('tax_invoices.download_pdf') }}
         </a>
+        <a href="{{ route('admin.tax-invoices.download', ['id' => $invoice->id, 'lang' => 'ar']) }}"
+           class="inline-flex items-center gap-2 px-4 h-12 rounded-[12px] text-[13px] font-medium text-body bg-surface-2 hover:bg-elevated border border-th-border transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+            PDF · عربي
+        </a>
+        <a href="{{ route('admin.tax-invoices.download', ['id' => $invoice->id, 'lang' => 'en']) }}"
+           class="inline-flex items-center gap-2 px-4 h-12 rounded-[12px] text-[13px] font-medium text-body bg-surface-2 hover:bg-elevated border border-th-border transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+            PDF · English
+        </a>
         @if(!$invoice->isVoided())
             <form method="POST" action="{{ route('admin.tax-invoices.void', $invoice->id) }}" class="inline"
                   onsubmit="const reason = prompt('{{ __('tax_invoices.void_prompt') }}'); if (!reason) return false; this.reason.value = reason;">

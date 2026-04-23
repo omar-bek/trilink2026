@@ -17,8 +17,8 @@
  * refresh. They are tracked separately under the H2 Reverb migration.
  */
 
-const STATIC_CACHE   = 'trilink-static-v1';
-const RUNTIME_CACHE  = 'trilink-runtime-v1';
+const STATIC_CACHE   = 'trilink-static-v2';
+const RUNTIME_CACHE  = 'trilink-runtime-v2';
 const OFFLINE_URL    = '/offline.html';
 
 // Files we want available the first time the worker installs. Anything
@@ -68,12 +68,37 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // Bypass binary downloads entirely. PDFs / file downloads must
+    // stream straight from the server — if we caught a transient
+    // network blip here the SW would swap in the HTML offline page
+    // and the user would see "You're offline" instead of a PDF.
+    // Also prevents stale downloads from the cache.
+    if (
+        url.pathname.endsWith('/pdf') ||
+        url.pathname.endsWith('/proforma-invoice') ||
+        url.pathname.includes('/download') ||
+        url.pathname.includes('/export') ||
+        url.pathname.includes('/attachments/')
+    ) {
+        return;
+    }
+
     // Navigation requests (HTML page loads): network-first with an
     // offline fallback. Fresh data when online; a graceful "you're
-    // offline" page when not.
+    // offline" page when not. We also bail on any response the server
+    // flags as an attachment — those are downloads, not pages, and
+    // the offline fallback has nothing to do with them.
     if (request.mode === 'navigate') {
         event.respondWith(
             fetch(request)
+                .then((response) => {
+                    const disposition = response.headers.get('content-disposition') || '';
+                    const contentType = response.headers.get('content-type') || '';
+                    if (disposition.includes('attachment') || contentType.includes('application/pdf')) {
+                        return response;
+                    }
+                    return response;
+                })
                 .catch(() => caches.match(OFFLINE_URL))
         );
         return;

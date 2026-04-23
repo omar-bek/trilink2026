@@ -18,6 +18,7 @@ use App\Notifications\LosingBidNotification;
 use App\Services\BidService;
 use App\Services\ContractService;
 use App\Services\NegotiationService;
+use App\Services\PostAcceptHookService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -37,6 +38,7 @@ class BidController extends Controller
         private readonly BidService $service,
         private readonly ContractService $contracts,
         private readonly NegotiationService $negotiations,
+        private readonly PostAcceptHookService $postAccept,
     ) {}
 
     /**
@@ -60,7 +62,9 @@ class BidController extends Controller
      */
     private function negotiationViewModel(Bid $bid): array
     {
-        $timeline = $this->negotiations->timeline($bid)->map(function (NegotiationMessage $m) use ($bid) {
+        $currency = $bid->currency ?? 'AED';
+
+        $timeline = $this->negotiations->timeline($bid)->map(function (NegotiationMessage $m) use ($bid, $currency) {
             $offer = $m->offer ?? null;
 
             return [
@@ -72,13 +76,22 @@ class BidController extends Controller
                 'round' => $m->round_number,
                 'round_status' => $m->round_status,
                 'when' => $m->created_at?->format('M j, Y g:i A') ?? '—',
+                'expires_at' => $m->expires_at?->format('M j, Y g:i A'),
+                'expires_in' => $m->expires_at && $m->round_status === 'open' ? $m->expires_at->diffForHumans() : null,
+                'signed_by' => $m->signed_by_name,
+                'signed_at' => $m->signed_at?->format('M j, Y g:i A'),
                 'offer' => $offer ? [
-                    'amount' => isset($offer['amount']) ? $this->money((float) $offer['amount'], $bid->currency ?? 'AED') : null,
+                    'amount' => isset($offer['amount']) ? $this->money((float) $offer['amount'], $currency) : null,
                     'amount_raw' => isset($offer['amount']) ? (float) $offer['amount'] : null,
-                    'currency' => $offer['currency'] ?? $bid->currency ?? 'AED',
+                    'currency' => $offer['currency'] ?? $currency,
                     'delivery_days' => $offer['delivery_days'] ?? null,
                     'payment_terms' => $offer['payment_terms'] ?? null,
                     'reason' => $offer['reason'] ?? null,
+                    'tax_treatment' => $offer['tax_treatment'] ?? $bid->tax_treatment,
+                    'tax_rate' => $offer['tax_rate'] ?? $bid->tax_rate_snapshot,
+                    'subtotal' => isset($offer['subtotal_excl_tax']) ? $this->money((float) $offer['subtotal_excl_tax'], $currency) : null,
+                    'vat' => isset($offer['tax_amount']) ? $this->money((float) $offer['tax_amount'], $currency) : null,
+                    'total' => isset($offer['total_incl_tax']) ? $this->money((float) $offer['total_incl_tax'], $currency) : null,
                 ] : null,
             ];
         })->toArray();
@@ -89,23 +102,46 @@ class BidController extends Controller
 
         $canAct = false;
         if ($latestOpen) {
-            // The party that is allowed to respond is the OPPOSITE side of
-            // whoever opened the round. Same-side users can post follow-up
-            // counters but not accept/reject their own offer.
             $canAct = $user
                 && $user->company_id
                 && ($user->company_id === $bid->company_id || $user->company_id === $bid->rfq?->company_id)
-                && $userSide !== $latestOpen->sender_side;
+                && $userSide !== $latestOpen->sender_side
+                && ! $latestOpen->isExpired();
         }
+
+        $roundsSoFar = (int) NegotiationMessage::where('bid_id', $bid->id)
+            ->where('kind', 'counter_offer')
+            ->max('round_number');
+        $cap = (int) ($bid->negotiation_round_cap ?? config('negotiation.default_round_cap', 5));
 
         return [
             'timeline' => $timeline,
             'has_open' => (bool) $latestOpen,
             'open_round' => $latestOpen?->round_number,
-            'open_amount' => $latestOpen ? $this->money((float) ($latestOpen->offer['amount'] ?? 0), $bid->currency ?? 'AED') : null,
+            'open_amount' => $latestOpen ? $this->money((float) ($latestOpen->offer['amount'] ?? 0), $currency) : null,
+            'open_expires_at' => $latestOpen?->expires_at?->format('M j, Y g:i A'),
+            'open_expires_in' => $latestOpen?->expires_at?->diffForHumans(),
+            'open_expired' => $latestOpen?->isExpired() ?? false,
+            'open_offer' => $latestOpen ? [
+                'amount' => $this->money((float) ($latestOpen->offer['amount'] ?? 0), $currency),
+                'currency' => $latestOpen->offer['currency'] ?? $currency,
+                'delivery_days' => $latestOpen->offer['delivery_days'] ?? null,
+                'payment_terms' => $latestOpen->offer['payment_terms'] ?? null,
+                'subtotal' => isset($latestOpen->offer['subtotal_excl_tax']) ? $this->money((float) $latestOpen->offer['subtotal_excl_tax'], $currency) : null,
+                'vat' => isset($latestOpen->offer['tax_amount']) ? $this->money((float) $latestOpen->offer['tax_amount'], $currency) : null,
+                'total' => isset($latestOpen->offer['total_incl_tax']) ? $this->money((float) $latestOpen->offer['total_incl_tax'], $currency) : null,
+                'tax_treatment' => $latestOpen->offer['tax_treatment'] ?? $bid->tax_treatment,
+                'tax_rate' => $latestOpen->offer['tax_rate'] ?? $bid->tax_rate_snapshot,
+            ] : null,
             'can_act' => $canAct,
             'user_side' => $userSide,
             'next_round' => ($latestOpen?->round_number ?? 0) + 1,
+            'rounds_so_far' => $roundsSoFar,
+            'round_cap' => $cap,
+            'cap_reached' => $roundsSoFar >= $cap,
+            'currency' => $currency,
+            'tax_treatment' => $bid->tax_treatment,
+            'tax_rate' => $bid->tax_rate_snapshot ?? 5.0,
         ];
     }
 
@@ -477,10 +513,15 @@ class BidController extends Controller
         $n = strtolower($name);
 
         return match (true) {
-            str_contains($n, 'advance') || str_contains($n, 'upfront') => 'advance',
-            str_contains($n, 'production') || str_contains($n, 'manufactur') => 'production',
-            str_contains($n, 'deliver') || str_contains($n, 'shipment') => 'delivery',
-            str_contains($n, 'final') || str_contains($n, 'settlement') || str_contains($n, 'completion') => 'final',
+            str_contains($n, 'advance') || str_contains($n, 'upfront')
+                || str_contains($n, 'مقدّم') || str_contains($n, 'مقدم') || str_contains($n, 'دفعة مقدمة') => 'advance',
+            str_contains($n, 'production') || str_contains($n, 'manufactur')
+                || str_contains($n, 'إنتاج') || str_contains($n, 'انتاج') || str_contains($n, 'تصنيع') => 'production',
+            str_contains($n, 'deliver') || str_contains($n, 'shipment')
+                || str_contains($n, 'تسليم') || str_contains($n, 'شحن') => 'delivery',
+            str_contains($n, 'final') || str_contains($n, 'settlement') || str_contains($n, 'completion')
+                || str_contains($n, 'نهائي') || str_contains($n, 'تسوية') || str_contains($n, 'استلام نهائي') => 'final',
+            str_contains($n, 'retention') || str_contains($n, 'احتجاز') || str_contains($n, 'ضمان') => 'retention',
             default => 'milestone',
         };
     }
@@ -1229,6 +1270,14 @@ class BidController extends Controller
             }
         }
 
+        // Post-accept provisioning (escrow auto-open above AED 50k, BG
+        // advisory above AED 250k). Runs outside the transaction so a
+        // bank-partner blip cannot unwind the legal acceptance.
+        // `parties` on Contract is a JSON cast, not a relation — eager-loading
+        // it raises RelationNotFoundException. The JSON data is already on the
+        // model after fresh(); the post-accept provisioning reads it directly.
+        $this->postAccept->run($contract->fresh());
+
         return redirect()
             ->route('dashboard.contracts.show', ['id' => $contract->id])
             ->with('status', __('contracts.created_from_bid'));
@@ -1337,12 +1386,150 @@ class BidController extends Controller
         $this->authorizeBidParticipant($bid);
 
         $price = (float) $bid->price;
-        $pdf = Pdf::loadView('dashboard.bids.pdf', [
-            'bid' => $bid,
-            'schedule' => $this->buildPaymentSchedule($bid, $price),
-        ]);
+
+        $requested = request()->query('lang');
+        $pdfLocale = in_array($requested, ['ar', 'en'], true)
+            ? $requested
+            : (auth()->user()?->locale ?? app()->getLocale());
+
+        $previous = app()->getLocale();
+        app()->setLocale($pdfLocale);
+        try {
+            $pdf = Pdf::loadView('dashboard.bids.pdf', [
+                'bid'       => $bid,
+                'schedule'  => $this->buildPaymentSchedule($bid, $price),
+                'pdfLocale' => $pdfLocale,
+            ]);
+        } finally {
+            app()->setLocale($previous);
+        }
 
         return $pdf->download($this->bidDisplayNumber($bid).'.pdf');
+    }
+
+    /**
+     * Generate a proforma invoice PDF for an accepted bid. Only the buyer
+     * side (the company that owns the parent RFQ) can issue the proforma —
+     * the supplier gets the final tax invoice once the contract is signed
+     * and payment is made. The document number format is PI-{year}-{bid_id}
+     * so it doesn't collide with the FTA-compliant tax invoice sequence.
+     */
+    public function proformaInvoice(string $id): Response
+    {
+        $bid = $this->findOrFail($id)->load(['rfq.company', 'rfq.category', 'company']);
+        abort_unless(auth()->user()?->hasPermission('bid.view'), 403);
+        $this->authorizeBidParticipant($bid);
+
+        // Only issue the proforma for bids that actually got accepted.
+        // Anything else would be misleading since there's no agreement yet.
+        abort_unless($this->statusValue($bid->status) === 'accepted', 404);
+
+        $price = (float) $bid->price;
+        $hasVatSnapshot = $bid->subtotal_excl_tax !== null;
+        $subtotal = $hasVatSnapshot ? (float) $bid->subtotal_excl_tax : $price;
+        $taxAmount = $hasVatSnapshot ? (float) $bid->tax_amount : 0.0;
+        $total = $hasVatSnapshot ? (float) $bid->total_incl_tax : $price;
+        $taxRate = $hasVatSnapshot ? (float) $bid->tax_rate_snapshot : 0.0;
+
+        $year = $bid->updated_at?->format('Y') ?? date('Y');
+        $invoiceNumber = sprintf('PI-%s-%06d', $year, $bid->id);
+
+        // Force English locale for the document — proforma invoices are
+        // commercial artefacts that travel with the shipment/customs
+        // paperwork, so they must render in English regardless of the
+        // caller's UI language. We restore the locale after rendering so
+        // the subsequent redirect/flash messages stay in the user's
+        // language.
+        $originalLocale = app()->getLocale();
+        app()->setLocale('en');
+
+        try {
+            $schedule = $this->buildEnglishPaymentSchedule($bid, $price);
+
+            // Reconstruct the payment-terms sentence in English from the
+            // structured schedule. The `$bid->payment_terms` column often
+            // stores a free-text Arabic string ("30% مقدّم، ...") that
+            // would leak into an otherwise English commercial document.
+            $paymentTermsEn = collect($schedule)
+                ->map(fn ($r) => rtrim(rtrim(number_format((float) ($r['percentage'] ?? 0), 2), '0'), '.').'% '.$r['milestone'])
+                ->implode(', ');
+
+            $pdf = Pdf::loadView('dashboard.bids.proforma-invoice', [
+                'bid' => $bid,
+                'invoice_number' => $invoiceNumber,
+                'issue_date' => now(),
+                'buyer' => $bid->rfq?->company,
+                'supplier' => $bid->company,
+                'schedule' => $schedule,
+                'payment_terms_en' => $paymentTermsEn,
+                'subtotal' => $subtotal,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $taxAmount,
+                'total' => $total,
+                'currency' => $bid->currency ?? 'AED',
+            ]);
+
+            return $pdf->download($invoiceNumber.'.pdf');
+        } finally {
+            app()->setLocale($originalLocale);
+        }
+    }
+
+    /**
+     * Payment schedule rendered with English milestone labels + ASCII
+     * currency formatting. Used only by the proforma invoice — the
+     * standard `buildPaymentSchedule()` is locale-aware and can emit
+     * Arabic milestones/symbols that don't belong on a commercial
+     * document shipped with customs paperwork.
+     */
+    private function buildEnglishPaymentSchedule($bid, float $price): array
+    {
+        $currency = $bid->currency ?? 'AED';
+        $stored = $bid->payment_schedule ?? [];
+        $stageLabels = [
+            'advance' => 'Advance Payment',
+            'production' => 'On Production',
+            'delivery' => 'On Delivery',
+            'final' => 'Final Settlement',
+            'retention' => 'Retention',
+            'milestone' => 'Milestone',
+        ];
+
+        $rows = [];
+        if (is_array($stored) && ! empty($stored)) {
+            foreach ($stored as $i => $row) {
+                $pct = (float) ($row['percentage'] ?? 0);
+                $amount = isset($row['amount']) && (float) $row['amount'] > 0
+                    ? (float) $row['amount']
+                    : round($price * $pct / 100, 2);
+                $stage = $this->milestoneStage((string) ($row['milestone'] ?? ''));
+                $rows[] = [
+                    'milestone' => $stageLabels[$stage] ?? ('Milestone '.($i + 1)),
+                    'percentage' => $pct,
+                    'amount' => $currency.' '.number_format($amount, 2),
+                ];
+            }
+
+            return $rows;
+        }
+
+        $pcts = [];
+        if (preg_match_all('/(\d+)\s*%/', (string) $bid->payment_terms, $m)) {
+            $pcts = array_map('intval', $m[1]);
+        }
+        if (empty($pcts)) {
+            $pcts = [30, 70];
+        }
+        $defaults = ['Advance Payment', 'On Production', 'On Delivery', 'Final Settlement', 'Retention'];
+        foreach ($pcts as $i => $pct) {
+            $rows[] = [
+                'milestone' => $defaults[$i] ?? ('Milestone '.($i + 1)),
+                'percentage' => (float) $pct,
+                'amount' => $currency.' '.number_format(round($price * $pct / 100, 2), 2),
+            ];
+        }
+
+        return $rows;
     }
 
     private function findOrFail(string $id): Bid

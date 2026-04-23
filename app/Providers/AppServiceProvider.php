@@ -21,12 +21,16 @@ use App\Observers\AuditLogObserver;
 use App\Observers\ContractObserver;
 use App\Observers\PaymentInvoiceObserver;
 use App\Observers\SidebarBadgeInvalidator;
+use App\Models\PostdatedCheque;
 use App\Policies\BidPolicy;
+use App\Policies\ChequePolicy;
 use App\Policies\CompanyPolicy;
 use App\Policies\ContractPolicy;
+use App\Policies\NegotiationPolicy;
 use App\Policies\PaymentPolicy;
 use App\Policies\RfqPolicy;
 use App\Services\AI\AnthropicClient;
+use App\Services\Credit\AecbCreditScoringProvider;
 use App\Services\Credit\CreditScoringProviderInterface;
 use App\Services\Credit\MockCreditScoringProvider;
 use App\Services\Escrow\BankPartnerFactory;
@@ -65,11 +69,21 @@ class AppServiceProvider extends ServiceProvider
         });
 
         // Phase 2 / Sprint 10 / task 2.16 — credit scoring provider
-        // abstraction. Mock implementation today (deterministic per
-        // registration_number); Phase 3 swaps in AECB / SIMAH / D&B by
-        // re-binding here behind a config-based selector.
+        // abstraction. Selector is config-driven (services.credit.provider)
+        // so enabling AECB in production is an env change (CREDIT_PROVIDER=aecb
+        // + AECB_* credentials) with zero code churn. Unknown providers fall
+        // back to the mock so demos and tests stay deterministic.
         $this->app->bind(CreditScoringProviderInterface::class, function () {
-            return new MockCreditScoringProvider;
+            return match (config('services.credit.provider', 'mock')) {
+                'aecb' => new AecbCreditScoringProvider(
+                    baseUrl: (string) config('services.credit.aecb.base_url'),
+                    clientId: (string) config('services.credit.aecb.client_id'),
+                    clientSecret: (string) config('services.credit.aecb.client_secret'),
+                    subscriberCode: (string) config('services.credit.aecb.subscriber_code'),
+                    timeout: (int) config('services.credit.aecb.timeout', 15),
+                ),
+                default => new MockCreditScoringProvider,
+            };
         });
 
         // Phase 3 / Sprint 11 / task 3.3 — bank partner adapter for the
@@ -111,12 +125,27 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ── Production guard-rails ──────────────────────────────────
+        // Sentry is how we notice anything breaking in prod. Force-fail
+        // the boot if prod is missing the DSN so nobody deploys blind.
+        if ($this->app->environment('production')) {
+            $dsn = config('sentry.dsn');
+            if (empty($dsn)) {
+                Log::critical('SENTRY_LARAVEL_DSN is empty in production — error visibility is off.');
+            }
+        }
+
         // ── Model Policies ──────────────────────────────────────────
         Gate::policy(Contract::class, ContractPolicy::class);
         Gate::policy(Bid::class, BidPolicy::class);
         Gate::policy(Payment::class, PaymentPolicy::class);
         Gate::policy(Rfq::class, RfqPolicy::class);
         Gate::policy(Company::class, CompanyPolicy::class);
+        Gate::policy(PostdatedCheque::class, ChequePolicy::class);
+        // NegotiationPolicy gates bid-level negotiation actions via the
+        // Bid model ability names (negotiate, accept-negotiation, ...);
+        // the *policy class* is explicit-cited in controllers because
+        // the subject is still a Bid.
 
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());

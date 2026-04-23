@@ -72,6 +72,13 @@ class Company extends Model
         'corporate_tax_number',
         'corporate_tax_status',
         'corporate_tax_registered_at',
+        // Design-partner cohort — Year-1 hand-picked companies used as
+        // live design/validation partners before public launch. See
+        // AdminDesignPartnerController for the onboarding tracker.
+        'is_design_partner',
+        'design_partner_role',
+        'design_partner_started_at',
+        'design_partner_notes',
     ];
 
     protected function casts(): array
@@ -102,6 +109,8 @@ class Company extends Model
             'notification_recipient_roles' => 'array',
             // Phase 7 (UAE Compliance Roadmap) — Corporate Tax.
             'corporate_tax_registered_at' => 'date',
+            'is_design_partner' => 'boolean',
+            'design_partner_started_at' => 'datetime',
         ];
     }
 
@@ -242,6 +251,113 @@ class Company extends Model
     public function bankDetails(): HasOne
     {
         return $this->hasOne(CompanyBankDetail::class);
+    }
+
+    public function securityPolicyRecord(): HasOne
+    {
+        return $this->hasOne(CompanySecurityPolicy::class);
+    }
+
+    public function defaultsRecord(): HasOne
+    {
+        return $this->hasOne(CompanyDefaults::class);
+    }
+
+    /**
+     * Resolved security policy — returns the persisted row (created on
+     * demand) so callers always get a consistent object instead of
+     * branching on `null` for unseeded tenants.
+     */
+    public function securityPolicy(): CompanySecurityPolicy
+    {
+        return $this->securityPolicyRecord()->firstOrCreate(
+            ['company_id' => $this->id],
+            CompanySecurityPolicy::platformDefaults()
+        );
+    }
+
+    public function commercialDefaults(): CompanyDefaults
+    {
+        return $this->defaultsRecord()->firstOrCreate(
+            ['company_id' => $this->id],
+            CompanyDefaults::platformDefaults()
+        );
+    }
+
+    public function bankAccounts(): HasMany
+    {
+        return $this->hasMany(CompanyBankAccount::class);
+    }
+
+    public function paymentMethods(): HasMany
+    {
+        return $this->hasMany(CompanyPaymentMethod::class);
+    }
+
+    public function brandingRecord(): HasOne
+    {
+        return $this->hasOne(CompanyBranding::class);
+    }
+
+    public function branding(): CompanyBranding
+    {
+        return $this->brandingRecord()->firstOrCreate(['company_id' => $this->id]);
+    }
+
+    public function documentNumberings(): HasMany
+    {
+        return $this->hasMany(CompanyDocumentNumbering::class);
+    }
+
+    public function costCenters(): HasMany
+    {
+        return $this->hasMany(CostCenter::class);
+    }
+
+    /**
+     * Default receiving bank account for a given currency — or any
+     * default if no currency match exists. Falls back to the legacy
+     * single-row CompanyBankDetail for tenants that never opened the
+     * new multi-account UI.
+     */
+    public function cardVault(): HasMany
+    {
+        return $this->hasMany(CompanyCardVault::class);
+    }
+
+    public function lettersOfCreditAsApplicant(): HasMany
+    {
+        return $this->hasMany(LetterOfCredit::class, 'applicant_company_id');
+    }
+
+    public function lettersOfCreditAsBeneficiary(): HasMany
+    {
+        return $this->hasMany(LetterOfCredit::class, 'beneficiary_company_id');
+    }
+
+    public function wpsBatches(): HasMany
+    {
+        return $this->hasMany(WpsPayrollBatch::class);
+    }
+
+    public function taxLedger(): HasMany
+    {
+        return $this->hasMany(FtaTaxLedgerEntry::class);
+    }
+
+    public function defaultReceivingAccount(?string $currency = null): ?CompanyBankAccount
+    {
+        $query = $this->bankAccounts()->where('status', 'active')
+            ->where('is_default_receiving', true);
+
+        if ($currency) {
+            $scoped = (clone $query)->where('currency', $currency)->first();
+            if ($scoped) {
+                return $scoped;
+            }
+        }
+
+        return $query->first();
     }
 
     public function users(): HasMany

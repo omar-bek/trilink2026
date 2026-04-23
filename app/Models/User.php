@@ -49,6 +49,12 @@ class User extends Authenticatable implements HasLocalePreference, JWTSubject
         'last_login',
         'notification_preferences',
         'locale',
+        'failed_login_attempts',
+        'locked_until',
+        'last_login_ip',
+        'session_started_at',
+        'password_history',
+        'password_changed_at',
     ];
 
     protected $hidden = [
@@ -82,6 +88,12 @@ class User extends Authenticatable implements HasLocalePreference, JWTSubject
             // a schema migration. See defaultNotificationPreferences()
             // and shouldDeliverNotification() for the read recipe.
             'notification_preferences' => 'array',
+            // Login hardening + password policy — see the migration
+            // `add_failed_login_tracking_to_users` for why these exist.
+            'locked_until' => 'datetime',
+            'session_started_at' => 'datetime',
+            'password_history' => 'array',
+            'password_changed_at' => 'datetime',
         ];
     }
 

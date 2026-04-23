@@ -46,6 +46,9 @@ class Rfq extends Model
         'icv_minimum_score',
         // Phase 4.5 — issuer allowlist. Empty/null = any verified issuer.
         'icv_required_issuers',
+        // Phase A (UAE finance hardening) — BG requirements the bidder
+        // must satisfy. JSON array of {type, percentage, mandatory}.
+        'required_bank_guarantees',
     ];
 
     protected function casts(): array
@@ -74,6 +77,7 @@ class Rfq extends Model
             'icv_minimum_score' => 'decimal:2',
             // Phase 4.5 — issuer allowlist (e.g. ['adnoc'] for ADNOC tenders).
             'icv_required_issuers' => 'array',
+            'required_bank_guarantees' => 'array',
         ];
     }
 

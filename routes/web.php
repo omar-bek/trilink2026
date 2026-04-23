@@ -9,6 +9,7 @@ use App\Http\Controllers\Web\Admin\CategoryController as AdminCategoryController
 use App\Http\Controllers\Web\Admin\CertificateUploadAdminController as AdminCertificateUploadController;
 use App\Http\Controllers\Web\Admin\CompanyCategoryRequestController as AdminCompanyCategoryRequestController;
 use App\Http\Controllers\Web\Admin\CompanyController as AdminCompanyController;
+use App\Http\Controllers\Web\Admin\DesignPartnerController as AdminDesignPartnerController;
 use App\Http\Controllers\Web\Admin\DisputeManagementController as AdminDisputeManagementController;
 use App\Http\Controllers\Web\Admin\EInvoiceController as AdminEInvoiceController;
 use App\Http\Controllers\Web\Admin\ExchangeRateController as AdminExchangeRateController;
@@ -34,11 +35,20 @@ use App\Http\Controllers\Web\BeneficialOwnerController;
 use App\Http\Controllers\Web\BidController;
 use App\Http\Controllers\Web\BranchController;
 use App\Http\Controllers\Web\CartController;
+use App\Http\Controllers\Web\CompanyAuditLogController;
+use App\Http\Controllers\Web\CompanyBankAccountController;
+use App\Http\Controllers\Web\CompanyBrandingController;
 use App\Http\Controllers\Web\CompanyDocumentController;
+use App\Http\Controllers\Web\CompanyDocumentNumberingController;
 use App\Http\Controllers\Web\CompanyInsuranceController;
+use App\Http\Controllers\Web\CompanyPaymentMethodController;
 use App\Http\Controllers\Web\CompanyProfileController;
 use App\Http\Controllers\Web\CompanySupplierController;
 use App\Http\Controllers\Web\CompanyUserController;
+use App\Http\Controllers\Web\CompanyCardVaultController;
+use App\Http\Controllers\Web\CostCenterController;
+use App\Http\Controllers\Web\LetterOfCreditController;
+use App\Http\Controllers\Web\WpsPayrollController;
 use App\Http\Controllers\Web\ContactController;
 use App\Http\Controllers\Web\Contract\AmendmentController;
 use App\Http\Controllers\Web\Contract\AnalyticsController;
@@ -72,6 +82,7 @@ use App\Http\Controllers\Web\ShipmentController;
 use App\Http\Controllers\Web\ShippingQuoteController;
 use App\Http\Controllers\Web\SpendAnalyticsController;
 use App\Http\Controllers\Web\SupplierProfileController;
+use App\Http\Controllers\Web\TeamActivityController;
 use App\Http\Controllers\Web\TwoFactorController;
 use Illuminate\Support\Facades\Route;
 
@@ -160,7 +171,7 @@ Route::middleware('guest')->group(function () {
 // Profile (any authenticated user). Also gated by company.approved so a
 // pending-approval user can't slip into profile/settings/notifications —
 // only register.success and logout are reachable for them.
-Route::middleware(['auth', 'company.approved'])->group(function () {
+Route::middleware(['auth', 'company.approved', 'company.security'])->group(function () {
     // Notifications feed
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
@@ -173,13 +184,82 @@ Route::middleware(['auth', 'company.approved'])->group(function () {
     Route::post('/profile/company-logo', [ProfileController::class, 'updateCompanyLogo'])->name('profile.company-logo');
     Route::patch('/profile/notifications', [ProfileController::class, 'updateNotificationPreferences'])->name('profile.notifications');
 
-    // Tabbed Settings page (Company / Personal / Notifications / Security / Payment)
+    // Tabbed Settings page. Personal-scope tabs (personal / notifications /
+    // security) are open to every authenticated user. Company-scope tabs
+    // (company / payment / defaults / security_policy) are gated inside
+    // the controller via CompanyPolicy — non-managers get a 403 instead
+    // of a silent no-op so the UI can render a friendly "manager only"
+    // message instead of pretending the save worked.
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
-    Route::patch('/settings/company', [SettingsController::class, 'updateCompany'])->name('settings.company.update');
     Route::patch('/settings/personal', [SettingsController::class, 'updatePersonal'])->name('settings.personal.update');
     Route::patch('/settings/notifications', [SettingsController::class, 'updateNotifications'])->name('settings.notifications.update');
     Route::patch('/settings/security', [SettingsController::class, 'updateSecurity'])->name('settings.security.update');
-    Route::patch('/settings/payment', [SettingsController::class, 'updatePayment'])->name('settings.payment.update');
+
+    // Company-scope settings — the middleware short-circuits before the
+    // controller policy check so the route never dispatches for
+    // non-managers. Belt-and-braces.
+    Route::middleware('web.role:company_manager,admin')->group(function () {
+        Route::patch('/settings/company', [SettingsController::class, 'updateCompany'])->name('settings.company.update');
+        Route::patch('/settings/payment', [SettingsController::class, 'updatePayment'])->name('settings.payment.update');
+        Route::patch('/settings/defaults', [SettingsController::class, 'updateDefaults'])->name('settings.defaults.update');
+        Route::patch('/settings/security-policy', [SettingsController::class, 'updateSecurityPolicy'])->name('settings.security-policy.update');
+
+        // Multi-account bank book.
+        Route::get('/settings/bank-accounts', [CompanyBankAccountController::class, 'index'])->name('settings.bank-accounts.index');
+        Route::post('/settings/bank-accounts', [CompanyBankAccountController::class, 'store'])->name('settings.bank-accounts.store');
+        Route::patch('/settings/bank-accounts/{id}', [CompanyBankAccountController::class, 'update'])->name('settings.bank-accounts.update');
+        Route::delete('/settings/bank-accounts/{id}', [CompanyBankAccountController::class, 'destroy'])->name('settings.bank-accounts.destroy');
+
+        // Accepted payment rails matrix.
+        Route::get('/settings/payment-methods', [CompanyPaymentMethodController::class, 'edit'])->name('settings.payment-methods.edit');
+        Route::patch('/settings/payment-methods', [CompanyPaymentMethodController::class, 'update'])->name('settings.payment-methods.update');
+
+        // Branding + document templates.
+        Route::get('/settings/branding', [CompanyBrandingController::class, 'edit'])->name('settings.branding.edit');
+        Route::patch('/settings/branding', [CompanyBrandingController::class, 'update'])->name('settings.branding.update');
+
+        // Document numbering series (invoice / PO / contract).
+        Route::get('/settings/numbering', [CompanyDocumentNumberingController::class, 'edit'])->name('settings.numbering.edit');
+        Route::patch('/settings/numbering', [CompanyDocumentNumberingController::class, 'update'])->name('settings.numbering.update');
+
+        // Cost centres.
+        Route::get('/settings/cost-centers', [CostCenterController::class, 'index'])->name('settings.cost-centers.index');
+        Route::post('/settings/cost-centers', [CostCenterController::class, 'store'])->name('settings.cost-centers.store');
+        Route::patch('/settings/cost-centers/{id}', [CostCenterController::class, 'update'])->name('settings.cost-centers.update');
+        Route::delete('/settings/cost-centers/{id}', [CostCenterController::class, 'destroy'])->name('settings.cost-centers.destroy');
+
+        // Tenant audit log (read-only).
+        Route::get('/settings/audit', [CompanyAuditLogController::class, 'index'])->name('settings.audit.index');
+
+        // Card-on-file vault (tokenized, never PAN).
+        Route::get('/settings/cards', [CompanyCardVaultController::class, 'index'])->name('settings.cards.index');
+        Route::post('/settings/cards', [CompanyCardVaultController::class, 'store'])->name('settings.cards.store');
+        Route::patch('/settings/cards/{id}/default', [CompanyCardVaultController::class, 'setDefault'])->name('settings.cards.default');
+        Route::delete('/settings/cards/{id}', [CompanyCardVaultController::class, 'destroy'])->name('settings.cards.destroy');
+    });
+
+    // Letters of Credit — both applicant (buyer) and beneficiary
+    // (supplier) sides share the same endpoints; the controller keys
+    // each action on company membership.
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/letters-of-credit', [LetterOfCreditController::class, 'index'])->name('dashboard.lc.index');
+        Route::post('/letters-of-credit', [LetterOfCreditController::class, 'store'])->name('dashboard.lc.store');
+        Route::get('/letters-of-credit/{id}', [LetterOfCreditController::class, 'show'])->name('dashboard.lc.show');
+        Route::post('/letters-of-credit/{id}/present', [LetterOfCreditController::class, 'present'])->name('dashboard.lc.present');
+        Route::post('/letters-of-credit/{id}/drawings/{drawingId}/honour', [LetterOfCreditController::class, 'honour'])->name('dashboard.lc.honour');
+        Route::post('/letters-of-credit/{id}/drawings/{drawingId}/reject', [LetterOfCreditController::class, 'reject'])->name('dashboard.lc.reject');
+        Route::post('/letters-of-credit/{id}/cancel', [LetterOfCreditController::class, 'cancel'])->name('dashboard.lc.cancel');
+
+        // WPS payroll — manager-only because salary data is PDPL-sensitive.
+        Route::middleware('web.role:company_manager,admin')->group(function () {
+            Route::get('/wps', [WpsPayrollController::class, 'index'])->name('dashboard.wps.index');
+            Route::post('/wps', [WpsPayrollController::class, 'store'])->name('dashboard.wps.store');
+            Route::get('/wps/{id}', [WpsPayrollController::class, 'show'])->name('dashboard.wps.show');
+            Route::post('/wps/{id}/generate', [WpsPayrollController::class, 'generate'])->name('dashboard.wps.generate');
+            Route::get('/wps/{id}/download', [WpsPayrollController::class, 'download'])->name('dashboard.wps.download');
+            Route::post('/wps/{id}/submit', [WpsPayrollController::class, 'markSubmitted'])->name('dashboard.wps.submit');
+        });
+    });
 
     // ──── Phase 4 (UAE Compliance Roadmap) — ICV certificates ─────
     // Supplier-side self-service: list, upload, delete (pending only),
@@ -233,7 +313,7 @@ Route::middleware(['auth', 'web.role:government,admin'])->prefix('gov')->name('g
 | Dashboard Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(function () {
+Route::middleware(['auth', 'company.approved', 'company.security'])->prefix('dashboard')->group(function () {
 
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -312,6 +392,13 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         // promotion eligibility) ranked by urgency.
         Route::get('/verification', [AdminVerificationQueueController::class, 'index'])->name('verification.index');
         Route::post('/verification/{id}/auto-promote', [AdminVerificationQueueController::class, 'autoPromote'])->name('verification.auto-promote');
+
+        // Design-partner cohort tracker. Surfaces the ~10 suppliers + 3
+        // buyers handpicked for pre-launch validation with their live
+        // onboarding progress.
+        Route::get('/design-partners', [AdminDesignPartnerController::class, 'index'])->name('design-partners.index');
+        Route::post('/design-partners/{companyId}/enroll', [AdminDesignPartnerController::class, 'enroll'])->name('design-partners.enroll');
+        Route::post('/design-partners/{companyId}/unenroll', [AdminDesignPartnerController::class, 'unenroll'])->name('design-partners.unenroll');
 
         // Category-assignment requests submitted by company managers.
         Route::get('/category-requests', [AdminCompanyCategoryRequestController::class, 'index'])->name('category-requests.index');
@@ -483,6 +570,16 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
         Route::delete('/suppliers/{id}', [CompanySupplierController::class, 'destroy'])->name('dashboard.suppliers.destroy');
     });
 
+    // ---- Team Activity Log (company manager only) --------------------------
+    // Company-scoped audit log — the manager sees everything their team did
+    // on the platform. Same data as the admin view, but filtered to rows
+    // whose company_id matches the manager's company.
+    Route::middleware('web.role:company_manager')->group(function () {
+        Route::get('/team-activity', [TeamActivityController::class, 'index'])->name('dashboard.team-activity.index');
+        Route::get('/team-activity/export', [TeamActivityController::class, 'export'])->name('dashboard.team-activity.export');
+        Route::get('/team-activity/{id}', [TeamActivityController::class, 'show'])->name('dashboard.team-activity.show');
+    });
+
     // ---- Spend Analytics (Phase 2 of H1) ------------------------------------
     Route::get('/analytics/spend', [SpendAnalyticsController::class, 'index'])->name('dashboard.analytics.spend');
 
@@ -502,6 +599,10 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     Route::post('/bids/{bid}/negotiation/counter', [NegotiationRoundController::class, 'counter'])->name('dashboard.negotiation.counter');
     Route::post('/bids/{bid}/negotiation/accept', [NegotiationRoundController::class, 'accept'])->name('dashboard.negotiation.accept');
     Route::post('/bids/{bid}/negotiation/reject', [NegotiationRoundController::class, 'reject'])->name('dashboard.negotiation.reject');
+    // JSON endpoint used by the counter form to render a live VAT
+    // breakdown while the user types. Participant auth is enforced inside
+    // the controller (same check as the other negotiation routes).
+    Route::post('/bids/{bid}/negotiation/vat-preview', [NegotiationRoundController::class, 'vatPreview'])->name('dashboard.negotiation.vat-preview');
 
     // ---- Reverse Auctions (live bidding) -----------------------------------
     // Browse + JSON poller are open to anyone with rfq.view; placing a bid
@@ -609,6 +710,7 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     Route::get('/bids', [BidController::class, 'index'])->name('dashboard.bids');
     Route::get('/bids/{id}', [BidController::class, 'show'])->name('dashboard.bids.show');
     Route::get('/bids/{id}/pdf', [BidController::class, 'download'])->name('dashboard.bids.pdf');
+    Route::get('/bids/{id}/proforma-invoice', [BidController::class, 'proformaInvoice'])->name('dashboard.bids.proforma-invoice');
     Route::get('/bids/{id}/attachments/{idx}', [BidController::class, 'downloadAttachment'])->name('dashboard.bids.attachment.download');
     // Bid submission: suppliers bid on purchase RFQs, buyers bid on sales-offer
     // RFQs. Sales roles + company_manager also have bid.submit by default, and
@@ -742,8 +844,21 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     // Only buyers approve/process payments.
     Route::middleware('web.role:buyer,company_manager')->group(function () {
         Route::post('/payments/{id}/approve', [PaymentController::class, 'approve'])->name('dashboard.payments.approve');
+        Route::post('/payments/{id}/second-approve', [PaymentController::class, 'secondApprove'])->name('dashboard.payments.second-approve');
         Route::post('/payments/{id}/process', [PaymentController::class, 'process'])->name('dashboard.payments.process');
     });
+
+    // ---- Cheques (PDC lifecycle) ---------------------------------------------
+    // UAE B2B staple. Auth is enforced inside the controller (issuer or
+    // beneficiary company); no role gate here beyond the authenticated
+    // dashboard user.
+    Route::get('/cheques', [\App\Http\Controllers\Web\ChequeController::class, 'index'])->name('dashboard.cheques.index');
+    Route::get('/cheques/{id}', [\App\Http\Controllers\Web\ChequeController::class, 'show'])->name('dashboard.cheques.show');
+    Route::post('/cheques', [\App\Http\Controllers\Web\ChequeController::class, 'store'])->name('dashboard.cheques.store');
+    Route::post('/cheques/{id}/deposit', [\App\Http\Controllers\Web\ChequeController::class, 'deposit'])->name('dashboard.cheques.deposit');
+    Route::post('/cheques/{id}/clear', [\App\Http\Controllers\Web\ChequeController::class, 'clear'])->name('dashboard.cheques.clear');
+    Route::post('/cheques/{id}/return', [\App\Http\Controllers\Web\ChequeController::class, 'returnCheque'])->name('dashboard.cheques.return');
+    Route::post('/cheques/{id}/stop', [\App\Http\Controllers\Web\ChequeController::class, 'stop'])->name('dashboard.cheques.stop');
 
     // ---- Escrow (Phase 3 — Trade Finance MVP) -------------------------------
     // Buyer activates an escrow account on a signed contract, deposits
@@ -822,4 +937,19 @@ Route::middleware(['auth', 'company.approved'])->prefix('dashboard')->group(func
     Route::middleware('web.role:government,admin')->group(function () {
         Route::post('/disputes/{id}/resolve', [DisputeController::class, 'resolve'])->name('dashboard.disputes.resolve');
     });
+
+    // ---- Bank Reconciliation (Phase F) --------------------------------------
+    Route::get('/reconciliation', [\App\Http\Controllers\Web\BankReconciliationController::class, 'index'])->name('dashboard.reconciliation.index');
+    Route::post('/reconciliation/upload', [\App\Http\Controllers\Web\BankReconciliationController::class, 'upload'])->name('dashboard.reconciliation.upload');
+    Route::get('/reconciliation/{id}', [\App\Http\Controllers\Web\BankReconciliationController::class, 'show'])->name('dashboard.reconciliation.show');
+    Route::post('/reconciliation/lines/{lineId}/match', [\App\Http\Controllers\Web\BankReconciliationController::class, 'match'])->name('dashboard.reconciliation.match');
+
+    // ---- Bank Guarantees (Phase A) ------------------------------------------
+    Route::get('/bank-guarantees', [\App\Http\Controllers\Web\BankGuaranteeController::class, 'index'])->name('dashboard.bank-guarantees.index');
+    Route::get('/bank-guarantees/{id}', [\App\Http\Controllers\Web\BankGuaranteeController::class, 'show'])->name('dashboard.bank-guarantees.show');
+    Route::post('/bank-guarantees', [\App\Http\Controllers\Web\BankGuaranteeController::class, 'store'])->name('dashboard.bank-guarantees.store');
+    Route::post('/bank-guarantees/{id}/activate', [\App\Http\Controllers\Web\BankGuaranteeController::class, 'activate'])->name('dashboard.bank-guarantees.activate');
+    Route::post('/bank-guarantees/{id}/call', [\App\Http\Controllers\Web\BankGuaranteeController::class, 'call'])->name('dashboard.bank-guarantees.call');
+    Route::post('/bank-guarantees/{id}/extend', [\App\Http\Controllers\Web\BankGuaranteeController::class, 'extend'])->name('dashboard.bank-guarantees.extend');
+    Route::post('/bank-guarantees/{id}/release', [\App\Http\Controllers\Web\BankGuaranteeController::class, 'release'])->name('dashboard.bank-guarantees.release');
 });

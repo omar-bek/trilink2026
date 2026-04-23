@@ -198,7 +198,22 @@ class CompanyUserController extends Controller
     {
         $assignable = array_map(fn ($r) => $r->value, UserRole::assignableByCompanyManager());
 
-        return $request->validate([
+        // Manager-only permission keys (the `company_admin` group) must
+        // never be assignable to a team member — otherwise a manager
+        // could hand out the bypass that lets any user edit bank details,
+        // security policy, etc. Strip them from the validation whitelist.
+        $delegatable = array_values(array_diff(
+            Permissions::all(),
+            Permissions::catalog()['company_admin'] ?? []
+        ));
+
+        // Email domain allowlist — sourced from the company policy, so a
+        // tenant that locks invites to @acme.com cannot accidentally
+        // invite an external contractor. Empty list = no restriction.
+        $company = $request->user()?->company;
+        $allowedDomains = $company?->securityPolicy()->allowed_email_domains ?? [];
+
+        $data = $request->validate([
             'first_name' => ['required', 'string', 'max:100'],
             'last_name' => ['nullable', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($ignoreId)->whereNull('deleted_at')],
@@ -208,10 +223,21 @@ class CompanyUserController extends Controller
             'additional_roles' => ['nullable', 'array'],
             'additional_roles.*' => [Rule::in($assignable)],
             'permissions' => ['nullable', 'array'],
-            'permissions.*' => [Rule::in(Permissions::all())],
+            'permissions.*' => [Rule::in($delegatable)],
             'status' => ['nullable', new Enum(UserStatus::class)],
-            'password' => ['nullable', 'string', 'min:8'],
+            'password' => ['nullable', 'string', new \App\Rules\CompanyPasswordPolicy(null, $company?->id)],
         ]);
+
+        if (! empty($allowedDomains)) {
+            $domain = strtolower(substr((string) strrchr($data['email'], '@'), 1));
+            if (! in_array($domain, $allowedDomains, true)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'email' => __('auth.email_domain_not_allowed'),
+                ]);
+            }
+        }
+
+        return $data;
     }
 
     private function findInCompany(int $id): User

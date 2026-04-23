@@ -3,11 +3,14 @@
 use App\Enums\CompanyStatus;
 use App\Http\Middleware\AuditMiddleware;
 use App\Http\Middleware\CheckOwnership;
+use App\Http\Middleware\EnforceCompanySecurityPolicy;
 use App\Http\Middleware\EnsureCompanyApproved;
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\JwtAuthenticate;
+use App\Http\Middleware\RequestId;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
+use App\Http\Middleware\VerifyWebhookSignature;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Application;
@@ -37,10 +40,19 @@ return Application::configure(basePath: dirname(__DIR__))
             'setlocale' => SetLocale::class,
             'web.role' => EnsureUserHasRole::class,
             'company.approved' => EnsureCompanyApproved::class,
+            'company.security' => EnforceCompanySecurityPolicy::class,
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
+            // HMAC verifier for external partner webhooks. Usage:
+            //   Route::post('/api/webhooks/escrow', ...)->middleware('webhook.hmac:escrow');
+            'webhook.hmac' => VerifyWebhookSignature::class,
         ]);
+
+        // Request-ID threading. Prepended BEFORE everything else so every
+        // log line (including validation failures and the audit middleware)
+        // carries the same correlation ID.
+        $middleware->prepend(RequestId::class);
 
         $middleware->web(append: [
             SetLocale::class,

@@ -35,6 +35,21 @@ Schedule::command('escrow:sweep')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Negotiation counter-offer expiry sweeper. Runs every 5 minutes so a
+// stale round is closed within a reasonable window without flooding the
+// queue. Auto-reject writes an AuditLog row so the expired status is
+// traceable back to the sweeper (no user action).
+Schedule::command('negotiation:expire-rounds')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Payments hardening — daily late-fee accrual (one Payment row per overdue
+// parent per month, statutory 12% cap) and release-condition sweeper for
+// retention_period_elapsed and other matured auto-release signals.
+Schedule::command('payments:accrue-late-fees')->dailyAt('05:30');
+Schedule::command('escrow:sweep-release-conditions')->dailyAt('05:45');
+
 // Phase 3 / Sprint 14 / task 3.13 — daily FX rates pull from Open Exchange
 // Rates. 02:00 UTC = 06:00 GST, before the FX desks at most regional
 // banks open so the published rates align with what the bank quotes us.
@@ -83,3 +98,12 @@ Schedule::command('contracts:expire-signature-windows')->dailyAt('05:00');
 // the notifications table from growing unbounded. Anything read more
 // than 60 days ago is safe to drop.
 Schedule::command('notifications:cleanup')->weeklyOn(0, '02:30');
+
+// Phase A — daily BG expiry reminders at 30/14/7/1 day tiers. Runs
+// at 03:15 GST so the notifications land before the business day.
+Schedule::command('bg:notify-expiring')->dailyAt('03:15');
+
+// Phase G — daily retention release sweep. Creates a pending-approval
+// payment for any contract past its retention_release_date with an
+// un-released held balance.
+Schedule::command('retention:release-due')->dailyAt('04:00');

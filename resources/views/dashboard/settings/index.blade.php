@@ -30,6 +30,23 @@
          'icon' => 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z'],
         ['key' => 'payment',       'label' => __('settings.payment_methods'),
          'icon' => 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z'],
+        ['key' => 'defaults',       'label' => __('settings.defaults_title'),
+         'icon' => 'M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75'],
+        ['key' => 'security_policy','label' => __('settings.security_policy_title'),
+         'icon' => 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
+    ];
+
+    // External tabs — these link to dedicated pages rather than embedded
+    // partials, so they live in their own sub-routes and we just render
+    // them as nav links. Keeping them separate keeps the tab template
+    // loader in this file from exploding in complexity.
+    $externalTabs = [
+        ['route' => 'settings.bank-accounts.index',   'label' => __('settings.bank_accounts_title')],
+        ['route' => 'settings.payment-methods.edit',  'label' => __('settings.payment_methods_title')],
+        ['route' => 'settings.branding.edit',         'label' => __('settings.branding_title')],
+        ['route' => 'settings.numbering.edit',        'label' => __('settings.numbering_title')],
+        ['route' => 'settings.cost-centers.index',    'label' => __('settings.cost_centers_title')],
+        ['route' => 'settings.audit.index',           'label' => __('settings.audit_title')],
     ];
     @endphp
     <nav class="bg-surface border border-th-border rounded-2xl p-3 h-fit space-y-1">
@@ -40,6 +57,16 @@
             <span>{{ $t['label'] }}</span>
         </a>
         @endforeach
+
+        @if(auth()->user()?->isCompanyManager() || auth()->user()?->isAdmin())
+        <div class="border-t border-th-border my-2 pt-2 text-[11px] text-muted px-4">{{ __('settings.advanced') }}</div>
+        @foreach($externalTabs as $t)
+        <a href="{{ route($t['route']) }}"
+           class="flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-semibold transition-colors text-body hover:bg-surface-2 hover:text-primary">
+            <span>{{ $t['label'] }}</span>
+        </a>
+        @endforeach
+        @endif
     </nav>
 
     {{-- Tab content --}}
